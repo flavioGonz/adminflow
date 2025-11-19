@@ -1,0 +1,870 @@
+"use client"; 
+
+import { useMemo, useState } from "react";
+import { Bell, CheckCircle, Mail, MessageCircle, RefreshCcw, Send, ShieldCheck, Slack, Sparkles, type LucideIcon, UserPlus } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
+
+type ChannelId = "email" | "whatsapp" | "telegram" | "slack";
+
+type ChannelDefinition = {
+  id: ChannelId;
+  name: string;
+  light: string;
+  accent: string;
+  icon: LucideIcon;
+  description: string;
+  helper: string;
+};
+
+type ChannelConfig = {
+  enabled: boolean;
+  provider: string;
+  status: string;
+  apiKey: string;
+  webhook: string;
+  liveMessage: string;
+};
+
+type TemplateDraft = {
+  subject: string;
+  body: string;
+};
+
+type UserRecord = {
+  id: string;
+  email: string;
+  role: string;
+  modules: string;
+};
+
+type NotificationLogEntry = {
+  id: number;
+  channel: ChannelId;
+  message: string;
+  status: "Éxito" | "Aviso" | "Alerta";
+  tone: "success" | "warning" | "destructive";
+  createdAt: string;
+};
+
+type UserFormState = {
+  email: string;
+  role: string;
+  modules: string;
+  password: string;
+};
+
+type TabDefinition = {
+  value: string;
+  label: string;
+  description: string;
+  icon: LucideIcon;
+};
+
+const roleOptions = ["Administrador", "Manager", "Operaciones", "Soporte", "Viewer"];
+
+const navigationTabs: TabDefinition[] = [
+  {
+    value: "access",
+    label: "Gestiona permisos y accesos",
+    description: "Define roles, contraseñas y módulos que cada equipo puede revisar o editar.",
+    icon: ShieldCheck,
+  },
+  {
+    value: "notifications",
+    label: "Configuración de notificaciones",
+    description: "Activa cada canal, actualiza tokens y verifica webhooks en segundos.",
+    icon: Bell,
+  },
+  {
+    value: "templates",
+    label: "Mensajes listos para enviar",
+    description: "Crea plantillas unificadas para correo, WhatsApp, Telegram y Slack.",
+    icon: MessageCircle,
+  },
+  {
+    value: "live",
+    label: "Estados en vivo",
+    description: "Observa cada entrega y su estatus con logs instantáneos.",
+    icon: Sparkles,
+  },
+  {
+    value: "dashboard",
+    label: "Dashboard en sincronía",
+    description: "Todo el sistema monitoreado desde un solo panel.",
+    icon: CheckCircle,
+  },
+];
+
+const baseUsers: UserRecord[] = [
+  { id: "U-001", email: "admin@adminflow.uy", role: "Administrador", modules: "Dashboard, Clientes, Sistema" },
+  { id: "U-002", email: "ventas@empresa.uy", role: "Manager", modules: "Clientes, Tickets" },
+  { id: "U-003", email: "soporte@adminflow.uy", role: "Soporte", modules: "Tickets, Pagos" },
+  { id: "U-004", email: "ops@adminflow.uy", role: "Operaciones", modules: "Sistema, Base de datos" },
+];
+
+const channelDefinitions: ChannelDefinition[] = [
+  {
+    id: "email",
+    name: "Correo",
+    icon: Mail,
+    accent: "from-emerald-500/30 to-slate-900/30 border-emerald-500/50",
+    light: "bg-emerald-500/10 text-emerald-200",
+    description: "React Email · React Mailer",
+    helper: "Usa adapters de React Email y React Mailer para construir plantillas responsivas antes de enviarlas a SMTP o SES.",
+  },
+  {
+    id: "whatsapp",
+    name: "WhatsApp",
+    icon: MessageCircle,
+    accent: "from-amber-500/30 to-slate-900/30 border-amber-500/50",
+    light: "bg-amber-500/10 text-amber-200",
+    description: "Twilio API / 360dialog",
+    helper: "Recomendado: Twilio o 360dialog con números Business API para estados en vivo y plantillas aprovechables.",
+  },
+  {
+    id: "telegram",
+    name: "Telegram",
+    icon: ShieldCheck,
+    accent: "from-sky-500/30 to-slate-900/30 border-sky-500/50",
+    light: "bg-sky-500/10 text-sky-200",
+    description: "Bot API",
+    helper: "Configura un bot y expone tus webhooks para recibir eventos y respuestas instantáneas.",
+  },
+  {
+    id: "slack",
+    name: "Slack",
+    icon: Slack,
+    accent: "from-violet-500/30 to-slate-900/30 border-violet-500/50",
+    light: "bg-violet-500/10 text-violet-200",
+    description: "Incoming Webhooks",
+    helper: "Slack Webhooks con bloques JSON permiten notificaciones ricas directamente en canales específicos.",
+  },
+];
+
+const baseChannelConfig: Record<ChannelId, ChannelConfig> = {
+  email: {
+    enabled: true,
+    provider: "React Email · React Mailer",
+    status: "Conexión establecida",
+    apiKey: "react-mailer-18a6",
+    webhook: "https://hooks.react.email/send",
+    liveMessage: "SMTP Salvador conecta con SES cada 5s",
+  },
+  whatsapp: {
+    enabled: true,
+    provider: "Twilio Business · 360dialog",
+    status: "Webhook activo",
+    apiKey: "twilio-789a",
+    webhook: "https://api.twilio.com/2010-04-01/Accounts/..../Messages",
+    liveMessage: "Plantillas aprobadas por WhatsApp Business Manager",
+  },
+  telegram: {
+    enabled: true,
+    provider: "Telegram Bot API",
+    status: "Bot conectado",
+    apiKey: "telegram-bot-920",
+    webhook: "https://api.telegram.org/botXXXXX/setWebhook",
+    liveMessage: "Recepción de eventos en < 200 ms",
+  },
+  slack: {
+    enabled: true,
+    provider: "Slack Incoming Webhooks",
+    status: "Canal de alertas listo",
+    apiKey: "slack-hook-34f",
+    webhook: "https://hooks.slack.com/services/XXX/YYY/ZZZ",
+    liveMessage: "Notificaciones automáticas en #sistema",
+  },
+};
+
+const baseTemplates: Record<ChannelId, TemplateDraft> = {
+  email: {
+    subject: "Actualización mensual de su cuenta",
+    body: "Hola {{cliente}},\n\nEl resumen de este mes ya está disponible. Hemos generado los tickets {{ticket}} con un total de {{monto}}. Puedes ingresar al dashboard y verificar en segundos.\n\nGracias por confiar en Adminflow.\n",
+  },
+  whatsapp: {
+    subject: "Campaña WA",
+    body: "Hola {{cliente}}, estamos listos para avanzar con su presupuesto #{{ticket}}. ¿Podemos confirmar el envío de documentos hoy?",
+  },
+  telegram: {
+    subject: "Notificación Telegram",
+    body: "Equipo {{equipo}}, acaba de generarse el ticket #{{ticket}} para {{cliente}}. Revisar detalles en la plataforma.",
+  },
+  slack: {
+    subject: "Alerta Slack",
+    body: "*{{cliente}}* actualizó su solicitud #{{ticket}} y requiere atención inmediata. Verifica el canal de tickets.",
+  },
+};
+
+const initialNotificationLog: NotificationLogEntry[] = [
+  {
+    id: 1,
+    channel: "email",
+    message: "Campaña mensual enviada al grupo VIP",
+    status: "Éxito",
+    tone: "success",
+    createdAt: new Date(Date.now() - 60 * 1000).toISOString(),
+  },
+  {
+    id: 2,
+    channel: "whatsapp",
+    message: "Plantilla aprobada; enrutando a Twilio",
+    status: "Aviso",
+    tone: "warning",
+    createdAt: new Date(Date.now() - 2 * 60 * 1000).toISOString(),
+  },
+  {
+    id: 3,
+    channel: "telegram",
+    message: "Webhook detectó actividad del bot",
+    status: "Éxito",
+    tone: "success",
+    createdAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+  },
+  {
+    id: 4,
+    channel: "slack",
+    message: "Usuario reportó un incidente en #sistema",
+    status: "Alerta",
+    tone: "destructive",
+    createdAt: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
+  },
+];
+
+const channelMap = channelDefinitions.reduce<Record<ChannelId, ChannelDefinition>>((acc, channel) => {
+  acc[channel.id] = channel;
+  return acc;
+}, {} as Record<ChannelId, ChannelDefinition>);
+
+export default function SystemPage() {
+  const [users, setUsers] = useState(baseUsers);
+  const [userModalOpen, setUserModalOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<UserRecord | null>(null);
+  const [formValues, setFormValues] = useState<UserFormState>({
+    email: "",
+    role: roleOptions[0],
+    modules: "Dashboard, Clientes",
+    password: "",
+  });
+  const [channelConfig, setChannelConfig] = useState(baseChannelConfig);
+  const [activeTemplate, setActiveTemplate] = useState<ChannelId>("email");
+  const [templateDrafts, setTemplateDrafts] = useState(baseTemplates);
+  const [templatePreviewOpen, setTemplatePreviewOpen] = useState(false);
+  const [notificationLog, setNotificationLog] = useState(initialNotificationLog);
+  const [activeTab, setActiveTab] = useState(navigationTabs[0].value);
+
+  const liveChannelCount = useMemo(
+    () => Object.values(channelConfig).filter((channel) => channel.enabled).length,
+    [channelConfig]
+  );
+
+  const latestEvent = notificationLog[0];
+
+  const [templateTokens] = useState(["{{cliente}}", "{{ticket}}", "{{importe}}", "{{usuario}}"]);
+  const activeTabInfo = navigationTabs.find((tab) => tab.value === activeTab);
+
+  const openUserModal = (user?: UserRecord) => {
+    if (user) {
+      setFormValues({ email: user.email, role: user.role, modules: user.modules, password: "" });
+      setEditingUser(user);
+    } else {
+      setFormValues({ email: "", role: roleOptions[0], modules: "Dashboard, Tickets", password: "" });
+      setEditingUser(null);
+    }
+    setUserModalOpen(true);
+  };
+
+  const handleSaveUser = () => {
+    if (!formValues.email) {
+      toast.error("Agrega un correo válido.");
+      return;
+    }
+    if (!editingUser && !formValues.password) {
+      toast.error("Agrega una contraseña segura.");
+      return;
+    }
+    if (formValues.password && formValues.password.length > 0 && formValues.password.length < 8) {
+      toast.error("La contraseña debe tener al menos 8 caracteres.");
+      return;
+    }
+
+    if (editingUser) {
+      setUsers((prev) =>
+        prev.map((user) =>
+          user.id === editingUser.id
+            ? { ...user, email: formValues.email, role: formValues.role, modules: formValues.modules }
+            : user
+        )
+      );
+      const message = formValues.password
+        ? "Usuario y contraseña actualizados."
+        : "Usuario actualizado.";
+      toast.success(message);
+    } else {
+      const nextId = `U-${String(users.length + 1).padStart(3, "0")}`;
+      setUsers((prev) => [...prev, { id: nextId, email: formValues.email, role: formValues.role, modules: formValues.modules }]);
+      toast.success("Usuario creado y sincronizado.");
+    }
+
+    setUserModalOpen(false);
+    setEditingUser(null);
+    setFormValues({ email: "", role: roleOptions[0], modules: "Dashboard, Tickets", password: "" });
+  };
+
+  const handleChannelFieldChange = (channelId: ChannelId, field: keyof ChannelConfig, value: string) => {
+    setChannelConfig((prev) => ({
+      ...prev,
+      [channelId]: {
+        ...prev[channelId],
+        [field]: value,
+      },
+    }));
+  };
+
+  const handleChannelToggle = (channelId: ChannelId) => {
+    setChannelConfig((prev) => ({
+      ...prev,
+      [channelId]: {
+        ...prev[channelId],
+        enabled: !prev[channelId].enabled,
+      },
+    }));
+  };
+
+  const handleTestChannel = (channelId: ChannelId) => {
+    const definition = channelMap[channelId];
+    const newEntry: NotificationLogEntry = {
+      id: Date.now(),
+      channel: channelId,
+      message: `Prueba en curso para ${definition.name}`,
+      status: "Aviso",
+      tone: "warning",
+      createdAt: new Date().toISOString(),
+    };
+    setNotificationLog((prev) => [newEntry, ...prev].slice(0, 6));
+    toast.success(`Prueba enviada a ${definition.name}.`);
+  };
+
+  const handleTemplateChange = (field: keyof TemplateDraft, value: string) => {
+    setTemplateDrafts((prev) => ({
+      ...prev,
+      [activeTemplate]: {
+        ...prev[activeTemplate],
+        [field]: value,
+      },
+    }));
+  };
+
+  const handleSaveTemplate = () => {
+    toast.success(`Plantilla de ${channelMap[activeTemplate].name} guardada.`);
+  };
+
+  const handlePreviewTemplate = () => {
+    setTemplatePreviewOpen(true);
+  };
+
+  const formatTime = (iso: string) =>
+    new Date(iso).toLocaleTimeString("es-UY", { hour: "2-digit", minute: "2-digit" });
+
+  return (
+    <div className="space-y-8 px-4 pb-10 pt-6">
+      <section className="overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900/80 to-slate-950 p-8 text-white shadow-2xl shadow-slate-900/60">
+        <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+          <div className="max-w-2xl space-y-3">
+            <p className="text-xs uppercase tracking-[0.4em] text-slate-300">Sistema</p>
+            <h1 className="text-4xl font-semibold tracking-tight">Control total de usuarios y notificaciones</h1>
+            <p className="text-base text-slate-200">
+              Gestiona roles, módulos y canales de notificación con la misma plantilla.
+              React Email y React Mailer hacen el correo, mientras WhatsApp, Telegram y Slack reciben plantillas
+              reutilizables y estados en vivo.
+            </p>
+            <div className="flex flex-wrap gap-3 text-xs">
+              <span className="inline-flex items-center gap-2 rounded-full bg-emerald-500/20 px-3 py-1 text-emerald-200">
+                <span className="flex h-2 w-2 animate-pulse rounded-full bg-emerald-300" />
+                {liveChannelCount} canales en vivo
+              </span>
+              <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1">
+                <Bell className="h-3 w-3 text-white" />
+                Último evento {latestEvent ? formatTime(latestEvent.createdAt) : "..." }
+              </span>
+            </div>
+          </div>
+          <div className="grid gap-3 text-xs font-semibold text-white md:text-right">
+            {channelDefinitions.map((channel) => (
+              <div key={channel.id} className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 backdrop-blur">
+                <div className={cn("rounded-full p-2 text-white", channel.light)}>
+                  <channel.icon className="h-4 w-4" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold">{channel.name}</p>
+                  <p className="text-[11px] text-slate-300">{channel.description}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="grid gap-4 md:grid-cols-3">
+        <Card className="border border-border bg-white/80 shadow-sm backdrop-blur">
+          <CardHeader>
+            <CardTitle className="text-xs uppercase tracking-[0.4em]">Usuarios</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <p className="text-3xl font-semibold">{users.length}</p>
+            <p className="text-xs text-muted-foreground">Roles activos en todos los módulos</p>
+          </CardContent>
+        </Card>
+        <Card className="border border-border bg-white/80 shadow-sm backdrop-blur">
+          <CardHeader>
+            <CardTitle className="text-xs uppercase tracking-[0.4em]">Canales</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <p className="text-3xl font-semibold">{liveChannelCount}</p>
+            <p className="text-xs text-muted-foreground">Notificaciones listas para disparar</p>
+          </CardContent>
+        </Card>
+        <Card className="border border-border bg-white/80 shadow-sm backdrop-blur">
+          <CardHeader>
+            <CardTitle className="text-xs uppercase tracking-[0.4em]">Plantillas</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <p className="text-3xl font-semibold">{Object.keys(templateDrafts).length}</p>
+            <p className="text-xs text-muted-foreground">Versiones sincronizadas</p>
+          </CardContent>
+        </Card>
+      </section>
+
+      <section className="space-y-4">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-5">
+          <TabsList className="grid gap-2 rounded-2xl border border-white/30 bg-white/90 p-1 text-[11px] font-semibold text-slate-700 shadow-inner sm:grid-cols-3 md:grid-cols-5">
+            {navigationTabs.map((tab) => (
+              <TabsTrigger
+                key={tab.value}
+                value={tab.value}
+                className="flex items-center justify-center gap-2 rounded-xl border border-transparent bg-white/80 px-3 py-2 text-[10px] uppercase tracking-[0.25em] text-slate-600 transition-all duration-200 data-[state=active]:bg-slate-900 data-[state=active]:text-white data-[state=active]:shadow-lg"
+              >
+                <tab.icon className="h-3 w-3" />
+                <span className="text-[10px] font-semibold leading-none tracking-[0.2em]">{tab.label}</span>
+              </TabsTrigger>
+            ))}
+          </TabsList>
+          <div className="rounded-2xl border border-slate-200/60 bg-white/70 px-5 py-4 text-sm text-slate-600 shadow-sm">
+            {activeTabInfo ? (
+              <>
+                <p className="text-[11px] uppercase tracking-[0.45em] text-slate-400">{activeTabInfo.label}</p>
+                <p className="text-base font-semibold text-slate-800">{activeTabInfo.description}</p>
+              </>
+            ) : (
+              <p className="text-sm text-slate-500">Selecciona una pestaña para ver su contenido.</p>
+            )}
+          </div>
+          <TabsContent value="access" className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-[0.4em] text-muted-foreground">Usuarios y roles</p>
+                <h2 className="text-2xl font-semibold">Gestiona permisos y accesos</h2>
+              </div>
+              <Button onClick={() => openUserModal()} size="lg">
+                <UserPlus className="h-4 w-4" />
+                Crear usuario
+              </Button>
+            </div>
+            <Card className="border border-border bg-white/90 shadow-lg">
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>ID</TableHead>
+                      <TableHead>Correo</TableHead>
+                      <TableHead>Rol</TableHead>
+                      <TableHead>Módulos</TableHead>
+                      <TableHead>Estado</TableHead>
+                      <TableHead>Acciones</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {users.map((user) => (
+                      <TableRow key={user.id}>
+                        <TableCell className="font-semibold">{user.id}</TableCell>
+                        <TableCell>{user.email}</TableCell>
+                        <TableCell>
+                          <Badge className="bg-slate-900/80 text-white">{user.role}</Badge>
+                        </TableCell>
+                        <TableCell>{user.modules}</TableCell>
+                        <TableCell>
+                          <span className="flex items-center gap-2 text-xs font-semibold text-emerald-600">
+                            <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
+                            Activo
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          <Button variant="outline" size="sm" onClick={() => openUserModal(user)}>
+                            Editar
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
+          <TabsContent value="notifications" className="space-y-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-[0.4em] text-muted-foreground">Canales</p>
+                <h2 className="text-2xl font-semibold">Configuración de notificaciones</h2>
+              </div>
+              <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                <Sparkles className="h-4 w-4 text-amber-500" />
+                Estados en vivo sincronizados
+              </div>
+            </div>
+            <div className="grid gap-4 lg:grid-cols-2">
+              {channelDefinitions.map((channel) => (
+                <Card key={channel.id} className="border border-border bg-slate-950/80 text-white shadow-xl">
+                  <CardHeader className="flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className={cn("rounded-2xl border px-3 py-2 shadow-lg", channel.accent)}>
+                          <channel.icon className="h-5 w-5 text-white" />
+                        </div>
+                        <div>
+                          <p className="text-lg font-semibold">{channel.name}</p>
+                          <p className="text-xs uppercase tracking-[0.3em] text-slate-300">{channel.description}</p>
+                        </div>
+                      </div>
+                      <Badge variant="secondary">{channelConfig[channel.id].status}</Badge>
+                    </div>
+                    <p className="text-sm text-slate-300">{channel.helper}</p>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-1">
+                        <Label>API Key o token</Label>
+                        <Input
+                          value={channelConfig[channel.id].apiKey}
+                          onChange={(event) => handleChannelFieldChange(channel.id, "apiKey", event.target.value)}
+                          className="text-white"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label>Webhook / Endpoint</Label>
+                        <Input
+                          value={channelConfig[channel.id].webhook}
+                          onChange={(event) => handleChannelFieldChange(channel.id, "webhook", event.target.value)}
+                          className="text-white"
+                        />
+                      </div>
+                    </div>
+                    <p className="text-xs text-slate-400">{channelConfig[channel.id].liveMessage}</p>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 text-xs text-slate-300">
+                        <span
+                          className={cn(
+                            "h-2 w-2 rounded-full",
+                            channelConfig[channel.id].enabled ? "bg-emerald-400" : "bg-orange-400"
+                          )}
+                        />
+                        {channelConfig[channel.id].enabled ? "Canal activo" : "Canal dormido"}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button onClick={() => handleTestChannel(channel.id)} variant="outline" size="sm">
+                          <RefreshCcw className="h-3 w-3" />
+                          Probar canal
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => handleChannelToggle(channel.id)}>
+                          {channelConfig[channel.id].enabled ? "Desactivar" : "Activar"}
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </TabsContent>
+          <TabsContent value="templates" className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-[0.4em] text-muted-foreground">Plantillas</p>
+                <h2 className="text-2xl font-semibold">Mensajes listos para enviar</h2>
+              </div>
+              <Select value={activeTemplate} onValueChange={(value) => setActiveTemplate(value as ChannelId)}>
+                <SelectTrigger className="w-56">
+                  <SelectValue placeholder="Selecciona un canal" />
+                </SelectTrigger>
+                <SelectContent>
+                  {channelDefinitions.map((channel) => (
+                    <SelectItem key={channel.id} value={channel.id}>
+                      {channel.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Card className="border border-border bg-white/90 shadow-sm">
+              <CardContent className="space-y-4">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-1">
+                    <Label>Asunto / Título</Label>
+                    <Input
+                      value={templateDrafts[activeTemplate].subject}
+                      onChange={(event) => handleTemplateChange("subject", event.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Mensaje</Label>
+                    <Textarea
+                      value={templateDrafts[activeTemplate].body}
+                      onChange={(event) => handleTemplateChange("body", event.target.value)}
+                      className="min-h-[130px]"
+                    />
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                  Tokens disponibles:
+                  {templateTokens.map((token) => (
+                    <span key={token} className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-700">
+                      {token}
+                    </span>
+                  ))}
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button size="sm" onClick={handlePreviewTemplate}>
+                    <Send className="h-4 w-4" />
+                    Previsualizar
+                  </Button>
+                  <Button size="sm" variant="secondary" onClick={handleSaveTemplate}>
+                    Guardar plantilla
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+          <TabsContent value="live" className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-[0.4em] text-muted-foreground">Eventos</p>
+                <h2 className="text-2xl font-semibold">Estados en vivo</h2>
+              </div>
+              <div className="flex items-center gap-3 text-xs text-slate-500">
+                <CheckCircle className="h-4 w-4 text-emerald-500" />
+                Dashboard en sincronía
+              </div>
+            </div>
+            <Card className="border border-border bg-white/90 shadow-sm">
+              <CardContent className="p-0">
+                <div className="px-6 py-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+                    <div className="flex items-center gap-2 text-emerald-600">
+                      <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
+                      {liveChannelCount} canales reaccionando en vivo
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Última actividad {latestEvent ? formatTime(latestEvent.createdAt) : "..."}
+                    </p>
+                  </div>
+                </div>
+                <Separator />
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Canal</TableHead>
+                      <TableHead>Evento</TableHead>
+                      <TableHead>Estatus</TableHead>
+                      <TableHead>Hora</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {notificationLog.map((entry) => {
+                      const LogIcon = channelMap[entry.channel].icon;
+                      return (
+                        <TableRow key={entry.id}>
+                          <TableCell className="flex items-center gap-2">
+                            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-900/70 text-white">
+                              <LogIcon className="h-3 w-3" />
+                            </span>
+                            <span>{channelMap[entry.channel].name}</span>
+                          </TableCell>
+                          <TableCell className="text-sm">{entry.message}</TableCell>
+                          <TableCell>
+                            <Badge
+                              className={cn(
+                                "text-[11px] font-semibold",
+                                entry.tone === "success"
+                                  ? "bg-emerald-100 text-emerald-700"
+                                  : entry.tone === "warning"
+                                  ? "bg-amber-100 text-amber-700"
+                                  : "bg-rose-100 text-rose-700"
+                              )}
+                            >
+                              {entry.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground">{formatTime(entry.createdAt)}</TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
+          <TabsContent value="dashboard" className="space-y-4">
+            <div className="grid gap-4 lg:grid-cols-2">
+              <Card className="border border-border bg-white/90 shadow-sm">
+                <CardHeader>
+                  <CardTitle className="text-xs uppercase tracking-[0.35em] text-muted-foreground">
+                    Dashboard en sincronía
+                  </CardTitle>
+                  <p className="text-lg font-semibold">Salud del sistema</p>
+                </CardHeader>
+                <CardContent className="grid gap-4 md:grid-cols-3">
+                  <div className="space-y-1">
+                    <p className="text-[11px] uppercase tracking-[0.3em] text-muted-foreground">Canales vivos</p>
+                    <p className="text-2xl font-semibold text-slate-900">{liveChannelCount}</p>
+                    <p className="text-xs text-slate-500">Listos para enviar</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[11px] uppercase tracking-[0.3em] text-muted-foreground">Usuarios</p>
+                    <p className="text-2xl font-semibold text-slate-900">{users.length}</p>
+                    <p className="text-xs text-slate-500">Roles sincronizados</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[11px] uppercase tracking-[0.3em] text-muted-foreground">Último evento</p>
+                    <p className="text-2xl font-semibold text-slate-900">
+                      {latestEvent ? formatTime(latestEvent.createdAt) : "--:--"}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      {latestEvent ? latestEvent.status : "Sin eventos recientes"}
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="border border-border bg-white/90 shadow-sm">
+                <CardHeader>
+                  <CardTitle className="text-xs uppercase tracking-[0.35em] text-muted-foreground">
+                    Últimas alertas
+                  </CardTitle>
+                  <p className="text-xs text-muted-foreground">Eventos sincronizados en el dashboard</p>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {notificationLog.slice(0, 3).map((entry) => (
+                    <div key={`dash-${entry.id}`} className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold">{channelMap[entry.channel].name}</p>
+                        <p className="text-xs text-muted-foreground">{entry.message}</p>
+                      </div>
+                      <div className="flex flex-col items-end text-right text-[11px] text-slate-500">
+                        <span>{formatTime(entry.createdAt)}</span>
+                        <Badge
+                          className={cn(
+                            "text-[11px] font-semibold",
+                            entry.tone === "success"
+                              ? "bg-emerald-100 text-emerald-700"
+                              : entry.tone === "warning"
+                              ? "bg-amber-100 text-amber-700"
+                              : "bg-rose-100 text-rose-700"
+                          )}
+                        >
+                          {entry.status}
+                        </Badge>
+                      </div>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+        </Tabs>
+      </section>
+      <Dialog open={userModalOpen} onOpenChange={setUserModalOpen}>
+        <DialogContent className="max-w-lg bg-white text-slate-900 shadow-2xl">
+          <DialogHeader>
+            <DialogTitle>{editingUser ? "Actualizar usuario" : "Crear usuario"}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-1">
+              <Label className="text-sm text-slate-600">Correo electrónico</Label>
+              <Input
+                value={formValues.email}
+                onChange={(event) => setFormValues((prev) => ({ ...prev, email: event.target.value }))}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-sm text-slate-600">Rol asignado</Label>
+              <Select value={formValues.role} onValueChange={(value) => setFormValues((prev) => ({ ...prev, role: value }))}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {roleOptions.map((role) => (
+                    <SelectItem key={role} value={role}>
+                      {role}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-sm text-slate-600">Módulos y accesos</Label>
+              <Input
+                value={formValues.modules}
+                onChange={(event) => setFormValues((prev) => ({ ...prev, modules: event.target.value }))}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-sm text-slate-600">Contraseña</Label>
+              <Input
+                type="password"
+                value={formValues.password}
+                placeholder={editingUser ? "Opcional: dejar vacío para mantener la actual" : "Mínimo 8 caracteres"}
+                onChange={(event) => setFormValues((prev) => ({ ...prev, password: event.target.value }))}
+              />
+              <p className="text-xs text-slate-500">
+                {editingUser
+                  ? "Opcional: deja este campo vacío para mantener la contraseña existente."
+                  : "Define una contraseña segura para el nuevo usuario."}
+              </p>
+            </div>
+          </div>
+          <DialogFooter className="pt-6">
+            <Button variant="outline" onClick={() => setUserModalOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleSaveUser}>{editingUser ? "Guardar cambios" : "Crear usuario"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={templatePreviewOpen} onOpenChange={setTemplatePreviewOpen}>
+        <DialogContent className="max-w-xl bg-white text-slate-900 shadow-2xl">
+          <DialogHeader>
+            <DialogTitle>Vista previa · {channelMap[activeTemplate].name}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-emerald-300">{templateDrafts[activeTemplate].subject}</p>
+            <pre className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm leading-relaxed text-slate-900">
+              {templateDrafts[activeTemplate].body}
+            </pre>
+          </div>
+          <DialogFooter className="pt-6">
+            <Button onClick={() => setTemplatePreviewOpen(false)}>Cerrar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
