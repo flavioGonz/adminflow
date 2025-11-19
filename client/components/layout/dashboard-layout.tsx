@@ -27,13 +27,7 @@ export default function DashboardLayout({
     }
   }, [status, router]);
 
-  if (status === "loading") {
-    return (
-      <div className="flex h-screen w-full items-center justify-center bg-slate-950 text-sm text-white/70">
-        Verificando sesión...
-      </div>
-    );
-  }
+
 
   return (
     <div className="h-screen w-full lg:grid lg:grid-cols-[280px_1fr]">
