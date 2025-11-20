@@ -582,11 +582,21 @@ export default function ClientDetailPage() {
             <p className="text-sm text-muted-foreground">ID: {client.id}</p>
           </div>
         </div>
-        <div className="text-right">
-          <div className="text-sm text-muted-foreground">
-            Tickets asociados
-          </div>
-          <div className="text-2xl font-semibold">{tickets.length}</div>
+        <div className="flex flex-wrap gap-2">
+          {infoPills.map((pill) => (
+            <div
+              key={pill.label}
+              className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-4 py-1.5 text-sm text-slate-600 shadow-sm"
+            >
+              <span className="text-xs uppercase tracking-wide text-slate-400">
+                {pill.label}
+              </span>
+              <span className="text-lg font-semibold text-slate-800">
+                {pill.value}
+              </span>
+              <span className="text-xs text-slate-500">{pill.meta}</span>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -612,12 +622,6 @@ export default function ClientDetailPage() {
           selectedContractId={selectedContractId}
           onContractSelect={setSelectedContractId}
         />
-        <MapCard
-          client={client}
-          onLocationSave={(lat, lng) =>
-            handleCardSave("location", { latitude: lat, longitude: lng })
-          }
-        />
         <Link href={`/clients/${client.id}/repository/access`} className="block h-full">
           <div className="group cursor-pointer rounded-2xl border border-slate-200 bg-gradient-to-br from-blue-50 to-indigo-50 p-6 shadow-sm transition-all hover:shadow-md hover:border-blue-300 h-full flex flex-col justify-center">
             <div className="flex flex-col gap-4">
@@ -636,24 +640,15 @@ export default function ClientDetailPage() {
             </div>
           </div>
         </Link>
+        <MapCard
+          client={client}
+          onLocationSave={(lat, lng) =>
+            handleCardSave("location", { latitude: lat, longitude: lng })
+          }
+        />
       </section>
 
-      <div className="flex flex-wrap gap-2 pt-2">
-        {infoPills.map((pill) => (
-          <div
-            key={pill.label}
-            className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-4 py-1 text-sm text-slate-600 shadow-sm"
-          >
-            <span className="text-xs uppercase tracking-wide text-slate-400">
-              {pill.label}
-            </span>
-            <span className="text-base font-semibold text-slate-800">
-              {pill.value}
-            </span>
-            <span className="text-xs text-slate-500">{pill.meta}</span>
-          </div>
-        ))}
-      </div>
+
 
       <section className="grid gap-4 lg:grid-cols-[3fr,2fr]">
         <section className="rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm">
@@ -1035,108 +1030,85 @@ function ContractSelectionCard({
     (contract) => contract.id === selectedContractId
   );
   const hasContract = Boolean(selectedContract);
-  const contractBadgeClass = hasContract
-    ? "bg-emerald-100 text-emerald-800 border-emerald-200 animate-pulse shadow-sm"
-    : "bg-slate-100 text-slate-600 border-slate-200";
-  const contractCardClasses = [
-    "h-full space-y-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-4 shadow-sm transition",
-  ].join(" ");
 
   return (
-    <section className={contractCardClasses}>
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="rounded-full bg-emerald-50/80 p-2 text-emerald-600 shadow-inner">
-            <Award className="h-5 w-5" />
-          </div>
+    <section className="relative h-full overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-br from-emerald-50 to-green-50 p-6 shadow-sm">
+      {/* Animated background icon */}
+      <div className="absolute -right-6 -top-6 opacity-10">
+        <Award className={`h-32 w-32 text-emerald-600 ${hasContract ? 'animate-pulse' : ''}`} />
+      </div>
+
+      <div className="relative z-10 space-y-4">
+        <div className="flex items-center justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+            <p className="text-xs font-semibold uppercase tracking-wider text-emerald-700">
               Contrato vigente
             </p>
-            <p className="text-sm text-slate-600">
-              Selecciona el contrato activo para referencia.
+            <p className="text-sm text-slate-600 mt-1">
+              {hasContract ? "Contrato activo" : "Sin contrato asignado"}
             </p>
           </div>
-        </div>
-        <Badge
-          variant="outline"
-          className={`rounded-full border px-4 py-1.5 text-sm font-semibold ${contractBadgeClass}`}
-        >
-          {hasContract ? "Contrato activo" : "Sin contrato"}
-        </Badge>
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="contract-select" className="text-xs text-slate-500">
-          Contrato
-        </Label>
-        <Select
-          value={selectedContractId ?? CONTRACT_NONE_VALUE}
-          onValueChange={(value) =>
-            onContractSelect(value === CONTRACT_NONE_VALUE ? null : value)
-          }
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Selecciona un contrato" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={CONTRACT_NONE_VALUE}>Sin contrato</SelectItem>
-            {contracts.map((contract) => (
-              <SelectItem key={contract.id} value={contract.id}>
-                {contract.title}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      {selectedContract ? (
-        <div className="space-y-2 text-sm text-slate-600">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-slate-500">Estado</span>
-            <Badge
-              variant="outline"
-              className="rounded-full border-slate-300 bg-slate-100 px-3 py-0.5 text-xs text-slate-700"
-            >
-              {selectedContract.status ?? "Pendiente"}
-            </Badge>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-slate-500">Vigencia</span>
-            <span className="font-medium text-slate-800">
-              {selectedContract.startDate
-                ? formatDate(selectedContract.startDate)
-                : "Sin inicio"}{" "}
-              –{" "}
-              {selectedContract.endDate
-                ? formatDate(selectedContract.endDate)
-                : "Sin fin"}
-            </span>
-          </div>
-          {typeof selectedContract.amount === "number" && (
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-slate-500">Monto</span>
-              <span className="font-medium text-slate-800">
-                {formatCurrency(
-                  selectedContract.amount,
-                  selectedContract.currency ?? "ARS"
-                )}
-              </span>
+          {hasContract && (
+            <div className="rounded-full bg-emerald-100 p-2 animate-pulse">
+              <Award className="h-5 w-5 text-emerald-600" />
             </div>
           )}
-          <div className="flex items-center justify-between text-xs text-slate-500">
-            <span>Creado: {formatDate(selectedContract.createdAt)}</span>
-            <Link
-              href="/contracts"
-              className="text-xs font-semibold text-slate-800"
-            >
-              Ver contratos
-            </Link>
-          </div>
         </div>
-      ) : (
-        <p className="text-sm text-slate-500">
-          Al momento no hay contratos asignados al cliente.
-        </p>
-      )}
+
+        <div className="space-y-2">
+          <Label htmlFor="contract-select" className="text-xs text-slate-600">
+            Seleccionar contrato
+          </Label>
+          <Select
+            value={selectedContractId ?? CONTRACT_NONE_VALUE}
+            onValueChange={(value) =>
+              onContractSelect(value === CONTRACT_NONE_VALUE ? null : value)
+            }
+          >
+            <SelectTrigger className="bg-white/80 border-emerald-200">
+              <SelectValue placeholder="Selecciona un contrato" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={CONTRACT_NONE_VALUE}>Sin contrato</SelectItem>
+              {contracts.map((contract) => (
+                <SelectItem key={contract.id} value={contract.id}>
+                  {contract.title}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {selectedContract && (
+          <div className="space-y-2 text-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-slate-600">Estado</span>
+              <Badge
+                variant="outline"
+                className="rounded-full border-emerald-300 bg-emerald-100 px-3 py-0.5 text-xs text-emerald-700"
+              >
+                {selectedContract.status ?? "Pendiente"}
+              </Badge>
+            </div>
+            {selectedContract.startDate && (
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-slate-600">Inicio</span>
+                <span className="text-xs text-slate-700 font-medium">
+                  {formatDate(selectedContract.startDate)}
+                </span>
+              </div>
+            )}
+            {selectedContract.endDate && (
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-slate-600">Vencimiento</span>
+                <span className="text-xs text-slate-700 font-medium">
+                  {formatDate(selectedContract.endDate)}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </section>
   );
 }
