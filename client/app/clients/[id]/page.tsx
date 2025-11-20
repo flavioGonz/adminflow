@@ -243,6 +243,7 @@ interface CardField {
   options?: { label: string; value: string }[];
   parse?: (value: string) => Client[keyof Client];
   format?: (value: Client[keyof Client]) => string;
+  icon?: LucideIcon;
 }
 
 interface EditableClientCardProps {
@@ -589,29 +590,19 @@ export default function ClientDetailPage() {
         </div>
       </div>
 
-      <section className="grid gap-4 lg:grid-cols-4">
+      <section className="grid gap-4 lg:grid-cols-3">
         <EditableClientCard
-          title="Perfil Comercial"
-          description="Identidad legal y comercial."
+          title="Datos de Contacto"
+          description="Información comercial y de comunicación"
           icon={User}
           client={client}
           fields={[
-            { key: "name", label: "Razón Social", type: "text" },
-            { key: "alias", label: "Alias Comercial", type: "text" },
-            { key: "rut", label: "RUT / CUIT", type: "text" },
-          ]}
-          onSave={(updates) => handleCardSave("profile", updates)}
-          isSaving={savingSection === "profile"}
-        />
-        <EditableClientCard
-          title="Datos de Contacto"
-          description="Información para comunicaciones."
-          icon={Mail}
-          client={client}
-          fields={[
-            { key: "email", label: "Correo electrónico", type: "email" },
-            { key: "phone", label: "Teléfono", type: "tel" },
-            { key: "address", label: "Dirección", type: "textarea" },
+            { key: "name", label: "Razón Social", type: "text", icon: User },
+            { key: "alias", label: "Alias Comercial", type: "text", icon: Award },
+            { key: "rut", label: "RUT / CUIT", type: "text", icon: FileDown },
+            { key: "email", label: "Correo electrónico", type: "email", icon: Mail },
+            { key: "phone", label: "Teléfono", type: "tel", icon: Mail },
+            { key: "address", label: "Dirección", type: "textarea", icon: Mail },
           ]}
           onSave={(updates) => handleCardSave("contact", updates)}
           isSaving={savingSection === "contact"}
@@ -628,6 +619,23 @@ export default function ClientDetailPage() {
           }
         />
       </section>
+
+      <Link href={`/clients/${client.id}/repository/access`} className="block">
+        <div className="group cursor-pointer rounded-2xl border border-slate-200 bg-gradient-to-br from-blue-50 to-indigo-50 p-6 shadow-sm transition-all hover:shadow-md hover:border-blue-300">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="rounded-xl bg-blue-100 p-3 group-hover:bg-blue-200 transition-colors">
+                <Lock className="h-6 w-6 text-blue-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-slate-800">Datos / Accesos</h3>
+                <p className="text-sm text-slate-600">Gestionar credenciales y dispositivos del cliente</p>
+              </div>
+            </div>
+            <ArrowLeft className="h-5 w-5 text-slate-400 rotate-180 group-hover:translate-x-1 transition-transform" />
+          </div>
+        </div>
+      </Link>
 
       <div className="flex flex-wrap gap-2 pt-2">
         {infoPills.map((pill) => (
@@ -657,12 +665,6 @@ export default function ClientDetailPage() {
                 Tickets, pagos, repositorio y contratos recientes
               </h3>
             </div>
-            <Link href={`/clients/${client.id}/repository/access`}>
-              <Button variant="outline" size="sm" className="gap-2">
-                <Lock className="h-4 w-4" />
-                Gestionar Accesos
-              </Button>
-            </Link>
           </div>
           {movementRows.length === 0 ? (
             <p className="mt-4 text-sm text-slate-500">
