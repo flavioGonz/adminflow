@@ -657,6 +657,12 @@ export default function ClientDetailPage() {
                 Tickets, pagos, repositorio y contratos recientes
               </h3>
             </div>
+            <Link href={`/clients/${client.id}/repository/access`}>
+              <Button variant="outline" size="sm" className="gap-2">
+                <Lock className="h-4 w-4" />
+                Gestionar Accesos
+              </Button>
+            </Link>
           </div>
           {movementRows.length === 0 ? (
             <p className="mt-4 text-sm text-slate-500">
