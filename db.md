@@ -38,12 +38,12 @@ Las colecciones en MongoDB son un espejo de las tablas de SQLite, con los tipos 
 *   `users`, `clients`, `tickets`, `payments`, `contracts`, `budgets`, `products`, `repository`, `audit_logs`, `notifications`.
 *   `client_accesses`: **(NUEVO)** Colección nativa de Mongo para guardar credenciales y accesos.
     *   `_id`: ObjectId
-    *   `clientId`: ObjectId (Ref Clientes)
+    *   `clientId`: String (ID del cliente de SQLite, almacenado como string)
     *   `equipo`: String
-    *   `tipo_equipo`: String (router, switch, servidor, etc.)
+    *   `tipo_equipo`: String (router, switch, servidor, firewall, etc.)
     *   `ip`: String
     *   `user`: String
-    *   `pass`: String (Texto plano)
+    *   `pass`: String (Texto plano por diseño del repositorio)
     *   `comentarios`: String
     *   `createdAt`: Date
     *   `updatedAt`: Date

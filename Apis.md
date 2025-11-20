@@ -201,6 +201,84 @@ Acepta `[Client]` o `{ clients: [Client] }`. Retorna `{ total, imported, failed,
 - `PUT /api/repository/:id`: actualiza los campos enumerados y actualiza `updatedAt`.
 - `DELETE /api/repository/:id`: elimina la entrada.
 
+### Accesos y Credenciales
+
+Gestión de dispositivos, IPs y contraseñas del cliente (colección MongoDB `client_accesses`).
+
+#### `GET /api/clients/:id/access`
+Obtiene todos los accesos de un cliente ordenados por fecha de creación (más recientes primero).
+
+**Respuesta:**
+```json
+[
+  {
+    "_id": "60d5ec...",
+    "clientId": "2",
+    "equipo": "Router Principal",
+    "tipo_equipo": "router",
+    "ip": "192.168.1.1",
+    "user": "admin",
+    "pass": "admin123",
+    "comentarios": "Acceso principal",
+    "createdAt": "2023-10-27T10:00:00.000Z",
+    "updatedAt": "2023-10-27T10:00:00.000Z"
+  }
+]
+```
+
+#### `POST /api/clients/:id/access`
+Crea un nuevo acceso para el cliente.
+
+**Body:**
+```json
+{
+  "equipo": "Servidor Web",
+  "tipo_equipo": "servidor",
+  "ip": "10.0.0.50",
+  "user": "root",
+  "pass": "s3cr3t",
+  "comentarios": "Servidor de producción"
+}
+```
+
+**Validaciones:**
+- `equipo` (requerido): Nombre del equipo/dispositivo
+- `tipo_equipo` (requerido): Tipo de equipo (router, switch, servidor, firewall, etc.)
+- `ip` (opcional): Dirección IP o URL
+- `user` (opcional): Usuario de acceso
+- `pass` (opcional): Contraseña (se guarda en texto plano por diseño del repositorio)
+- `comentarios` (opcional): Notas adicionales
+
+**Respuesta:** El acceso creado con `_id` y timestamps.
+
+#### `PUT /api/access/:accessId`
+Actualiza un acceso existente.
+
+**Body:** (Parcial, solo los campos a actualizar)
+```json
+{
+  "pass": "new_password",
+  "comentarios": "Clave actualizada el 20/11/2025"
+}
+```
+
+**Respuesta:** El acceso actualizado completo.
+
+#### `DELETE /api/access/:accessId`
+Elimina un acceso permanentemente.
+
+**Respuesta:**
+```json
+{
+  "message": "Acceso eliminado correctamente"
+}
+```
+
+**Errores comunes:**
+- `400`: ID inválido
+- `404`: Acceso no encontrado
+- `503`: Base de datos no disponible
+
 ---
 
 ## Pagos
