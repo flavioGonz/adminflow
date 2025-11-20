@@ -19,7 +19,7 @@ router.get('/clients/:id/access', async (req, res) => {
         if (!db) return res.status(503).json({ message: 'Base de datos no disponible' });
 
         const accesses = await db.collection('client_accesses')
-            .find({ clientId: new ObjectId(req.params.id) })
+            .find({ clientId: req.params.id })
             .sort({ createdAt: -1 })
             .toArray();
 
@@ -43,7 +43,7 @@ router.post('/clients/:id/access', async (req, res) => {
         }
 
         const newAccess = {
-            clientId: new ObjectId(req.params.id),
+            clientId: req.params.id,
             equipo,
             tipo_equipo,
             ip: ip || '',
