@@ -52,6 +52,10 @@ app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 app.use('/uploads', express.static(path.resolve(__dirname, 'uploads')));
 
+// Routes
+const accessRoutes = require('./routes/access');
+app.use('/api', accessRoutes);
+
 app.use(
     session({
         store: new SQLiteStore({ db: 'database/database.sqlite', table: 'sessions' }),

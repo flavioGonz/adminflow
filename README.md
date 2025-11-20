@@ -1,7 +1,19 @@
 ﻿# AdminFlow
 
 ## Resumen
-AdminFlow es un cockpit administrativo completo que combina un frontend Next.js 16 (React 19 + Tailwind CSS 4) con un backend Express 4.19 que puede ejecutar sobre MongoDB como motor principal y mantener una réplica local en SQLite. Cada módulo cubre un paso del ciclo comercial: registrar clientes, resolver tickets, crear presupuestos exportables, cargar productos y contratos, gestionar pagos reales y mantener un repositorio seguro de archivos y credenciales por cliente.
+AdminFlow es un cockpit administrativo completo que combina un frontend Next.js 16 (React 19 + Tailwind CSS 4) con un backend Express 4.19 que puede ejecutar sobre MongoDB como motor principal y mantener una réplica local en SQLite. Cada módulo cubre un paso del ciclo comercial:
+- **Repositorio Técnico**:
+  - Gestión de credenciales y dispositivos (`/clients/:id/repository`).
+  - **Nuevo: Módulo de Accesos** (`/clients/:id/repository/access`):
+    - Registro detallado de equipos (Router, Switch, Servidor, etc.).
+    - Almacenamiento de IPs, usuarios y contraseñas.
+    - Iconografía automática según el tipo de equipo.
+    - Buscador y filtros integrados.
+- **Tickets**: Sistema de incidencias con estados, prioridades y adjuntos.
+- **Contratos**: Gestión de acuerdos de servicio (SLA, fechas, montos).
+- **Presupuestos**: Generación de cotizaciones en PDF.
+- **Pagos**: Registro de cobros y facturación.
+registrar clientes, resolver tickets, crear presupuestos exportables, cargar productos y contratos, gestionar pagos reales y mantener un repositorio seguro de archivos y credenciales por cliente.
 
 El backend (`server/`) expone una API RESTful y sincroniza eventos clave mediante `sync_events` para ofrecer reporting y replicaciones seguras. El frontend (`client/`) consume `http://localhost:5000/api/*`, utiliza NextAuth con un proveedor de credenciales (`client/app/api/auth/[...nextauth]/route.ts`) y agrupa el workflow dentro de `DashboardLayout`, sidebar y componentes reutilizables.
 

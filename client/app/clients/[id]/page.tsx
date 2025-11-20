@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
@@ -48,26 +48,10 @@ import {
 } from "lucide-react";
 import { updateClient } from "@/lib/api-clients";
 import { API_URL } from "@/lib/http";
-
-const MapContainer = dynamic(
-  () => import("react-leaflet").then((mod) => mod.MapContainer),
-  { ssr: false }
-);
-const Marker = dynamic(() => import("react-leaflet").then((mod) => mod.Marker), {
-  ssr: false,
-});
-const TileLayer = dynamic(
-  () => import("react-leaflet").then((mod) => mod.TileLayer),
-  { ssr: false }
-);
+import "leaflet/dist/leaflet.css";
+import L from "leaflet";
 
 const DEFAULT_POSITION: [number, number] = [-34.9, -56.1];
-
-type MapDragEvent = {
-  target: {
-    getLatLng: () => { lat: number; lng: number };
-  };
-};
 
 const getClientPosition = (client: Client): [number, number] => [
   client.latitude ?? DEFAULT_POSITION[0],
@@ -81,85 +65,85 @@ function MapCard({
   client: Client;
   onLocationSave?: (lat: number, lng: number) => void;
 }) {
-  const [position, setPosition] = useState<[number, number]>(getClientPosition(client));
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const mapInstanceRef = useRef<L.Map | null>(null);
+  const markerRef = useRef<L.Marker | null>(null);
   const [isLocked, setIsLocked] = useState(true);
-  const [markerIcon, setMarkerIcon] = useState<{ active?: any; inactive?: any }>({});
 
+  // Initialize Map
   useEffect(() => {
-    setPosition(getClientPosition(client));
-  }, [client.id, client.latitude, client.longitude]);
+    if (!mapContainerRef.current || mapInstanceRef.current) return;
 
-  useEffect(() => {
-    let mounted = true;
-    import("leaflet").then((Leaflet) => {
-      if (!mounted) return;
-      const iconBox = `<div class="marker-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" role="presentation" focusable="false">
-              <path d="M12 2C8.134 2 5 5.134 5 9c0 5.25 5 10.999 7 13 2-2.001 7-7.75 7-13 0-3.866-3.134-7-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z"/>
-            </svg>
-          </div>`;
-      const active = Leaflet.divIcon({
-        className: "client-marker active-marker marker-icon-green",
-        html: iconBox,
-        iconSize: [30, 30],
-        iconAnchor: [15, 30],
-      });
-      const inactive = Leaflet.divIcon({
-        className: "client-marker inactive-marker marker-icon-orange",
-        html: iconBox,
-        iconSize: [26, 26],
-        iconAnchor: [13, 26],
-      });
-      setMarkerIcon({ active, inactive });
+    const initialPos = getClientPosition(client);
+
+    const map = L.map(mapContainerRef.current, {
+      scrollWheelZoom: false,
+    }).setView(initialPos, 13);
+
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a>',
+    }).addTo(map);
+
+    // Fix icons
+    const iconRetinaUrl = 'leaflet/dist/images/marker-icon-2x.png';
+    const iconUrl = 'leaflet/dist/images/marker-icon.png';
+    const shadowUrl = 'leaflet/dist/images/marker-shadow.png';
+
+    // @ts-ignore
+    delete L.Icon.Default.prototype._getIconUrl;
+    L.Icon.Default.mergeOptions({
+      iconRetinaUrl: iconRetinaUrl,
+      iconUrl: iconUrl,
+      shadowUrl: shadowUrl,
     });
-    return () => {
-      mounted = false;
-    };
-  }, []);
 
-  const handleDragEnd = useCallback(
-    (event: MapDragEvent) => {
+    const marker = L.marker(initialPos, {
+      draggable: !isLocked,
+    }).addTo(map);
+
+    markerRef.current = marker;
+    mapInstanceRef.current = map;
+
+    marker.on('dragend', (event) => {
       const { lat, lng } = event.target.getLatLng();
-      setPosition([lat, lng]);
       if (onLocationSave) {
         onLocationSave(lat, lng);
       }
-    },
-    [onLocationSave]
-  );
+    });
 
-  const activeMarker = client.contract ? markerIcon.active : markerIcon.inactive;
-  const canRenderMarker = Boolean(activeMarker);
+    return () => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+        markerRef.current = null;
+      }
+    };
+  }, []);
+
+  // Update marker position and draggable state
+  useEffect(() => {
+    if (!markerRef.current || !mapInstanceRef.current) return;
+
+    const newPos = getClientPosition(client);
+    markerRef.current.setLatLng(newPos);
+    mapInstanceRef.current.setView(newPos);
+
+    if (isLocked) {
+      markerRef.current.dragging?.disable();
+    } else {
+      markerRef.current.dragging?.enable();
+    }
+  }, [client.latitude, client.longitude, isLocked]);
 
   return (
     <section className="relative h-72 shrink-0 overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 shadow-xl">
-      <MapContainer
-        center={position}
-        zoom={13}
-        scrollWheelZoom={false}
+      <div
+        ref={mapContainerRef}
         className="absolute inset-0 h-full w-full"
-      >
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a>'
-          url="https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png"
-        />
-        {canRenderMarker && (
-          <Marker
-            position={position}
-            draggable={!isLocked}
-            icon={activeMarker}
-            eventHandlers={
-              !isLocked
-                ? {
-                    dragend: handleDragEnd,
-                  }
-                : undefined
-            }
-          />
-        )}
-      </MapContainer>
-      <div className="absolute inset-0 bg-gradient-to-b from-black/30 to-black/70" />
-      <div className="absolute right-3 top-3 flex items-center gap-2 rounded-full border border-white/20 bg-slate-900/60 px-3 py-1 text-xs font-semibold text-white shadow-lg backdrop-blur">
+        style={{ zIndex: 0 }}
+      />
+      <div className="absolute inset-0 bg-gradient-to-b from-black/30 to-black/70 pointer-events-none" style={{ zIndex: 1 }} />
+      <div className="absolute right-3 top-3 flex items-center gap-2 rounded-full border border-white/20 bg-slate-900/60 px-3 py-1 text-xs font-semibold text-white shadow-lg backdrop-blur" style={{ zIndex: 2 }}>
         <button
           className="flex items-center gap-1 text-[0.65rem] uppercase tracking-widest text-white outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-white"
           onClick={() => setIsLocked((prev) => !prev)}
@@ -725,37 +709,37 @@ export default function ClientDetailPage() {
         </section>
         <div className="grid gap-4 md:grid-cols-2">
           <article className="space-y-3 rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm">
-        <div className="flex items-center justify-between gap-2">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-              Tickets asociados
-            </p>
-            <h3 className="text-lg font-semibold text-slate-800">
-              Últimos abiertos
-            </h3>
-          </div>
-          <div className="flex items-center gap-2 text-xs text-slate-600">
-            <TicketIcon className="h-5 w-5 text-slate-500" />
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={exportTicketsExcel}
-              className="gap-1 px-2"
-            >
-              <FileSpreadsheet className="h-3 w-3" />
-              Excel
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={exportTicketsPDF}
-              className="gap-1 px-2"
-            >
-              <FileDown className="h-3 w-3" />
-              PDF
-            </Button>
-          </div>
-        </div>
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  Tickets asociados
+                </p>
+                <h3 className="text-lg font-semibold text-slate-800">
+                  Últimos abiertos
+                </h3>
+              </div>
+              <div className="flex items-center gap-2 text-xs text-slate-600">
+                <TicketIcon className="h-5 w-5 text-slate-500" />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={exportTicketsExcel}
+                  className="gap-1 px-2"
+                >
+                  <FileSpreadsheet className="h-3 w-3" />
+                  Excel
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={exportTicketsPDF}
+                  className="gap-1 px-2"
+                >
+                  <FileDown className="h-3 w-3" />
+                  PDF
+                </Button>
+              </div>
+            </div>
             <div className="space-y-2">
               {tickets.slice(0, 4).map((ticket) => (
                 <div
@@ -786,37 +770,37 @@ export default function ClientDetailPage() {
             </div>
           </article>
           <article className="space-y-3 rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm">
-        <div className="flex items-center justify-between gap-2">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-              Pagos vinculados
-            </p>
-            <h3 className="text-lg font-semibold text-slate-800">
-              Últimos movimientos
-            </h3>
-          </div>
-          <div className="flex items-center gap-2 text-xs text-slate-600">
-            <DollarSign className="h-5 w-5 text-slate-500" />
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={exportPaymentsExcel}
-              className="gap-1 px-2"
-            >
-              <FileSpreadsheet className="h-3 w-3" />
-              Excel
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={exportPaymentsPDF}
-              className="gap-1 px-2"
-            >
-              <FileDown className="h-3 w-3" />
-              PDF
-            </Button>
-          </div>
-        </div>
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  Pagos vinculados
+                </p>
+                <h3 className="text-lg font-semibold text-slate-800">
+                  Últimos movimientos
+                </h3>
+              </div>
+              <div className="flex items-center gap-2 text-xs text-slate-600">
+                <DollarSign className="h-5 w-5 text-slate-500" />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={exportPaymentsExcel}
+                  className="gap-1 px-2"
+                >
+                  <FileSpreadsheet className="h-3 w-3" />
+                  Excel
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={exportPaymentsPDF}
+                  className="gap-1 px-2"
+                >
+                  <FileDown className="h-3 w-3" />
+                  PDF
+                </Button>
+              </div>
+            </div>
             <div className="space-y-2">
               {payments.slice(0, 4).map((payment) => (
                 <div

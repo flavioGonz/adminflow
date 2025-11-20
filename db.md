@@ -36,6 +36,17 @@ La aplicación utiliza una arquitectura de base de datos **híbrida**, donde **S
 Las colecciones en MongoDB son un espejo de las tablas de SQLite, con los tipos de datos normalizados (fechas como objetos `Date`, JSONs parseados).
 
 *   `users`, `clients`, `tickets`, `payments`, `contracts`, `budgets`, `products`, `repository`, `audit_logs`, `notifications`.
+*   `client_accesses`: **(NUEVO)** Colección nativa de Mongo para guardar credenciales y accesos.
+    *   `_id`: ObjectId
+    *   `clientId`: ObjectId (Ref Clientes)
+    *   `equipo`: String
+    *   `tipo_equipo`: String (router, switch, servidor, etc.)
+    *   `ip`: String
+    *   `user`: String
+    *   `pass`: String (Texto plano)
+    *   `comentarios`: String
+    *   `createdAt`: Date
+    *   `updatedAt`: Date
 
 ### Flujo de Datos
 1.  **Escritura:** El usuario realiza una acción -> Se escribe en **SQLite**.
