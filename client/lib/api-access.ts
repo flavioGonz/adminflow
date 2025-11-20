@@ -18,7 +18,10 @@ export type UpdateAccessDTO = Partial<CreateAccessDTO>;
 
 export async function getClientAccesses(clientId: string): Promise<AccessItem[]> {
     const res = await fetch(`${API_URL}/clients/${clientId}/access`);
-    if (!res.ok) throw new Error("Error al obtener accesos");
+    if (!res.ok) {
+        console.error(`Error fetching accesses: ${res.status} ${res.statusText}`);
+        throw new Error("Error al obtener accesos");
+    }
     return res.json();
 }
 

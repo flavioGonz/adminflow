@@ -136,7 +136,7 @@ function MapCard({
   }, [client.latitude, client.longitude, isLocked]);
 
   return (
-    <section className="relative h-72 shrink-0 overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 shadow-xl">
+    <section className="relative isolate h-72 shrink-0 overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 shadow-xl">
       <div
         ref={mapContainerRef}
         className="absolute inset-0 h-full w-full"

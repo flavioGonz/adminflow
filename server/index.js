@@ -901,6 +901,22 @@ app.get('/api/clients/:id', (req, res) => {
     });
 });
 
+// GET /api/clients/:id/payments - Get payments for a specific client
+app.get('/api/clients/:id/payments', (req, res) => {
+    db.all('SELECT * FROM payments WHERE client_id = ? ORDER BY createdAt DESC', [req.params.id], (err, rows) => {
+        if (err) return res.status(500).json({ message: err.message });
+        res.json(rows || []);
+    });
+});
+
+// GET /api/clients/:id/contracts - Get contracts for a specific client
+app.get('/api/clients/:id/contracts', (req, res) => {
+    db.all('SELECT * FROM contracts WHERE client_id = ? ORDER BY createdAt DESC', [req.params.id], (err, rows) => {
+        if (err) return res.status(500).json({ message: err.message });
+        res.json(rows || []);
+    });
+});
+
 app.post('/api/clients', (req, res) => {
     const { name, alias, rut, email, phone, address, contract, notificationsEnabled } = req.body;
     const latitude = req.body.latitude ?? null;
