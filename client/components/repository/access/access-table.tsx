@@ -29,6 +29,9 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
+import { Search, Filter, FileDown, Copy, Check } from "lucide-react";
+import { toast } from "sonner";
+import * as XLSX from "xlsx";
 import { AccessItem } from "@/lib/api-access";
 import { AccessRowActions, PasswordCell, IpCell } from "./access-row-actions";
 import { getAccessIcon, getAccessLabel, ACCESS_TYPES } from "./icon-map";
@@ -36,6 +39,40 @@ import { getAccessIcon, getAccessLabel, ACCESS_TYPES } from "./icon-map";
 interface AccessTableProps {
     data: AccessItem[];
     onUpdate: () => void;
+}
+
+// Copy button component
+function CopyButton({ value }: { value: string }) {
+    const [copied, setCopied] = useState(false);
+
+    const handleCopy = async () => {
+        if (!value || value === "—") return;
+        try {
+            await navigator.clipboard.writeText(value);
+            setCopied(true);
+            toast.success("Copiado al portapapeles");
+            setTimeout(() => setCopied(false), 2000);
+        } catch (err) {
+            toast.error("Error al copiar");
+        }
+    };
+
+    if (!value || value === "—") return null;
+
+    return (
+        <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 w-6 p-0 ml-2"
+            onClick={handleCopy}
+        >
+            {copied ? (
+                <Check className="h-3 w-3 text-green-600" />
+            ) : (
+                <Copy className="h-3 w-3" />
+            )}
+        </Button>
+    );
 }
 
 export function AccessTable({ data, onUpdate }: AccessTableProps) {
@@ -70,21 +107,43 @@ export function AccessTable({ data, onUpdate }: AccessTableProps) {
         {
             accessorKey: "ip",
             header: "IP / URL",
-            cell: ({ row }) => <IpCell value={row.getValue("ip")} />,
+            cell: ({ row }) => {
+                const value = row.getValue("ip") as string;
+                return (
+                    <div className="flex items-center">
+                        <IpCell value={value} />
+                        <CopyButton value={value} />
+                    </div>
+                );
+            },
         },
         {
             accessorKey: "user",
             header: "Usuario",
-            cell: ({ row }) => (
-                <span className="font-mono text-sm text-slate-600 dark:text-slate-400">
-                    {row.getValue("user") || "—"}
-                </span>
-            ),
+            cell: ({ row }) => {
+                const value = row.getValue("user") as string;
+                return (
+                    <div className="flex items-center">
+                        <span className="font-mono text-sm text-slate-600 dark:text-slate-400">
+                            {value || "—"}
+                        </span>
+                        <CopyButton value={value} />
+                    </div>
+                );
+            },
         },
         {
             accessorKey: "pass",
             header: "Contraseña",
-            cell: ({ row }) => <PasswordCell value={row.getValue("pass")} />,
+            cell: ({ row }) => {
+                const value = row.getValue("pass") as string;
+                return (
+                    <div className="flex items-center">
+                        <PasswordCell value={value} />
+                        <CopyButton value={value} />
+                    </div>
+                );
+            },
         },
         {
             accessorKey: "comentarios",
@@ -118,38 +177,73 @@ export function AccessTable({ data, onUpdate }: AccessTableProps) {
         },
     });
 
+    const exportToExcel = () => {
+        const exportData = data.map((item) => ({
+            Equipo: item.equipo,
+            Tipo: getAccessLabel(item.tipo_equipo),
+            "IP/URL": item.ip || "",
+            Usuario: item.user || "",
+            Contraseña: item.pass || "",
+            Comentarios: item.comentarios || "",
+        }));
+
+        const ws = XLSX.utils.json_to_sheet(exportData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Accesos");
+        XLSX.writeFile(wb, `accesos-${new Date().toISOString().split("T")[0]}.xlsx`);
+        toast.success("Exportado a Excel correctamente");
+    };
+
     return (
         <div className="space-y-4">
-            <div className="flex items-center gap-4">
-                <Input
-                    placeholder="Filtrar por nombre..."
-                    value={(table.getColumn("equipo")?.getFilterValue() as string) ?? ""}
-                    onChange={(event) =>
-                        table.getColumn("equipo")?.setFilterValue(event.target.value)
-                    }
-                    className="max-w-sm"
-                />
-                <Select
-                    value={(table.getColumn("tipo_equipo")?.getFilterValue() as string) ?? "all"}
-                    onValueChange={(value) =>
-                        table.getColumn("tipo_equipo")?.setFilterValue(value === "all" ? "" : value)
-                    }
-                >
-                    <SelectTrigger className="w-[180px]">
-                        <SelectValue placeholder="Tipo de equipo" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="all">Todos</SelectItem>
-                        {ACCESS_TYPES.map((type) => (
-                            <SelectItem key={type.value} value={type.value}>
-                                {type.label}
-                            </SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
+            <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3 flex-1">
+                    <div className="relative flex-1 max-w-sm">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                            placeholder="Buscar por equipo..."
+                            value={(table.getColumn("equipo")?.getFilterValue() as string) ?? ""}
+                            onChange={(event) =>
+                                table.getColumn("equipo")?.setFilterValue(event.target.value)
+                            }
+                            className="pl-9"
+                        />
+                    </div>
+                    <div className="relative">
+                        <Filter className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none z-10" />
+                        <Select
+                            value={(table.getColumn("tipo_equipo")?.getFilterValue() as string) ?? "all"}
+                            onValueChange={(value) =>
+                                table.getColumn("tipo_equipo")?.setFilterValue(value === "all" ? "" : value)
+                            }
+                        >
+                            <SelectTrigger className="w-[200px] pl-9">
+                                <SelectValue placeholder="Filtrar por tipo" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">Todos los tipos</SelectItem>
+                                {ACCESS_TYPES.map((type) => {
+                                    const Icon = type.icon;
+                                    return (
+                                        <SelectItem key={type.value} value={type.value}>
+                                            <div className="flex items-center gap-2">
+                                                <Icon className="h-4 w-4" />
+                                                {type.label}
+                                            </div>
+                                        </SelectItem>
+                                    );
+                                })}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                </div>
+                <Button onClick={exportToExcel} variant="outline" className="gap-2">
+                    <FileDown className="h-4 w-4" />
+                    Exportar Excel
+                </Button>
             </div>
 
-            <div className="rounded-md border">
+            <div className="overflow-hidden">
                 <Table>
                     <TableHeader>
                         {table.getHeaderGroups().map((headerGroup) => (
@@ -198,23 +292,28 @@ export function AccessTable({ data, onUpdate }: AccessTableProps) {
                 </Table>
             </div>
 
-            <div className="flex items-center justify-end space-x-2 py-4">
-                <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => table.previousPage()}
-                    disabled={!table.getCanPreviousPage()}
-                >
-                    Anterior
-                </Button>
-                <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => table.nextPage()}
-                    disabled={!table.getCanNextPage()}
-                >
-                    Siguiente
-                </Button>
+            <div className="flex items-center justify-between">
+                <div className="text-sm text-muted-foreground">
+                    Mostrando {table.getRowModel().rows.length} de {data.length} accesos
+                </div>
+                <div className="flex items-center space-x-2">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => table.previousPage()}
+                        disabled={!table.getCanPreviousPage()}
+                    >
+                        Anterior
+                    </Button>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => table.nextPage()}
+                        disabled={!table.getCanNextPage()}
+                    >
+                        Siguiente
+                    </Button>
+                </div>
             </div>
         </div>
     );

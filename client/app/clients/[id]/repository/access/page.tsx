@@ -62,17 +62,13 @@ export default function ClientAccessPage() {
                 </Button>
             </div>
 
-            <div className="rounded-xl border bg-card text-card-foreground shadow">
-                <div className="p-6">
-                    {loading ? (
-                        <div className="flex items-center justify-center py-8">
-                            <p className="text-muted-foreground">Cargando accesos...</p>
-                        </div>
-                    ) : (
-                        <AccessTable data={accesses} onUpdate={fetchAccesses} />
-                    )}
+            {loading ? (
+                <div className="flex items-center justify-center py-12">
+                    <p className="text-muted-foreground">Cargando accesos...</p>
                 </div>
-            </div>
+            ) : (
+                <AccessTable data={accesses} onUpdate={fetchAccesses} />
+            )}
 
             <CreateAccessDialog
                 open={isCreateOpen}
