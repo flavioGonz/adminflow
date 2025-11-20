@@ -590,7 +590,7 @@ export default function ClientDetailPage() {
         </div>
       </div>
 
-      <section className="grid gap-4 lg:grid-cols-3">
+      <section className="grid gap-4 lg:grid-cols-4">
         <EditableClientCard
           title="Datos de Contacto"
           description="Información comercial y de comunicación"
@@ -618,24 +618,25 @@ export default function ClientDetailPage() {
             handleCardSave("location", { latitude: lat, longitude: lng })
           }
         />
-      </section>
-
-      <Link href={`/clients/${client.id}/repository/access`} className="block">
-        <div className="group cursor-pointer rounded-2xl border border-slate-200 bg-gradient-to-br from-blue-50 to-indigo-50 p-6 shadow-sm transition-all hover:shadow-md hover:border-blue-300">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="rounded-xl bg-blue-100 p-3 group-hover:bg-blue-200 transition-colors">
-                <Lock className="h-6 w-6 text-blue-600" />
+        <Link href={`/clients/${client.id}/repository/access`} className="block h-full">
+          <div className="group cursor-pointer rounded-2xl border border-slate-200 bg-gradient-to-br from-blue-50 to-indigo-50 p-6 shadow-sm transition-all hover:shadow-md hover:border-blue-300 h-full flex flex-col justify-center">
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center gap-3">
+                <div className="rounded-xl bg-blue-100 p-3 group-hover:bg-blue-200 transition-colors">
+                  <Lock className="h-6 w-6 text-blue-600" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-lg font-semibold text-slate-800">Datos / Accesos</h3>
+                  <p className="text-sm text-slate-600">Credenciales y dispositivos</p>
+                </div>
               </div>
-              <div>
-                <h3 className="text-lg font-semibold text-slate-800">Datos / Accesos</h3>
-                <p className="text-sm text-slate-600">Gestionar credenciales y dispositivos del cliente</p>
+              <div className="flex items-center justify-end">
+                <ArrowLeft className="h-5 w-5 text-slate-400 rotate-180 group-hover:translate-x-1 transition-transform" />
               </div>
             </div>
-            <ArrowLeft className="h-5 w-5 text-slate-400 rotate-180 group-hover:translate-x-1 transition-transform" />
           </div>
-        </div>
-      </Link>
+        </Link>
+      </section>
 
       <div className="flex flex-wrap gap-2 pt-2">
         {infoPills.map((pill) => (
