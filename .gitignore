@@ -63,3 +63,15 @@ temp_*
 
 # Configuration files (keep .selected-db.json but ignore backups)
 .selected-db.json.bak
+
+# Misplaced files (should be in proper directories)
+/create-ticket-dialog.tsx
+/delete-ticket-dialog.tsx
+/edit-ticket-dialog.tsx
+/page.tsx
+/ticket-table.tsx
+server/create-ticket-dialog.tsx
+server/delete-ticket-dialog.tsx
+server/edit-ticket-dialog.tsx
+server/page.tsx
+server/ticket-table.tsx
