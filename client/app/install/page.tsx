@@ -73,8 +73,8 @@ export default function InstallPage() {
 
     const [databaseData, setDatabaseData] = useState<DatabaseData>({
         type: 'mongodb',
-        mongoUri: 'mongodb://localhost:27017',
-        mongoDb: 'adminflow'
+        mongoUri: '',
+        mongoDb: ''
     });
 
     const [notifications, setNotifications] = useState<NotificationChannel[]>([

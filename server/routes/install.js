@@ -155,20 +155,128 @@ router.post('/complete', async (req, res) => {
                 cleanUri = cleanUri.slice(0, -1);
             }
 
+            console.log('🔧 Configurando MongoDB:', { cleanUri, mongoDb: database.mongoDb });
+
             dbConfig.mongoUri = cleanUri;
             dbConfig.mongoDb = database.mongoDb;
 
             // Inicializar MongoDB
-            const initResult = await initializeMongoDB(cleanUri, database.mongoDb);
+            try {
+                const initResult = await initializeMongoDB(cleanUri, database.mongoDb);
 
-            if (!initResult.success) {
+                if (!initResult.success) {
+                    console.error('❌ Error al inicializar MongoDB:', initResult.message);
+                    return res.status(500).json({
+                        error: 'Error al inicializar MongoDB: ' + initResult.message
+                    });
+                }
+
+                console.log('✅ MongoDB inicializado correctamente');
+            } catch (initError) {
+                console.error('❌ Error fatal al inicializar MongoDB:', initError);
                 return res.status(500).json({
-                    error: 'Error al inicializar MongoDB: ' + initResult.message
+                    error: 'Error fatal al inicializar MongoDB: ' + initError.message
                 });
             }
+        } else if (database.type === 'sqlite') {
+            // Crear directorio de base de datos si no existe
+            const dbDir = path.join(__dirname, '../database');
+            if (!fs.existsSync(dbDir)) {
+                fs.mkdirSync(dbDir, { recursive: true });
+                console.log('✅ Directorio de base de datos creado');
+            }
+
+            // Crear base de datos SQLite
+            const sqlite3 = require('sqlite3').verbose();
+            const dbPath = path.join(dbDir, 'database.sqlite');
+
+            console.log('🔧 Creando base de datos SQLite en:', dbPath);
+
+            return new Promise((resolve, reject) => {
+                const db = new sqlite3.Database(dbPath, (err) => {
+                    if (err) {
+                        console.error('❌ Error al crear SQLite:', err);
+                        return reject(err);
+                    }
+                });
+
+                // Crear tablas básicas
+                db.serialize(() => {
+                    // Tabla de usuarios
+                    db.run(`CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT UNIQUE NOT NULL,
+            password TEXT NOT NULL,
+            name TEXT,
+            role TEXT DEFAULT 'user',
+            createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+          )`);
+
+                    // Tabla de clientes
+                    db.run(`CREATE TABLE IF NOT EXISTS clients (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            email TEXT,
+            phone TEXT,
+            address TEXT,
+            createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+          )`);
+
+                    // Tabla de tickets
+                    db.run(`CREATE TABLE IF NOT EXISTS tickets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            clientId INTEGER,
+            title TEXT NOT NULL,
+            description TEXT,
+            status TEXT DEFAULT 'open',
+            priority TEXT DEFAULT 'medium',
+            createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (clientId) REFERENCES clients(id)
+          )`);
+
+                    // Tabla de contratos
+                    db.run(`CREATE TABLE IF NOT EXISTS contracts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            clientId INTEGER,
+            name TEXT NOT NULL,
+            status TEXT DEFAULT 'draft',
+            createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (clientId) REFERENCES clients(id)
+          )`);
+
+                    // Usuario admin por defecto
+                    const bcrypt = require('bcrypt');
+                    const adminPassword = bcrypt.hashSync('admin', 10);
+
+                    db.run(`INSERT OR IGNORE INTO users (id, email, password, name, role) 
+                  VALUES (1, 'admin@adminflow.uy', ?, 'Administrador', 'admin')`,
+                        [adminPassword], (err) => {
+                            if (err) {
+                                console.error('❌ Error al crear usuario admin:', err);
+                            } else {
+                                console.log('✅ Usuario admin creado');
+                            }
+                        });
+                });
+
+                db.close((err) => {
+                    if (err) {
+                        console.error('❌ Error al cerrar SQLite:', err);
+                        reject(err);
+                    } else {
+                        console.log('✅ Base de datos SQLite creada correctamente');
+                        resolve();
+                    }
+                });
+            }).catch(err => {
+                return res.status(500).json({
+                    error: 'Error al crear base de datos SQLite: ' + err.message
+                });
+            });
         }
 
         fs.writeFileSync(dbConfigPath, JSON.stringify(dbConfig, null, 2));
+        console.log('✅ Configuración guardada en .selected-db.json');
 
         // 2. Guardar información de la empresa
         await upsertConfig('company', {
