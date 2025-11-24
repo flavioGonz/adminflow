@@ -65,6 +65,26 @@ async function autoInitMongo() {
     console.log('╚════════════════════════════════════════════════════════╝\n');
 
     try {
+        // Verificar si existe configuración
+        const configPath = path.join(__dirname, '../.selected-db.json');
+
+        if (!fs.existsSync(configPath)) {
+            console.log('⚠️  No se encontró configuración de MongoDB\n');
+            console.log('🎯 Iniciando instalador interactivo...\n');
+
+            // Ejecutar instalador interactivo
+            const { interactiveMongoSetup } = require('./interactiveMongoSetup');
+            const config = await interactiveMongoSetup();
+
+            if (!config) {
+                console.log('❌ Instalación cancelada\n');
+                return { success: false, initialized: false, error: 'Instalación cancelada por el usuario' };
+            }
+
+            // Recargar configuración después del instalador
+            return { success: true, initialized: true, wasAlreadyInitialized: false };
+        }
+
         // Asegurar que existe la configuración
         const config = ensureDbConfig();
 
@@ -80,7 +100,8 @@ async function autoInitMongo() {
             console.log('\n⚠️  MongoDB no está disponible. Opciones:');
             console.log('   1. Asegúrate de que MongoDB esté ejecutándose');
             console.log('   2. Verifica la URI en .selected-db.json');
-            console.log('   3. Si usas MongoDB Atlas, verifica tu conexión a internet\n');
+            console.log('   3. Si usas MongoDB Atlas, verifica tu conexión a internet');
+            console.log('   4. Ejecuta: npm run setup-mongo para reconfigurar\n');
             console.log('⏭️  El servidor continuará, pero las operaciones de BD fallarán.\n');
             return { success: false, initialized: false, error: connectionTest.message };
         }
