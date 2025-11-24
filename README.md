@@ -339,9 +339,9 @@ EXPRESS_BASE_URL=http://localhost:5000
 
 ```
 
-### **4. Inicializar MongoDB**
+### **4. Configurar MongoDB**
 
-AdminFlow usa MongoDB como base de datos principal. Debes inicializar la estructura antes del primer uso.
+AdminFlow usa MongoDB como base de datos principal y **se inicializa automáticamente** al arrancar el servidor por primera vez.
 
 #### **Opción A: MongoDB Local**
 
@@ -372,7 +372,7 @@ mongosh  # Debería conectar sin errores
 
 #### **Configurar Connection String**
 
-Edita `server/.selected-db.json`:
+Edita `server/.selected-db.json` (o se creará automáticamente):
 
 ```json
 {
@@ -383,57 +383,154 @@ Edita `server/.selected-db.json`:
 }
 ```
 
-#### **Inicializar Base de Datos**
+O usa variables de entorno en `server/.env`:
 
+```env
+MONGODB_URI=mongodb://localhost:27017
+MONGODB_DB=adminflow
+```
+
+### **5. Iniciar la Aplicación**
+
+**¡No necesitas ejecutar scripts de inicialización!** El servidor detecta automáticamente si MongoDB necesita ser inicializado y lo hace en el primer arranque.
+
+#### Terminal 1 - Backend
 ```bash
 cd server
-npm run init-mongo
+npm run dev
 ```
 
-Este comando creará automáticamente:
-- ✅ **13+ colecciones** con esquemas JSON Schema
-- ✅ **Índices optimizados** para queries rápidas
-- ✅ **Usuario admin** por defecto (`admin@adminflow.uy` / `admin`)
-- ✅ **Configuraciones** iniciales del sistema
-- ✅ **Validaciones** de datos automáticas
+**Salida esperada en el primer arranque:**
 
-**Salida esperada:**
 ```
+🚀 Iniciando AdminFlow Server...
+
 ╔════════════════════════════════════════════════════════╗
-║     AdminFlow - Inicialización de MongoDB             ║
+║         AdminFlow - Verificación de MongoDB           ║
 ╚════════════════════════════════════════════════════════╝
 
 📡 MongoDB URI: mongodb://localhost:27017
 🗄️  Base de datos: adminflow
 
-🔍 Probando conexión...
+🔍 Probando conexión a MongoDB...
 ✅ Conexión exitosa
 
-🚀 Iniciando creación de colecciones y esquemas...
+🔍 Verificando estado de la base de datos...
+⚠️  MongoDB no está inicializado
+🚀 Iniciando auto-inicialización...
 
 📋 Inicializando colecciones...
   ✅ Colección creada: users
   ✅ Colección creada: clients
   ✅ Colección creada: tickets
-  ... (más colecciones)
+  ✅ Colección creada: budgets
+  ✅ Colección creada: contracts
+  ✅ Colección creada: payments
+  ✅ Colección creada: products
+  ✅ Colección creada: client_accesses
+  ✅ Colección creada: calendar_events
+  ✅ Colección creada: notifications
+  ✅ Colección creada: configurations
+  ✅ Colección creada: audit_logs
+  ✅ Usuario admin creado: admin@adminflow.uy
 
 ╔════════════════════════════════════════════════════════╗
-║              ✅ INICIALIZACIÓN EXITOSA                 ║
+║         ✅ AUTO-INICIALIZACIÓN EXITOSA                 ║
 ╚════════════════════════════════════════════════════════╝
 
 📊 Colecciones creadas: 13
 📋 Total de colecciones: 13
 
 🎉 MongoDB está listo para usar!
+
+💡 Credenciales por defecto:
+   Email: admin@adminflow.uy
+   Password: admin
+
+🗄️  Motor de BD: mongodb
+
+╔════════════════════════════════════════════════════════╗
+║              🎉 SERVIDOR INICIADO                      ║
+╚════════════════════════════════════════════════════════╝
+
+🌐 Servidor corriendo en: http://localhost:5000
+📊 MongoDB: ✅ Conectado
+🔐 Credenciales por defecto: admin@adminflow.uy / admin
 ```
 
-#### **Migrar Datos Existentes (Opcional)**
+**En arranques posteriores** (MongoDB ya inicializado):
 
-Si tienes datos en SQLite que quieres migrar a MongoDB:
+```
+🚀 Iniciando AdminFlow Server...
+
+╔════════════════════════════════════════════════════════╗
+║         AdminFlow - Verificación de MongoDB           ║
+╚════════════════════════════════════════════════════════╝
+
+📡 MongoDB URI: mongodb://localhost:27017
+🗄️  Base de datos: adminflow
+
+🔍 Probando conexión a MongoDB...
+✅ Conexión exitosa
+
+🔍 Verificando estado de la base de datos...
+✅ MongoDB ya está inicializado
+
+╔════════════════════════════════════════════════════════╗
+║              ✅ MONGODB LISTO                          ║
+╚════════════════════════════════════════════════════════╝
+
+🗄️  Motor de BD: mongodb
+
+╔════════════════════════════════════════════════════════╗
+║              🎉 SERVIDOR INICIADO                      ║
+╚════════════════════════════════════════════════════════╝
+
+🌐 Servidor corriendo en: http://localhost:5000
+📊 MongoDB: ✅ Conectado
+🔐 Credenciales por defecto: admin@adminflow.uy / admin
+```
+
+El servidor estará en `http://localhost:5000`
+
+#### Terminal 2 - Frontend
+```bash
+cd client
+npm run dev
+```
+La aplicación estará en `http://localhost:3000`
+
+### **6. Acceder al Sistema**
+1. Abrir navegador en `http://localhost:3000`
+2. Login con credenciales por defecto:
+   - **Email**: `admin@adminflow.uy`
+   - **Password**: `admin`
+
+### **7. Verificar Instalación**
+
+Una vez dentro del sistema:
+1. Ve a `/database` para ver el estado de MongoDB
+2. Verifica que aparezcan las 13+ colecciones
+3. Crea un cliente de prueba
+4. Crea un ticket de prueba
+
+---
+
+## 🔄 Migración de Datos (Opcional)
+
+Si tienes datos existentes en SQLite que quieres migrar:
 
 ```bash
+cd server
 npm run migrate-to-mongo
 ```
+
+Este script copiará todos los datos de SQLite a MongoDB preservando:
+- ✅ Relaciones entre tablas
+- ✅ IDs autoincrementales
+- ✅ Fechas y timestamps
+- ✅ Datos JSON (convertidos a objetos nativos)
+
 
 ### **5. Iniciar la Aplicación**
 

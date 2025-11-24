@@ -2159,7 +2159,7 @@ app.post('/api/tickets', (req, res) => {
                     recipients.push(newTicket.clientEmail);
                 }
 
-                
+
                 upsertCalendarEvent({
                     title: `Ticket #${newTicket.id}: ${newTicket.title}`,
                     start: newTicket.createdAt || new Date().toISOString(),
@@ -2415,33 +2415,47 @@ app.delete('/api/calendar-events/:id', (req, res) => {
                 details: { eventId: req.params.id, title: existing.title },
                 status: 'success',
                 ip: req.ip
-            }).catch(() => {});
+            }).catch(() => { });
             res.json({ message: 'Evento eliminado.' });
         });
     });
 });
 
 const startServer = async () => {
-    const engine = await determineDbEngine();
-    if (engine === 'mongodb') {
-        try {
-            const dbConfig = getDbConfigFromFile();
-            await initMongo({ uri: dbConfig.mongoUri, dbName: dbConfig.mongoDb });
-        } catch (mongoErr) {
-            console.warn('No se pudo conectar a MongoDB:', mongoErr.message);
-        }
-    } else {
-        console.log('Modo SQLite activo, MongoDB no se inicializa.');
+    console.log('\n🚀 Iniciando AdminFlow Server...\n');
+
+    // Auto-inicializar MongoDB
+    const { autoInitMongo } = require('./lib/autoInitMongo');
+    const mongoStatus = await autoInitMongo();
+
+    // Guardar estado global para middleware
+    global.mongoInitialized = mongoStatus.success && mongoStatus.initialized;
+    global.mongoInitError = mongoStatus.error || null;
+
+    if (!global.mongoInitialized) {
+        console.warn('⚠️  ADVERTENCIA: MongoDB no está disponible');
+        console.warn('   Las operaciones de base de datos fallarán');
+        console.warn('   Verifica la configuración y reinicia el servidor\n');
     }
 
-    console.log(`Motor activo: ${getCurrentDbEngine()}`);
+    // Determinar motor de BD (legacy, ahora siempre MongoDB)
+    const engine = await determineDbEngine();
+    console.log(`🗄️  Motor de BD: ${engine}\n`);
+
+    // Iniciar servidor HTTP
     app.listen(PORT, () => {
-        console.log(`Server running on port ${PORT}`);
+        console.log('╔════════════════════════════════════════════════════════╗');
+        console.log('║              🎉 SERVIDOR INICIADO                      ║');
+        console.log('╚════════════════════════════════════════════════════════╝');
+        console.log(`\n🌐 Servidor corriendo en: http://localhost:${PORT}`);
+        console.log(`📊 MongoDB: ${global.mongoInitialized ? '✅ Conectado' : '❌ No disponible'}`);
+        console.log(`🔐 Credenciales por defecto: admin@adminflow.uy / admin\n`);
     });
 };
 
 startServer().catch((error) => {
-    console.error('Error arrancando el servidor:', error);
+    console.error('\n❌ Error fatal arrancando el servidor:', error);
+    console.error('   Stack:', error.stack);
     process.exit(1);
 });
 
