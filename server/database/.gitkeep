@@ -1,0 +1,3 @@
+# Esta carpeta contiene la base de datos SQLite
+# El archivo database.sqlite se crea automáticamente al iniciar el servidor
+# No se incluye en el repositorio por razones de seguridad
