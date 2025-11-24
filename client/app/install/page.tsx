@@ -77,6 +77,8 @@ export default function InstallPage() {
         mongoDb: ''
     });
 
+    const [isNewDatabase, setIsNewDatabase] = useState(true); // true = nueva, false = usar existente
+
     const [notifications, setNotifications] = useState<NotificationChannel[]>([
         { id: 'email', name: 'Email', enabled: false, config: { host: '', port: '587', user: '', pass: '' } },
         { id: 'telegram', name: 'Telegram', enabled: false, config: { botToken: '', chatId: '' } },
@@ -143,7 +145,10 @@ export default function InstallPage() {
         try {
             const installData = {
                 company: companyData,
-                database: databaseData,
+                database: {
+                    ...databaseData,
+                    isNew: isNewDatabase
+                },
                 notifications: notifications.filter(n => n.enabled)
             };
 
@@ -388,6 +393,9 @@ export default function InstallPage() {
                                                         placeholder="mongodb://localhost:27017"
                                                         className="mt-1"
                                                     />
+                                                    <p className="text-xs text-gray-500 mt-1">
+                                                        Formato con auth: <code>mongodb://usuario:password@host:puerto</code>
+                                                    </p>
                                                 </div>
 
                                                 <div>
@@ -437,10 +445,35 @@ export default function InstallPage() {
                                         )}
 
                                         {databaseData.type === 'sqlite' && (
-                                            <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-                                                <p className="text-sm text-gray-600">
-                                                    SQLite se configurará automáticamente. No requiere configuración adicional.
-                                                </p>
+                                            <div className="space-y-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                                                <div className="flex items-start gap-3">
+                                                    <Database className="w-5 h-5 text-blue-600 mt-1" />
+                                                    <div>
+                                                        <h4 className="font-medium text-blue-900">Base de Datos SQLite Local</h4>
+                                                        <p className="text-sm text-blue-700 mt-1">
+                                                            Se creará un archivo <code>database.sqlite</code> en el servidor.
+                                                            Ideal para instalaciones pequeñas o pruebas.
+                                                        </p>
+                                                    </div>
+                                                </div>
+
+                                                <div className="pt-2">
+                                                    <Label className="mb-2 block">Modo de Instalación</Label>
+                                                    <RadioGroup
+                                                        value={isNewDatabase ? 'new' : 'existing'}
+                                                        onValueChange={(val) => setIsNewDatabase(val === 'new')}
+                                                        className="flex flex-col space-y-2"
+                                                    >
+                                                        <div className="flex items-center space-x-2">
+                                                            <RadioGroupItem value="new" id="db-new" />
+                                                            <Label htmlFor="db-new">Crear nueva base de datos (Sobrescribir si existe)</Label>
+                                                        </div>
+                                                        <div className="flex items-center space-x-2">
+                                                            <RadioGroupItem value="existing" id="db-existing" />
+                                                            <Label htmlFor="db-existing">Usar base de datos existente (Si ya tienes datos)</Label>
+                                                        </div>
+                                                    </RadioGroup>
+                                                </div>
                                             </div>
                                         )}
                                     </div>
@@ -689,6 +722,6 @@ export default function InstallPage() {
                     )}
                 </div>
             </div>
-        </div>
+        </div >
     );
 }

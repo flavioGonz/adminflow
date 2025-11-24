@@ -88,14 +88,19 @@ npm run dev
 
 **Opción A - MongoDB (Recomendado para producción):**
 - Selecciona "MongoDB"
-- **MongoDB URI**: `mongodb://crm.infratec.com.uy:29999`
-  - ⚠️ **SIN** `/adminflow` al final
+- **MongoDB URI**:
+  - Sin auth: `mongodb://crm.infratec.com.uy:29999`
+  - Con auth: `mongodb://usuario:password@crm.infratec.com.uy:29999`
+  - ⚠️ **SIN** `/adminflow` al final (el nombre de la BD va en el otro campo)
 - **Nombre de BD**: `adminflow` (o el que prefieras)
 - Click en "Probar Conexión"
 - Espera el ✅ verde
 
 **Opción B - SQLite (Simple, local):**
 - Selecciona "SQLite"
+- Elige el modo:
+  - **Crear nueva base de datos**: Borra cualquier dato previo y empieza de cero.
+  - **Usar base de datos existente**: Mantiene los datos si ya existe el archivo.
 - Se configurará automáticamente
 
 #### **Paso 3/4: Notificaciones (Opcional)**
