@@ -46,3 +46,20 @@ server/database/database.sqlite
 *.njsproj
 *.sln
 *.sw?
+
+# Python temporary files
+*.py
+*.pyc
+__pycache__/
+
+# Temporary files
+tmp_*
+temp_*
+*.bak
+*.backup
+
+# PowerShell scripts (temporary)
+*.ps1
+
+# Configuration files (keep .selected-db.json but ignore backups)
+.selected-db.json.bak
