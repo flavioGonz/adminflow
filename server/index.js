@@ -54,7 +54,18 @@ app.use('/uploads', express.static(path.resolve(__dirname, 'uploads')));
 
 // Routes
 const accessRoutes = require('./routes/access');
+const installRoutes = require('./routes/install');
+const { checkInstallation } = require('./middleware/checkInstallation');
+
+// Installation routes (always accessible)
+app.use('/api/install', installRoutes);
+
+// Check if system is installed before allowing other routes
+app.use('/api', checkInstallation);
+
+// Protected routes (require installation)
 app.use('/api', accessRoutes);
+
 
 app.use(
     session({
