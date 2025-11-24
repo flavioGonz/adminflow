@@ -44,6 +44,8 @@ router.post('/test-db', async (req, res) => {
     try {
         const { type, mongoUri, mongoDb } = req.body;
 
+        console.log('🔍 Testing database connection:', { type, mongoUri, mongoDb });
+
         if (type === 'sqlite') {
             // SQLite siempre funciona
             return res.json({
@@ -60,8 +62,33 @@ router.post('/test-db', async (req, res) => {
                 });
             }
 
-            const result = await testMongoConnection(mongoUri, mongoDb);
-            return res.json(result);
+            // Limpiar la URI si tiene el nombre de BD al final
+            let cleanUri = mongoUri.trim();
+
+            // Si la URI termina con /nombreBD, quitarlo
+            if (cleanUri.includes('/' + mongoDb)) {
+                cleanUri = cleanUri.replace('/' + mongoDb, '');
+            }
+
+            // Si termina con /, quitarlo
+            if (cleanUri.endsWith('/')) {
+                cleanUri = cleanUri.slice(0, -1);
+            }
+
+            console.log('📡 Cleaned URI:', cleanUri);
+            console.log('🗄️  Database:', mongoDb);
+
+            try {
+                const result = await testMongoConnection(cleanUri, mongoDb);
+                console.log('✅ Connection test result:', result);
+                return res.json(result);
+            } catch (testError) {
+                console.error('❌ Connection test error:', testError);
+                return res.json({
+                    success: false,
+                    message: testError.message || 'Error al conectar con MongoDB'
+                });
+            }
         }
 
         res.status(400).json({
@@ -69,6 +96,7 @@ router.post('/test-db', async (req, res) => {
             message: 'Tipo de base de datos no válido'
         });
     } catch (error) {
+        console.error('❌ Fatal error in test-db:', error);
         res.status(500).json({
             success: false,
             message: error.message
@@ -118,11 +146,20 @@ router.post('/complete', async (req, res) => {
                 });
             }
 
-            dbConfig.mongoUri = database.mongoUri;
+            // Limpiar URI
+            let cleanUri = database.mongoUri.trim();
+            if (cleanUri.includes('/' + database.mongoDb)) {
+                cleanUri = cleanUri.replace('/' + database.mongoDb, '');
+            }
+            if (cleanUri.endsWith('/')) {
+                cleanUri = cleanUri.slice(0, -1);
+            }
+
+            dbConfig.mongoUri = cleanUri;
             dbConfig.mongoDb = database.mongoDb;
 
             // Inicializar MongoDB
-            const initResult = await initializeMongoDB(database.mongoUri, database.mongoDb);
+            const initResult = await initializeMongoDB(cleanUri, database.mongoDb);
 
             if (!initResult.success) {
                 return res.status(500).json({
