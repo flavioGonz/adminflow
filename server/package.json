@@ -5,7 +5,11 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node index.js",
-    "dev": "nodemon ."
+    "dev": "nodemon .",
+    "init-mongo": "node scripts/init-mongodb.js",
+    "migrate-to-mongo": "node scripts/migrate-sqlite-to-mongo.js",
+    "db:init": "node scripts/init-mongodb.js",
+    "db:migrate": "node scripts/migrate-sqlite-to-mongo.js"
   },
   "keywords": [],
   "author": "",

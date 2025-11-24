@@ -1,0 +1,1561 @@
+{
+  "collections": {
+    "adminflow.adminflow": {
+      "ns": "adminflow.adminflow",
+      "jsonSchema": {
+        "bsonType": "object",
+        "properties": {}
+      }
+    },
+    "adminflow.audit_logs": {
+      "ns": "adminflow.audit_logs",
+      "jsonSchema": {
+        "bsonType": "object",
+        "required": [
+          "_id",
+          "action",
+          "createdAt",
+          "details",
+          "ip",
+          "resource",
+          "status",
+          "user"
+        ],
+        "properties": {
+          "_id": {
+            "bsonType": "objectId"
+          },
+          "action": {
+            "bsonType": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "bsonType": "date"
+          },
+          "details": {
+            "bsonType": "object",
+            "properties": {
+              "amount": {
+                "bsonType": "int"
+              },
+              "budgetId": {
+                "bsonType": "string"
+              },
+              "clientId": {
+                "bsonType": [
+                  "int",
+                  "string"
+                ]
+              },
+              "contractId": {
+                "bsonType": "int"
+              },
+              "eventId": {
+                "bsonType": "string"
+              },
+              "info": {
+                "bsonType": [
+                  "string",
+                  "null"
+                ]
+              },
+              "invoice": {
+                "bsonType": "string"
+              },
+              "locked": {
+                "bsonType": "bool"
+              },
+              "name": {
+                "bsonType": "string"
+              },
+              "paymentId": {
+                "bsonType": "string"
+              },
+              "sourceId": {
+                "bsonType": "null"
+              },
+              "sourceType": {
+                "bsonType": "string"
+              },
+              "start": {
+                "bsonType": "string"
+              },
+              "status": {
+                "bsonType": "string"
+              },
+              "title": {
+                "bsonType": "string"
+              }
+            }
+          },
+          "ip": {
+            "bsonType": "string"
+          },
+          "resource": {
+            "bsonType": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "bsonType": "string"
+          },
+          "user": {
+            "bsonType": "string"
+          }
+        }
+      }
+    },
+    "adminflow.budget_items": {
+      "ns": "adminflow.budget_items",
+      "jsonSchema": {
+        "bsonType": "object",
+        "required": [
+          "_id",
+          "budgetId",
+          "description",
+          "productId",
+          "quantity",
+          "unitPrice"
+        ],
+        "properties": {
+          "_id": {
+            "bsonType": "int"
+          },
+          "budgetId": {
+            "bsonType": "int"
+          },
+          "description": {
+            "bsonType": "string"
+          },
+          "productId": {
+            "bsonType": [
+              "int",
+              "null"
+            ]
+          },
+          "quantity": {
+            "bsonType": "int"
+          },
+          "unitPrice": {
+            "bsonType": "int"
+          }
+        }
+      }
+    },
+    "adminflow.budgets": {
+      "ns": "adminflow.budgets",
+      "jsonSchema": {
+        "bsonType": "object",
+        "required": [
+          "_id",
+          "amount",
+          "clientId",
+          "createdAt",
+          "description",
+          "filePath",
+          "sections",
+          "status",
+          "title",
+          "updatedAt"
+        ],
+        "properties": {
+          "_id": {
+            "bsonType": "int"
+          },
+          "amount": {
+            "bsonType": "int"
+          },
+          "clientId": {
+            "bsonType": "int"
+          },
+          "createdAt": {
+            "bsonType": "date"
+          },
+          "description": {
+            "bsonType": "string"
+          },
+          "filePath": {
+            "bsonType": [
+              "string",
+              "null"
+            ]
+          },
+          "sections": {
+            "bsonType": "array",
+            "items": {
+              "bsonType": "object",
+              "properties": {
+                "content": {
+                  "bsonType": "string"
+                },
+                "id": {
+                  "bsonType": "string"
+                },
+                "title": {
+                  "bsonType": "string"
+                }
+              },
+              "required": [
+                "content",
+                "id",
+                "title"
+              ]
+            }
+          },
+          "status": {
+            "bsonType": "string"
+          },
+          "title": {
+            "bsonType": "string"
+          },
+          "updatedAt": {
+            "bsonType": "date"
+          }
+        }
+      }
+    },
+    "adminflow.client_accesses": {
+      "ns": "adminflow.client_accesses",
+      "jsonSchema": {
+        "bsonType": "object",
+        "required": [
+          "_id",
+          "clientId",
+          "comentarios",
+          "createdAt",
+          "equipo",
+          "ip",
+          "pass",
+          "tipo_equipo",
+          "updatedAt",
+          "user"
+        ],
+        "properties": {
+          "_id": {
+            "bsonType": "objectId"
+          },
+          "clientId": {
+            "bsonType": "string"
+          },
+          "comentarios": {
+            "bsonType": "string"
+          },
+          "createdAt": {
+            "bsonType": "date"
+          },
+          "equipo": {
+            "bsonType": "string"
+          },
+          "ip": {
+            "bsonType": "string"
+          },
+          "pass": {
+            "bsonType": "string"
+          },
+          "serieMac": {
+            "bsonType": "string"
+          },
+          "tipo_equipo": {
+            "bsonType": "string"
+          },
+          "updatedAt": {
+            "bsonType": "date"
+          },
+          "user": {
+            "bsonType": "string"
+          }
+        }
+      }
+    },
+    "adminflow.clients": {
+      "ns": "adminflow.clients",
+      "jsonSchema": {
+        "bsonType": "object",
+        "required": [
+          "_id",
+          "address",
+          "alias",
+          "contract",
+          "createdAt",
+          "email",
+          "latitude",
+          "longitude",
+          "name",
+          "phone",
+          "rut",
+          "updatedAt"
+        ],
+        "properties": {
+          "_id": {
+            "bsonType": "int"
+          },
+          "address": {
+            "bsonType": [
+              "string",
+              "null"
+            ]
+          },
+          "alias": {
+            "bsonType": "string"
+          },
+          "contract": {
+            "bsonType": "bool"
+          },
+          "createdAt": {
+            "bsonType": "date"
+          },
+          "email": {
+            "bsonType": [
+              "string",
+              "null"
+            ]
+          },
+          "latitude": {
+            "bsonType": [
+              "null",
+              "double"
+            ]
+          },
+          "longitude": {
+            "bsonType": [
+              "null",
+              "double"
+            ]
+          },
+          "name": {
+            "bsonType": "string"
+          },
+          "phone": {
+            "bsonType": [
+              "string",
+              "null"
+            ]
+          },
+          "rut": {
+            "bsonType": "string"
+          },
+          "updatedAt": {
+            "bsonType": "date"
+          }
+        }
+      }
+    },
+    "adminflow.configurations": {
+      "ns": "adminflow.configurations",
+      "jsonSchema": {
+        "bsonType": "object",
+        "required": [
+          "_id",
+          "createdAt",
+          "data",
+          "module",
+          "updatedAt"
+        ],
+        "properties": {
+          "_id": {
+            "bsonType": "objectId"
+          },
+          "createdAt": {
+            "bsonType": "date"
+          },
+          "data": {
+            "bsonType": "object",
+            "properties": {
+              "channels": {
+                "bsonType": "object",
+                "properties": {
+                  "email": {
+                    "bsonType": "object",
+                    "properties": {
+                      "apiKey": {
+                        "bsonType": "string"
+                      },
+                      "enabled": {
+                        "bsonType": "bool"
+                      },
+                      "smtpPass": {
+                        "bsonType": "string"
+                      },
+                      "smtpUser": {
+                        "bsonType": "string"
+                      },
+                      "webhook": {
+                        "bsonType": "string"
+                      }
+                    },
+                    "required": [
+                      "apiKey",
+                      "enabled",
+                      "smtpPass",
+                      "smtpUser",
+                      "webhook"
+                    ]
+                  },
+                  "slack": {
+                    "bsonType": "object",
+                    "properties": {
+                      "apiKey": {
+                        "bsonType": "string"
+                      },
+                      "enabled": {
+                        "bsonType": "bool"
+                      },
+                      "webhook": {
+                        "bsonType": "string"
+                      }
+                    },
+                    "required": [
+                      "apiKey",
+                      "enabled",
+                      "webhook"
+                    ]
+                  },
+                  "telegram": {
+                    "bsonType": "object",
+                    "properties": {
+                      "apiKey": {
+                        "bsonType": "string"
+                      },
+                      "enabled": {
+                        "bsonType": "bool"
+                      },
+                      "webhook": {
+                        "bsonType": "string"
+                      }
+                    },
+                    "required": [
+                      "apiKey",
+                      "enabled",
+                      "webhook"
+                    ]
+                  },
+                  "whatsapp": {
+                    "bsonType": "object",
+                    "properties": {
+                      "apiKey": {
+                        "bsonType": "string"
+                      },
+                      "enabled": {
+                        "bsonType": "bool"
+                      },
+                      "webhook": {
+                        "bsonType": "string"
+                      }
+                    },
+                    "required": [
+                      "apiKey",
+                      "enabled",
+                      "webhook"
+                    ]
+                  }
+                },
+                "required": [
+                  "email",
+                  "slack",
+                  "telegram",
+                  "whatsapp"
+                ]
+              },
+              "defaultMethod": {
+                "bsonType": "string"
+              },
+              "notifyOnLate": {
+                "bsonType": "bool"
+              },
+              "requireReceipt": {
+                "bsonType": "bool"
+              },
+              "statusOptions": {
+                "bsonType": "array",
+                "items": {
+                  "bsonType": "string"
+                }
+              },
+              "templates": {
+                "bsonType": "object",
+                "properties": {
+                  "email": {
+                    "bsonType": "object",
+                    "properties": {
+                      "body": {
+                        "bsonType": "string"
+                      },
+                      "subject": {
+                        "bsonType": "string"
+                      }
+                    },
+                    "required": [
+                      "body",
+                      "subject"
+                    ]
+                  },
+                  "slack": {
+                    "bsonType": "object",
+                    "properties": {
+                      "body": {
+                        "bsonType": "string"
+                      },
+                      "subject": {
+                        "bsonType": "string"
+                      }
+                    },
+                    "required": [
+                      "body",
+                      "subject"
+                    ]
+                  },
+                  "telegram": {
+                    "bsonType": "object",
+                    "properties": {
+                      "body": {
+                        "bsonType": "string"
+                      },
+                      "subject": {
+                        "bsonType": "string"
+                      }
+                    },
+                    "required": [
+                      "body",
+                      "subject"
+                    ]
+                  },
+                  "whatsapp": {
+                    "bsonType": "object",
+                    "properties": {
+                      "body": {
+                        "bsonType": "string"
+                      },
+                      "subject": {
+                        "bsonType": "string"
+                      }
+                    },
+                    "required": [
+                      "body",
+                      "subject"
+                    ]
+                  }
+                },
+                "required": [
+                  "email",
+                  "slack",
+                  "telegram",
+                  "whatsapp"
+                ]
+              }
+            }
+          },
+          "module": {
+            "bsonType": "string"
+          },
+          "updatedAt": {
+            "bsonType": "date"
+          }
+        }
+      }
+    },
+    "adminflow.contracts": {
+      "ns": "adminflow.contracts",
+      "jsonSchema": {
+        "bsonType": "object",
+        "required": [
+          "_id",
+          "amount",
+          "clientId",
+          "contractType",
+          "createdAt",
+          "currency",
+          "description",
+          "endDate",
+          "filePath",
+          "sla",
+          "startDate",
+          "status",
+          "title",
+          "updatedAt"
+        ],
+        "properties": {
+          "_id": {
+            "bsonType": "int"
+          },
+          "amount": {
+            "bsonType": "int"
+          },
+          "clientId": {
+            "bsonType": "int"
+          },
+          "contractType": {
+            "bsonType": "string"
+          },
+          "createdAt": {
+            "bsonType": "date"
+          },
+          "currency": {
+            "bsonType": "string"
+          },
+          "description": {
+            "bsonType": "string"
+          },
+          "endDate": {
+            "bsonType": [
+              "null",
+              "date"
+            ]
+          },
+          "filePath": {
+            "bsonType": "string"
+          },
+          "sla": {
+            "bsonType": "string"
+          },
+          "startDate": {
+            "bsonType": [
+              "null",
+              "date"
+            ]
+          },
+          "status": {
+            "bsonType": "string"
+          },
+          "title": {
+            "bsonType": "string"
+          },
+          "updatedAt": {
+            "bsonType": "date"
+          }
+        }
+      }
+    },
+    "adminflow.notifications": {
+      "ns": "adminflow.notifications",
+      "jsonSchema": {
+        "bsonType": "object",
+        "required": [
+          "_id",
+          "channels",
+          "createdAt",
+          "event",
+          "message",
+          "metadata",
+          "recipients",
+          "results"
+        ],
+        "properties": {
+          "_id": {
+            "bsonType": "objectId"
+          },
+          "channels": {
+            "bsonType": "array",
+            "items": {
+              "bsonType": "string"
+            }
+          },
+          "createdAt": {
+            "bsonType": "date"
+          },
+          "event": {
+            "bsonType": "string"
+          },
+          "message": {
+            "bsonType": "string"
+          },
+          "metadata": {
+            "bsonType": "object",
+            "properties": {
+              "amount": {
+                "bsonType": "int"
+              },
+              "annotations": {
+                "bsonType": "array",
+                "items": {
+                  "bsonType": "object",
+                  "properties": {
+                    "attachments": {
+                      "bsonType": "array"
+                    },
+                    "audioNotes": {
+                      "bsonType": "array",
+                      "items": {
+                        "bsonType": "object",
+                        "properties": {
+                          "createdAt": {
+                            "bsonType": "string"
+                          },
+                          "dataUrl": {
+                            "bsonType": "string"
+                          },
+                          "durationSeconds": {
+                            "bsonType": "int"
+                          },
+                          "id": {
+                            "bsonType": "string"
+                          }
+                        },
+                        "required": [
+                          "createdAt",
+                          "dataUrl",
+                          "durationSeconds",
+                          "id"
+                        ]
+                      }
+                    },
+                    "createdAt": {
+                      "bsonType": "string"
+                    },
+                    "text": {
+                      "bsonType": "string"
+                    },
+                    "user": {
+                      "bsonType": "string"
+                    }
+                  },
+                  "required": [
+                    "attachments",
+                    "audioNotes",
+                    "createdAt",
+                    "text",
+                    "user"
+                  ]
+                }
+              },
+              "attachments": {
+                "bsonType": "array"
+              },
+              "audioNotes": {
+                "bsonType": "array",
+                "items": {
+                  "bsonType": "object",
+                  "properties": {
+                    "createdAt": {
+                      "bsonType": "string"
+                    },
+                    "dataUrl": {
+                      "bsonType": "string"
+                    },
+                    "durationSeconds": {
+                      "bsonType": "int"
+                    },
+                    "id": {
+                      "bsonType": "string"
+                    }
+                  },
+                  "required": [
+                    "createdAt",
+                    "dataUrl",
+                    "durationSeconds",
+                    "id"
+                  ]
+                }
+              },
+              "client": {
+                "bsonType": "string"
+              },
+              "clientEmail": {
+                "bsonType": "string"
+              },
+              "clientId": {
+                "bsonType": "string"
+              },
+              "clientName": {
+                "bsonType": "string"
+              },
+              "clientNotificationsEnabled": {
+                "bsonType": "bool"
+              },
+              "concept": {
+                "bsonType": "string"
+              },
+              "createdAt": {
+                "bsonType": "string"
+              },
+              "currency": {
+                "bsonType": "string"
+              },
+              "description": {
+                "bsonType": "string"
+              },
+              "end": {
+                "bsonType": "string"
+              },
+              "hasActiveContract": {
+                "bsonType": "bool"
+              },
+              "id": {
+                "bsonType": "string"
+              },
+              "invoice": {
+                "bsonType": "string"
+              },
+              "location": {
+                "bsonType": "null"
+              },
+              "locked": {
+                "bsonType": "bool"
+              },
+              "method": {
+                "bsonType": "string"
+              },
+              "note": {
+                "bsonType": "string"
+              },
+              "priority": {
+                "bsonType": "string"
+              },
+              "sourceId": {
+                "bsonType": "null"
+              },
+              "sourceType": {
+                "bsonType": "string"
+              },
+              "start": {
+                "bsonType": "string"
+              },
+              "status": {
+                "bsonType": "string"
+              },
+              "ticketId": {
+                "bsonType": "null"
+              },
+              "ticketTitle": {
+                "bsonType": "null"
+              },
+              "title": {
+                "bsonType": "string"
+              },
+              "updatedAt": {
+                "bsonType": "string"
+              },
+              "visit": {
+                "bsonType": "bool"
+              }
+            }
+          },
+          "recipients": {
+            "bsonType": "array",
+            "items": {
+              "bsonType": "string"
+            }
+          },
+          "results": {
+            "bsonType": "array",
+            "items": {
+              "bsonType": "object",
+              "properties": {
+                "channel": {
+                  "bsonType": "string"
+                },
+                "detail": {
+                  "bsonType": "string"
+                },
+                "status": {
+                  "bsonType": "string"
+                },
+                "to": {
+                  "bsonType": "string"
+                }
+              },
+              "required": [
+                "status"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "adminflow.payments": {
+      "ns": "adminflow.payments",
+      "jsonSchema": {
+        "bsonType": "object",
+        "properties": {}
+      }
+    },
+    "adminflow.products": {
+      "ns": "adminflow.products",
+      "jsonSchema": {
+        "bsonType": "object",
+        "required": [
+          "_id",
+          "badge",
+          "category",
+          "createdAt",
+          "description",
+          "imageUrl",
+          "manufacturer",
+          "name",
+          "priceUSD",
+          "priceUYU",
+          "updatedAt"
+        ],
+        "properties": {
+          "_id": {
+            "bsonType": "int"
+          },
+          "badge": {
+            "bsonType": "string"
+          },
+          "category": {
+            "bsonType": "string"
+          },
+          "createdAt": {
+            "bsonType": "date"
+          },
+          "description": {
+            "bsonType": "string"
+          },
+          "imageUrl": {
+            "bsonType": [
+              "null",
+              "string"
+            ]
+          },
+          "manufacturer": {
+            "bsonType": "string"
+          },
+          "name": {
+            "bsonType": "string"
+          },
+          "priceUSD": {
+            "bsonType": "null"
+          },
+          "priceUYU": {
+            "bsonType": "null"
+          },
+          "updatedAt": {
+            "bsonType": "date"
+          }
+        }
+      }
+    },
+    "adminflow.repository": {
+      "ns": "adminflow.repository",
+      "jsonSchema": {
+        "bsonType": "object",
+        "required": [
+          "_id",
+          "category",
+          "clientId",
+          "comentarios",
+          "content",
+          "createdAt",
+          "credential",
+          "equipo",
+          "fileName",
+          "format",
+          "macSerie",
+          "name",
+          "notes",
+          "password",
+          "type",
+          "updatedAt",
+          "usuario"
+        ],
+        "properties": {
+          "_id": {
+            "bsonType": "int"
+          },
+          "category": {
+            "bsonType": "string"
+          },
+          "clientId": {
+            "bsonType": "int"
+          },
+          "comentarios": {
+            "bsonType": "null"
+          },
+          "content": {
+            "bsonType": "string"
+          },
+          "createdAt": {
+            "bsonType": "date"
+          },
+          "credential": {
+            "bsonType": "string"
+          },
+          "equipo": {
+            "bsonType": "null"
+          },
+          "fileName": {
+            "bsonType": "string"
+          },
+          "format": {
+            "bsonType": "string"
+          },
+          "macSerie": {
+            "bsonType": "null"
+          },
+          "name": {
+            "bsonType": "string"
+          },
+          "notes": {
+            "bsonType": "string"
+          },
+          "password": {
+            "bsonType": "null"
+          },
+          "type": {
+            "bsonType": "string"
+          },
+          "updatedAt": {
+            "bsonType": "date"
+          },
+          "usuario": {
+            "bsonType": "null"
+          }
+        }
+      }
+    },
+    "adminflow.sessions": {
+      "ns": "adminflow.sessions",
+      "jsonSchema": {
+        "bsonType": "object",
+        "required": [
+          "_id",
+          "expired",
+          "sess"
+        ],
+        "properties": {
+          "_id": {
+            "bsonType": "string"
+          },
+          "expired": {
+            "bsonType": "double"
+          },
+          "sess": {
+            "bsonType": "object",
+            "properties": {
+              "cookie": {
+                "bsonType": "object",
+                "properties": {
+                  "expires": {
+                    "bsonType": "string"
+                  },
+                  "httpOnly": {
+                    "bsonType": "bool"
+                  },
+                  "originalMaxAge": {
+                    "bsonType": "int"
+                  },
+                  "path": {
+                    "bsonType": "string"
+                  }
+                },
+                "required": [
+                  "expires",
+                  "httpOnly",
+                  "originalMaxAge",
+                  "path"
+                ]
+              },
+              "userId": {
+                "bsonType": "int"
+              }
+            },
+            "required": [
+              "cookie",
+              "userId"
+            ]
+          }
+        }
+      }
+    },
+    "adminflow.tickets": {
+      "ns": "adminflow.tickets",
+      "jsonSchema": {
+        "bsonType": "object",
+        "required": [
+          "_id",
+          "amount",
+          "annotations",
+          "attachments",
+          "audioNotes",
+          "clientId",
+          "createdAt",
+          "description",
+          "priority",
+          "status",
+          "title",
+          "updatedAt",
+          "visit"
+        ],
+        "properties": {
+          "_id": {
+            "bsonType": "int"
+          },
+          "amount": {
+            "bsonType": [
+              "int",
+              "null"
+            ]
+          },
+          "annotations": {
+            "anyOf": [
+              {
+                "bsonType": "array",
+                "items": {
+                  "bsonType": "object",
+                  "properties": {
+                    "attachments": {
+                      "bsonType": "array"
+                    },
+                    "audioNotes": {
+                      "bsonType": "array",
+                      "items": {
+                        "bsonType": "object",
+                        "properties": {
+                          "createdAt": {
+                            "bsonType": "string"
+                          },
+                          "dataUrl": {
+                            "bsonType": "string"
+                          },
+                          "durationSeconds": {
+                            "bsonType": "int"
+                          },
+                          "id": {
+                            "bsonType": "string"
+                          }
+                        },
+                        "required": [
+                          "createdAt",
+                          "dataUrl",
+                          "durationSeconds",
+                          "id"
+                        ]
+                      }
+                    },
+                    "createdAt": {
+                      "bsonType": "string"
+                    },
+                    "text": {
+                      "bsonType": "string"
+                    },
+                    "user": {
+                      "bsonType": "string"
+                    }
+                  },
+                  "required": [
+                    "createdAt",
+                    "text"
+                  ]
+                }
+              },
+              {
+                "bsonType": "null"
+              }
+            ]
+          },
+          "attachments": {
+            "bsonType": [
+              "array",
+              "null"
+            ]
+          },
+          "audioNotes": {
+            "anyOf": [
+              {
+                "bsonType": "array",
+                "items": {
+                  "bsonType": "object",
+                  "properties": {
+                    "createdAt": {
+                      "bsonType": "string"
+                    },
+                    "dataUrl": {
+                      "bsonType": "string"
+                    },
+                    "durationSeconds": {
+                      "bsonType": "int"
+                    },
+                    "id": {
+                      "bsonType": "string"
+                    }
+                  },
+                  "required": [
+                    "createdAt",
+                    "dataUrl",
+                    "durationSeconds",
+                    "id"
+                  ]
+                }
+              },
+              {
+                "bsonType": "null"
+              }
+            ]
+          },
+          "clientId": {
+            "bsonType": [
+              "int",
+              "string"
+            ]
+          },
+          "createdAt": {
+            "bsonType": "date"
+          },
+          "description": {
+            "bsonType": [
+              "string",
+              "null"
+            ]
+          },
+          "priority": {
+            "bsonType": "string"
+          },
+          "status": {
+            "bsonType": "string"
+          },
+          "title": {
+            "bsonType": "string"
+          },
+          "updatedAt": {
+            "bsonType": "date"
+          },
+          "visit": {
+            "bsonType": "bool"
+          }
+        }
+      }
+    },
+    "adminflow.users": {
+      "ns": "adminflow.users",
+      "jsonSchema": {
+        "bsonType": "object",
+        "required": [
+          "_id",
+          "email",
+          "password"
+        ],
+        "properties": {
+          "_id": {
+            "bsonType": "int"
+          },
+          "email": {
+            "bsonType": "string"
+          },
+          "password": {
+            "bsonType": "string"
+          }
+        }
+      }
+    }
+  },
+  "relationships": [
+    {
+      "id": "4e62b7ab-61e4-4023-a4b6-613c100adf10",
+      "relationship": [
+        {
+          "ns": "adminflow.users",
+          "fields": [
+            "_id"
+          ],
+          "cardinality": 1
+        },
+        {
+          "ns": "adminflow.budget_items",
+          "fields": [
+            "_id"
+          ],
+          "cardinality": 1
+        }
+      ],
+      "isInferred": true
+    },
+    {
+      "id": "56b6f097-6afd-473c-b762-d91a54e10574",
+      "relationship": [
+        {
+          "ns": "adminflow.budgets",
+          "fields": [
+            "_id"
+          ],
+          "cardinality": 1
+        },
+        {
+          "ns": "adminflow.clients",
+          "fields": [
+            "_id"
+          ],
+          "cardinality": 1
+        }
+      ],
+      "isInferred": true
+    },
+    {
+      "id": "ec391870-9c84-4225-b19a-c5dd9efdb9bc",
+      "relationship": [
+        {
+          "ns": "adminflow.budgets",
+          "fields": [
+            "clientId"
+          ],
+          "cardinality": 1
+        },
+        {
+          "ns": "adminflow.clients",
+          "fields": [
+            "_id"
+          ],
+          "cardinality": 1
+        }
+      ],
+      "isInferred": true
+    },
+    {
+      "id": "25f8cce7-1997-491d-85e1-d13a277ad353",
+      "relationship": [
+        {
+          "ns": "adminflow.contracts",
+          "fields": [
+            "_id"
+          ],
+          "cardinality": 1
+        },
+        {
+          "ns": "adminflow.clients",
+          "fields": [
+            "_id"
+          ],
+          "cardinality": 1
+        }
+      ],
+      "isInferred": true
+    },
+    {
+      "id": "d9eb7955-ba13-4766-a8d0-35992680b60d",
+      "relationship": [
+        {
+          "ns": "adminflow.contracts",
+          "fields": [
+            "clientId"
+          ],
+          "cardinality": 1
+        },
+        {
+          "ns": "adminflow.clients",
+          "fields": [
+            "_id"
+          ],
+          "cardinality": 1
+        }
+      ],
+      "isInferred": true
+    },
+    {
+      "id": "6d2b1741-de57-4299-97b6-5f8dcc645190",
+      "relationship": [
+        {
+          "ns": "adminflow.notifications",
+          "fields": [
+            "metadata",
+            "annotations",
+            "audioNotes",
+            "durationSeconds"
+          ],
+          "cardinality": 1
+        },
+        {
+          "ns": "adminflow.clients",
+          "fields": [
+            "_id"
+          ],
+          "cardinality": 1
+        }
+      ],
+      "isInferred": true
+    },
+    {
+      "id": "4c0e6f61-0da6-4db5-ac59-a2e615d3d200",
+      "relationship": [
+        {
+          "ns": "adminflow.notifications",
+          "fields": [
+            "metadata",
+            "annotations",
+            "audioNotes",
+            "durationSeconds"
+          ],
+          "cardinality": 1
+        },
+        {
+          "ns": "adminflow.contracts",
+          "fields": [
+            "_id"
+          ],
+          "cardinality": 1
+        }
+      ],
+      "isInferred": true
+    },
+    {
+      "id": "a99b31f0-657d-43bf-9847-37e2ea0c1ea4",
+      "relationship": [
+        {
+          "ns": "adminflow.notifications",
+          "fields": [
+            "metadata",
+            "annotations",
+            "audioNotes",
+            "durationSeconds"
+          ],
+          "cardinality": 1
+        },
+        {
+          "ns": "adminflow.products",
+          "fields": [
+            "_id"
+          ],
+          "cardinality": 1
+        }
+      ],
+      "isInferred": true
+    },
+    {
+      "id": "440c084a-01f1-4a84-be35-3e01edc46941",
+      "relationship": [
+        {
+          "ns": "adminflow.repository",
+          "fields": [
+            "_id"
+          ],
+          "cardinality": 1
+        },
+        {
+          "ns": "adminflow.products",
+          "fields": [
+            "_id"
+          ],
+          "cardinality": 1
+        }
+      ],
+      "isInferred": true
+    },
+    {
+      "id": "fd96cc0d-138f-4967-bc2f-b91d226f9790",
+      "relationship": [
+        {
+          "ns": "adminflow.users",
+          "fields": [
+            "_id"
+          ],
+          "cardinality": 1
+        },
+        {
+          "ns": "adminflow.products",
+          "fields": [
+            "_id"
+          ],
+          "cardinality": 1
+        }
+      ],
+      "isInferred": true
+    },
+    {
+      "id": "f89f8c4a-415f-42f7-be2b-dc4720d644ac",
+      "relationship": [
+        {
+          "ns": "adminflow.notifications",
+          "fields": [
+            "metadata",
+            "annotations",
+            "audioNotes",
+            "durationSeconds"
+          ],
+          "cardinality": 1
+        },
+        {
+          "ns": "adminflow.repository",
+          "fields": [
+            "_id"
+          ],
+          "cardinality": 1
+        }
+      ],
+      "isInferred": true
+    },
+    {
+      "id": "3bdb548f-844f-47f2-9165-305b672723a3",
+      "relationship": [
+        {
+          "ns": "adminflow.users",
+          "fields": [
+            "_id"
+          ],
+          "cardinality": 1
+        },
+        {
+          "ns": "adminflow.repository",
+          "fields": [
+            "_id"
+          ],
+          "cardinality": 1
+        }
+      ],
+      "isInferred": true
+    },
+    {
+      "id": "a62227c9-63fe-416d-ae99-474f79cf1b76",
+      "relationship": [
+        {
+          "ns": "adminflow.notifications",
+          "fields": [
+            "metadata",
+            "annotations",
+            "audioNotes",
+            "durationSeconds"
+          ],
+          "cardinality": 1
+        },
+        {
+          "ns": "adminflow.tickets",
+          "fields": [
+            "_id"
+          ],
+          "cardinality": 1
+        }
+      ],
+      "isInferred": true
+    },
+    {
+      "id": "92bfdfeb-8e32-421b-ae70-489d2ae445ff",
+      "relationship": [
+        {
+          "ns": "adminflow.repository",
+          "fields": [
+            "_id"
+          ],
+          "cardinality": 1
+        },
+        {
+          "ns": "adminflow.tickets",
+          "fields": [
+            "_id"
+          ],
+          "cardinality": 1
+        }
+      ],
+      "isInferred": true
+    },
+    {
+      "id": "7112d0db-2ec0-46ed-9ec0-bc4e5ed2dbb3",
+      "relationship": [
+        {
+          "ns": "adminflow.users",
+          "fields": [
+            "_id"
+          ],
+          "cardinality": 1
+        },
+        {
+          "ns": "adminflow.tickets",
+          "fields": [
+            "_id"
+          ],
+          "cardinality": 1
+        }
+      ],
+      "isInferred": true
+    }
+  ]
+}

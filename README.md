@@ -232,13 +232,19 @@ El sistema cubre todo el ciclo comercial de una empresa de servicios:
 │  └──────────────────────────────────────────────────────┘   │
 │                           ↕                                  │
 │  ┌──────────────────────────────────────────────────────┐   │
-│  │              DATABASE LAYER (Híbrida)                │   │
-│  │  ┌─────────────────┐      ┌─────────────────┐       │   │
-│  │  │  SQLite (Main)  │ ←→   │ MongoDB (Sync)  │       │   │
-│  │  │  - Operativa    │ Sync │ - Respaldo      │       │   │
-│  │  │  - Sesiones     │      │ - Analytics     │       │   │
-│  │  │  - CRUD rápido  │      │ - Escalabilidad │       │   │
-│  │  └─────────────────┘      └─────────────────┘       │   │
+│  │         DATABASE LAYER (MongoDB-First)               │   │
+│  │  ┌─────────────────────────────────────────────┐    │   │
+│  │  │           MongoDB (Principal)               │    │   │
+│  │  │  - Operativa completa                       │    │   │
+│  │  │  - Esquemas validados (JSON Schema)         │    │   │
+│  │  │  - Índices optimizados                      │    │   │
+│  │  │  - Escalabilidad horizontal                 │    │   │
+│  │  │  - Replicación nativa                       │    │   │
+│  │  │  - Cloud-ready (Atlas compatible)           │    │   │
+│  │  └─────────────────────────────────────────────┘    │   │
+│  │  ┌─────────────────┐                                │   │
+│  │  │ SQLite (Legacy) │ (Opcional para compatibilidad) │   │
+│  │  └─────────────────┘                                │   │
 │  └──────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -246,10 +252,11 @@ El sistema cubre todo el ciclo comercial de una empresa de servicios:
 ### **Flujo de Datos**
 1. **Usuario** → Interactúa con la UI (Next.js)
 2. **Frontend** → Hace request a `/api/*` (Express)
-3. **Backend** → Procesa y escribe en **SQLite**
-4. **Sync Service** → Replica cambios a **MongoDB**
-5. **Notificaciones** → Se envían automáticamente por canales configurados
-6. **Response** → Vuelve al frontend con los datos
+3. **Backend** → Procesa y escribe en **MongoDB**
+4. **Validación** → MongoDB valida datos contra esquemas JSON Schema
+5. **Índices** → Queries optimizadas con índices automáticos
+6. **Notificaciones** → Se envían automáticamente por canales configurados
+7. **Response** → Vuelve al frontend con los datos
 
 ---
 
@@ -258,7 +265,7 @@ El sistema cubre todo el ciclo comercial de una empresa de servicios:
 ### **Prerrequisitos**
 - Node.js 18+ ([Descargar](https://nodejs.org/))
 - npm o yarn
-- MongoDB (opcional, para sync)
+- **MongoDB 5.6+** ([Descargar](https://www.mongodb.com/try/download/community) o usar [MongoDB Atlas](https://www.mongodb.com/cloud/atlas))
 - Git
 
 ### **1. Clonar el Repositorio**
@@ -297,7 +304,7 @@ SESSION_SECRET=otra_secret_key_para_sesiones
 DEFAULT_ADMIN_EMAIL=admin@adminflow.uy
 DEFAULT_ADMIN_PASSWORD=admin
 
-# MongoDB (Opcional)
+# MongoDB (REQUERIDO)
 MONGODB_URI=mongodb://localhost:27017
 MONGODB_DB=adminflow
 
@@ -330,7 +337,105 @@ NEXTAUTH_URL=http://localhost:3000
 EXPRESS_BASE_URL=http://localhost:5000
 ```
 
-### **4. Iniciar la Aplicación**
+```
+
+### **4. Inicializar MongoDB**
+
+AdminFlow usa MongoDB como base de datos principal. Debes inicializar la estructura antes del primer uso.
+
+#### **Opción A: MongoDB Local**
+
+```bash
+# 1. Instalar MongoDB (si no lo tienes)
+# Windows: https://www.mongodb.com/try/download/community
+# Linux: sudo apt-get install -y mongodb-org
+# macOS: brew install mongodb-community
+
+# 2. Iniciar MongoDB
+# Windows: El servicio se inicia automáticamente
+# Linux/macOS: sudo systemctl start mongod
+
+# 3. Verificar que MongoDB esté ejecutándose
+mongosh  # Debería conectar sin errores
+```
+
+#### **Opción B: MongoDB Atlas (Cloud - Recomendado para producción)**
+
+```bash
+# 1. Crear cuenta gratuita en https://www.mongodb.com/cloud/atlas
+# 2. Crear cluster (M0 gratis)
+# 3. Configurar usuario y contraseña
+# 4. Whitelist IP (0.0.0.0/0 para desarrollo)
+# 5. Obtener connection string:
+#    mongodb+srv://usuario:password@cluster0.xxxxx.mongodb.net/adminflow
+```
+
+#### **Configurar Connection String**
+
+Edita `server/.selected-db.json`:
+
+```json
+{
+  "engine": "mongodb",
+  "mongoUri": "mongodb://localhost:27017",  // O tu URI de Atlas
+  "mongoDb": "adminflow",
+  "sqlitePath": "database/database.sqlite"
+}
+```
+
+#### **Inicializar Base de Datos**
+
+```bash
+cd server
+npm run init-mongo
+```
+
+Este comando creará automáticamente:
+- ✅ **13+ colecciones** con esquemas JSON Schema
+- ✅ **Índices optimizados** para queries rápidas
+- ✅ **Usuario admin** por defecto (`admin@adminflow.uy` / `admin`)
+- ✅ **Configuraciones** iniciales del sistema
+- ✅ **Validaciones** de datos automáticas
+
+**Salida esperada:**
+```
+╔════════════════════════════════════════════════════════╗
+║     AdminFlow - Inicialización de MongoDB             ║
+╚════════════════════════════════════════════════════════╝
+
+📡 MongoDB URI: mongodb://localhost:27017
+🗄️  Base de datos: adminflow
+
+🔍 Probando conexión...
+✅ Conexión exitosa
+
+🚀 Iniciando creación de colecciones y esquemas...
+
+📋 Inicializando colecciones...
+  ✅ Colección creada: users
+  ✅ Colección creada: clients
+  ✅ Colección creada: tickets
+  ... (más colecciones)
+
+╔════════════════════════════════════════════════════════╗
+║              ✅ INICIALIZACIÓN EXITOSA                 ║
+╚════════════════════════════════════════════════════════╝
+
+📊 Colecciones creadas: 13
+📋 Total de colecciones: 13
+
+🎉 MongoDB está listo para usar!
+```
+
+#### **Migrar Datos Existentes (Opcional)**
+
+Si tienes datos en SQLite que quieres migrar a MongoDB:
+
+```bash
+npm run migrate-to-mongo
+```
+
+### **5. Iniciar la Aplicación**
 
 #### Terminal 1 - Backend
 ```bash
@@ -346,11 +451,136 @@ npm run dev
 ```
 La aplicación estará en `http://localhost:3000`
 
-### **5. Acceder al Sistema**
+### **6. Acceder al Sistema**
 1. Abrir navegador en `http://localhost:3000`
 2. Login con credenciales por defecto:
    - **Email**: `admin@adminflow.uy`
    - **Password**: `admin`
+
+### **7. Verificar Instalación**
+
+Una vez dentro del sistema:
+1. Ve a `/database` para ver el estado de MongoDB
+2. Verifica que aparezcan las 13+ colecciones
+3. Crea un cliente de prueba
+4. Crea un ticket de prueba
+
+---
+
+## 🔧 Troubleshooting de MongoDB
+
+### **Error: "MongoServerError: Authentication failed"**
+
+**Causa:** Usuario o contraseña incorrectos en la URI.
+
+**Solución:**
+```bash
+# Verifica la URI en .selected-db.json
+# Formato correcto:
+mongodb://usuario:password@host:puerto/database
+```
+
+### **Error: "MongoNetworkError: connect ECONNREFUSED"**
+
+**Causa:** MongoDB no está ejecutándose.
+
+**Solución:**
+```bash
+# Linux/macOS
+sudo systemctl status mongod
+sudo systemctl start mongod
+
+# Windows
+# Verifica en Servicios que "MongoDB Server" esté ejecutándose
+```
+
+### **Error: "No se pudo leer .selected-db.json"**
+
+**Causa:** Archivo de configuración no existe.
+
+**Solución:**
+```bash
+# El script init-mongo lo crea automáticamente
+# O créalo manualmente en server/.selected-db.json
+```
+
+### **Queries muy lentas**
+
+**Causa:** Falta de índices o colección muy grande.
+
+**Solución:**
+```bash
+# Verifica índices en MongoDB Compass o:
+mongosh
+use adminflow
+db.tickets.getIndexes()  # Ver índices existentes
+```
+
+### **Base de datos vacía después de reiniciar**
+
+**Causa:** MongoDB no está persistiendo datos.
+
+**Solución:**
+```bash
+# Verifica la ruta de datos de MongoDB
+# Linux/macOS: /var/lib/mongodb
+# Windows: C:\Program Files\MongoDB\Server\5.6\data
+```
+
+---
+
+## 📚 Scripts de Base de Datos Disponibles
+
+```bash
+# Inicializar MongoDB (crear estructura)
+npm run init-mongo
+npm run db:init  # Alias
+
+# Migrar datos de SQLite a MongoDB
+npm run migrate-to-mongo
+npm run db:migrate  # Alias
+
+# Verificar estado de la base de datos
+# (Desde la UI: /database)
+```
+
+---
+
+## 🗄️ Estructura de MongoDB
+
+### **Colecciones Principales**
+
+| Colección | Documentos Típicos | Índices |
+|-----------|-------------------|---------|
+| `users` | 10-100 | email (unique) |
+| `clients` | 100-10,000 | email, name, contract |
+| `tickets` | 1,000-100,000 | clientId, status, priority |
+| `budgets` | 100-10,000 | clientId, status |
+| `contracts` | 50-5,000 | clientId, status, dates |
+| `payments` | 500-50,000 | clientId, ticketId, status |
+| `products` | 50-1,000 | name, category |
+| `client_accesses` | 200-20,000 | clientId, tipo_equipo |
+| `calendar_events` | 500-50,000 | start, sourceType |
+| `notifications` | 1,000-100,000 | event, createdAt |
+| `configurations` | 10-50 | module (unique) |
+| `audit_logs` | 10,000-1M | user, action, createdAt |
+
+### **Ventajas de MongoDB**
+
+- 🚀 **Escalabilidad** - Fácil de escalar horizontalmente con sharding
+- 📊 **Consultas avanzadas** - Agregaciones potentes para reportes
+- 🔄 **Replicación** - Alta disponibilidad nativa
+- ☁️ **Cloud-ready** - Compatible con MongoDB Atlas
+- 🔍 **Índices** - Búsquedas ultra-rápidas
+- 📝 **Esquemas flexibles** - Adaptable a cambios
+- ✅ **Validación** - JSON Schema automático
+
+### **Documentación Completa**
+
+Para más detalles sobre MongoDB, consulta:
+- 📖 [`db.md`](./db.md) - Arquitectura de base de datos
+- 📚 [`server/database/README_MONGODB.md`](./server/database/README_MONGODB.md) - Guía completa de MongoDB
+- 🌐 [MongoDB Documentation](https://docs.mongodb.com/) - Documentación oficial
 
 ---
 
@@ -358,7 +588,7 @@ La aplicación estará en `http://localhost:3000`
 
 ### **Base de Datos**
 
-El sistema usa una arquitectura híbrida. La configuración se gestiona en `server/.selected-db.json`:
+AdminFlow usa **MongoDB como base de datos principal**. La configuración se gestiona en `server/.selected-db.json`:
 
 ```json
 {
@@ -369,14 +599,43 @@ El sistema usa una arquitectura híbrida. La configuración se gestiona en `serv
 }
 ```
 
-#### **Cambiar Motor de BD**
-Desde la UI: `/database` → Seleccionar motor → Guardar
+#### **Opciones de Conexión**
 
-#### **Migrar SQLite → MongoDB**
+**MongoDB Local:**
+```json
+{
+  "mongoUri": "mongodb://localhost:27017"
+}
+```
+
+**MongoDB con Autenticación:**
+```json
+{
+  "mongoUri": "mongodb://usuario:password@localhost:27017/adminflow?authSource=admin"
+}
+```
+
+**MongoDB Atlas (Cloud):**
+```json
+{
+  "mongoUri": "mongodb+srv://usuario:password@cluster0.xxxxx.mongodb.net/adminflow?retryWrites=true&w=majority"
+}
+```
+
+#### **Inicializar Base de Datos**
 ```bash
 cd server
-node scripts/migrate-sqlite-to-mongo.js
+npm run init-mongo  # Crea colecciones, índices y datos iniciales
 ```
+
+#### **Migrar desde SQLite (Opcional)**
+Si tienes datos existentes en SQLite:
+```bash
+npm run migrate-to-mongo  # Migra todos los datos a MongoDB
+```
+
+#### **Verificar Estado**
+Desde la UI: `/database` → Ver colecciones y estadísticas
 
 ### **Notificaciones**
 
