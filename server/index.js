@@ -204,9 +204,63 @@ const mapCalendarEventRow = (row) => ({
     start: row.start,
     end: row.end || null,
     location: row.location || null,
+    sourceType: row.source_type || 'manual',
+    sourceId: row.source_id || null,
+    locked: !!row.locked,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
 });
+
+const upsertCalendarEvent = ({
+    title,
+    start,
+    end = null,
+    location = null,
+    sourceType = 'manual',
+    sourceId = null,
+    locked = false,
+}) =>
+    new Promise((resolve, reject) => {
+        const normalizedStart = start || new Date().toISOString();
+        const normalizedSourceType = sourceType || 'manual';
+        const shouldLock =
+            locked || (normalizedSourceType !== 'manual' && normalizedSourceType !== 'custom');
+        const insertEvent = () =>
+            db.run(
+                `INSERT INTO calendar_events (title, location, start, end, source_type, source_id, locked)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                [
+                    title,
+                    location,
+                    normalizedStart,
+                    end || null,
+                    normalizedSourceType,
+                    sourceId || null,
+                    shouldLock ? 1 : 0,
+                ],
+                function (insertErr) {
+                    if (insertErr) return reject(insertErr);
+                    db.get(
+                        'SELECT * FROM calendar_events WHERE id = ?',
+                        [this.lastID],
+                        (selectErr, row) => {
+                            if (selectErr) return reject(selectErr);
+                            resolve(mapCalendarEventRow(row));
+                        }
+                    );
+                }
+            );
+
+        if (sourceId && normalizedSourceType) {
+            db.run(
+                'DELETE FROM calendar_events WHERE source_type = ? AND source_id = ?',
+                [normalizedSourceType, sourceId],
+                insertEvent
+            );
+        } else {
+            insertEvent();
+        }
+    });
 
 const TICKET_SELECT_BASE = `
   SELECT
@@ -362,7 +416,7 @@ app.post('/register', (req, res) => {
             trackRegisteredUser({ sqliteId: this.lastID, email }).catch(() => { });
 
             // Audit log
-            auditService.logEvent('user', 'create', 'user', {
+            logEvent('user', 'create', 'user', {
                 userId: this.lastID,
                 email: email
             }, req).catch(console.error);
@@ -430,7 +484,7 @@ app.patch('/api/users/registered/:id', async (req, res) => {
         }
 
         // Audit log
-        auditService.logEvent('user', 'update', 'user', {
+        logEvent('user', 'update', 'user', {
             userId: req.params.id,
             updates: Object.keys(updates)
         }, req).catch(console.error);
@@ -940,7 +994,7 @@ app.post('/api/clients', (req, res) => {
                 if (selectErr) {
                     return res.status(500).json({ message: selectErr.message });
                 }
-                await auditService.logEvent({
+                await logEvent({
                     user: req.user ? req.user.email : 'system',
                     action: 'create',
                     resource: 'client',
@@ -957,34 +1011,66 @@ app.put('/api/clients/:id', (req, res) => {
     const { name, alias, rut, email, phone, address, contract, notificationsEnabled } = req.body;
     const latitude = req.body.latitude;
     const longitude = req.body.longitude;
-    if (!name) {
-        return res.status(400).json({ message: 'Name is required.' });
-    }
-    const contractValue = contract === true ? 1 : 0;
-    const notificationsValue = notificationsEnabled === false ? 0 : 1;
-    db.run(
-        'UPDATE clients SET name = ?, alias = ?, rut = ?, email = ?, phone = ?, address = ?, latitude = ?, longitude = ?, contract = ?, notifications_enabled = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?',
-        [name, alias, rut, email, phone, address, latitude, longitude, contractValue, notificationsValue, req.params.id],
-        function (err) {
-            if (err) return res.status(500).json({ message: err.message });
-            if (this.changes === 0) {
-                return res.status(404).json({ message: 'Client not found.' });
-            }
-            db.get('SELECT * FROM clients WHERE id = ?', [req.params.id], async (selectErr, row) => {
-                if (selectErr) {
-                    return res.status(500).json({ message: selectErr.message });
+
+    db.get('SELECT * FROM clients WHERE id = ?', [req.params.id], (getErr, existing) => {
+        if (getErr) return res.status(500).json({ message: getErr.message });
+        if (!existing) return res.status(404).json({ message: 'Client not found.' });
+
+        const nextName = name ?? existing.name;
+        if (!nextName) return res.status(400).json({ message: 'Name is required.' });
+
+        const nextEmail = email ?? existing.email ?? null;
+        const proceedUpdate = () => {
+            const contractValue = contract === undefined ? existing.contract : contract ? 1 : 0;
+            const notificationsValue = notificationsEnabled === undefined ? existing.notifications_enabled : notificationsEnabled === false ? 0 : 1;
+            const payload = {
+                name: nextName,
+                alias: alias ?? existing.alias,
+                rut: rut ?? existing.rut,
+                email: nextEmail,
+                phone: phone ?? existing.phone,
+                address: address ?? existing.address,
+                latitude: latitude ?? existing.latitude,
+                longitude: longitude ?? existing.longitude,
+                contract: contractValue,
+                notifications_enabled: notificationsValue,
+            };
+
+            db.run(
+                'UPDATE clients SET name = ?, alias = ?, rut = ?, email = ?, phone = ?, address = ?, latitude = ?, longitude = ?, contract = ?, notifications_enabled = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?',
+                [payload.name, payload.alias, payload.rut, payload.email, payload.phone, payload.address, payload.latitude, payload.longitude, payload.contract, payload.notifications_enabled, req.params.id],
+                function (err) {
+                    if (err) return res.status(500).json({ message: err.message });
+                    if (this.changes === 0) {
+                        return res.status(404).json({ message: 'Client not found.' });
+                    }
+                    db.get('SELECT * FROM clients WHERE id = ?', [req.params.id], async (selectErr, row) => {
+                        if (selectErr) {
+                            return res.status(500).json({ message: selectErr.message });
+                        }
+                        await logEvent({
+                            user: req.user ? req.user.email : 'system',
+                            action: 'update',
+                            resource: 'client',
+                            details: { clientId: row.id, name: row.name },
+                            ip: req.ip
+                        });
+                        res.json(mapClientRow(row));
+                    });
                 }
-                await auditService.logEvent({
-                    user: req.user ? req.user.email : 'system',
-                    action: 'update',
-                    resource: 'client',
-                    details: { clientId: row.id, name: row.name },
-                    ip: req.ip
-                });
-                res.json(mapClientRow(row));
+            );
+        };
+
+        if (nextEmail) {
+            db.get('SELECT id FROM clients WHERE email = ? AND id != ?', [nextEmail, req.params.id], (dupErr, dupRow) => {
+                if (dupErr) return res.status(500).json({ message: dupErr.message });
+                if (dupRow) return res.status(409).json({ message: `Client with email '${nextEmail}' already exists.` });
+                proceedUpdate();
             });
+        } else {
+            proceedUpdate();
         }
-    );
+    });
 });
 
 app.delete('/api/clients/:id', (req, res) => {
@@ -992,7 +1078,7 @@ app.delete('/api/clients/:id', (req, res) => {
         if (err) return res.status(500).json({ message: err.message });
         if (this.changes === 0) return res.status(404).json({ message: 'Client not found.' });
 
-        await auditService.logEvent({
+        await logEvent({
             user: req.user ? req.user.email : 'system',
             action: 'delete',
             resource: 'client',
@@ -1217,6 +1303,19 @@ app.post('/api/payments', (req, res) => {
                 if (selectErr) return res.status(500).json({ message: selectErr.message });
                 const savedPayment = mapPaymentRow(row);
 
+                upsertCalendarEvent({
+                    title: `Pago ${savedPayment.invoice} - ${savedPayment.client}`.trim(),
+                    start: savedPayment.createdAt || new Date().toISOString(),
+                    end: savedPayment.createdAt || null,
+                    location: savedPayment.ticketTitle ? `Ticket: ${savedPayment.ticketTitle}` : null,
+                    sourceType: 'payment',
+                    sourceId: savedPayment.id,
+                    locked: true,
+                }).catch((calendarErr) => {
+                    console.error('No se pudo crear el evento de calendario para el pago:', calendarErr?.message || calendarErr);
+                });
+
+
                 // Enviar notificación automática
                 sendAutoNotification(
                     'payment_received',
@@ -1227,7 +1326,7 @@ app.post('/api/payments', (req, res) => {
 
                 syncPaymentToMongo(savedPayment);
 
-                await auditService.logEvent({
+                await logEvent({
                     user: req.user ? req.user.email : 'system',
                     action: 'create',
                     resource: 'payment',
@@ -1296,7 +1395,7 @@ app.put('/api/payments/:id', (req, res) => {
                     if (selectErr) return res.status(500).json({ message: selectErr.message });
                     const updatedPayment = mapPaymentRow(row);
 
-                    await auditService.logEvent({
+                    await logEvent({
                         user: req.user ? req.user.email : 'system',
                         action: 'update',
                         resource: 'payment',
@@ -1316,7 +1415,7 @@ app.delete('/api/payments/:id', (req, res) => {
         if (err) return res.status(500).json({ message: err.message });
         if (this.changes === 0) return res.status(404).json({ message: 'Payment not found' });
 
-        await auditService.logEvent({
+        await logEvent({
             user: req.user ? req.user.email : 'system',
             action: 'delete',
             resource: 'payment',
@@ -1383,6 +1482,19 @@ app.post('/api/contracts', (req, res) => {
                 if (selectErr) return res.status(500).json({ message: selectErr.message });
                 const newContract = mapContractRow(row);
 
+                upsertCalendarEvent({
+                    title: `Contrato: ${newContract.title}`.trim(),
+                    start: newContract.startDate || newContract.createdAt || new Date().toISOString(),
+                    end: newContract.endDate || null,
+                    location: newContract.clientName ? `Cliente: ${newContract.clientName}` : null,
+                    sourceType: 'contract',
+                    sourceId: newContract.id,
+                    locked: true,
+                }).catch((calendarErr) => {
+                    console.error('No se pudo crear el evento de calendario para el contrato:', calendarErr?.message || calendarErr);
+                });
+
+
                 // Enviar notificación si el contrato está firmado
                 if (status === 'Firmado' || status === 'Activo') {
                     sendAutoNotification(
@@ -1393,7 +1505,7 @@ app.post('/api/contracts', (req, res) => {
                     ).catch(err => console.error('Error en notificación:', err));
                 }
 
-                await auditService.logEvent({
+                await logEvent({
                     user: req.user ? req.user.email : 'system',
                     action: 'create',
                     resource: 'contract',
@@ -1445,7 +1557,7 @@ app.put('/api/contracts/:id', (req, res) => {
                 db.get(`${CONTRACT_SELECT_BASE} WHERE contracts.id = ?`, [req.params.id], async (selectErr, row) => {
                     if (selectErr) return res.status(500).json({ message: selectErr.message });
 
-                    await auditService.logEvent({
+                    await logEvent({
                         user: req.user ? req.user.email : 'system',
                         action: 'update',
                         resource: 'contract',
@@ -1471,7 +1583,7 @@ app.delete('/api/contracts/:id', (req, res) => {
         db.run('DELETE FROM contracts WHERE id = ?', [req.params.id], async (deleteErr) => {
             if (deleteErr) return res.status(500).json({ message: deleteErr.message });
 
-            await auditService.logEvent({
+            await logEvent({
                 user: req.user ? req.user.email : 'system',
                 action: 'delete',
                 resource: 'contract',
@@ -1637,7 +1749,7 @@ app.post('/api/budgets', (req, res) => {
                     []
                 ).catch(err => console.error('Error en notificación:', err));
 
-                await auditService.logEvent({
+                await logEvent({
                     user: req.user ? req.user.email : 'system',
                     action: 'create',
                     resource: 'budget',
@@ -1708,7 +1820,7 @@ app.put('/api/budgets/:id', (req, res) => {
 
                     res.json(updatedBudget);
 
-                    await auditService.logEvent({
+                    await logEvent({
                         user: req.user ? req.user.email : 'system',
                         action: 'update',
                         resource: 'budget',
@@ -1743,7 +1855,7 @@ app.delete('/api/budgets/:id', (req, res) => {
             db.run('DELETE FROM budgets WHERE id = ?', [budgetId], async (deleteErr) => {
                 if (deleteErr) return res.status(500).json({ message: deleteErr.message });
 
-                await auditService.logEvent({
+                await logEvent({
                     user: req.user ? req.user.email : 'system',
                     action: 'delete',
                     resource: 'budget',
@@ -1910,7 +2022,7 @@ app.post('/api/products', (req, res) => {
                 if (selectErr) return res.status(500).json({ message: selectErr.message });
                 const newProduct = mapProductRow(row);
 
-                await auditService.logEvent({
+                await logEvent({
                     user: req.user ? req.user.email : 'system',
                     action: 'create',
                     resource: 'product',
@@ -1961,7 +2073,7 @@ app.put('/api/products/:id', (req, res) => {
                     if (selectErr) return res.status(500).json({ message: selectErr.message });
                     const updatedProduct = mapProductRow(row);
 
-                    await auditService.logEvent({
+                    await logEvent({
                         user: req.user ? req.user.email : 'system',
                         action: 'update',
                         resource: 'product',
@@ -1981,7 +2093,7 @@ app.delete('/api/products/:id', (req, res) => {
         if (err) return res.status(500).json({ message: err.message });
         if (this.changes === 0) return res.status(404).json({ message: 'Product not found' });
 
-        await auditService.logEvent({
+        await logEvent({
             user: req.user ? req.user.email : 'system',
             action: 'delete',
             resource: 'product',
@@ -2046,6 +2158,19 @@ app.post('/api/tickets', (req, res) => {
                 if (newTicket.clientNotificationsEnabled && newTicket.clientEmail) {
                     recipients.push(newTicket.clientEmail);
                 }
+
+                
+                upsertCalendarEvent({
+                    title: `Ticket #${newTicket.id}: ${newTicket.title}`,
+                    start: newTicket.createdAt || new Date().toISOString(),
+                    end: newTicket.createdAt || null,
+                    location: newTicket.clientName ? `Cliente: ${newTicket.clientName}` : null,
+                    sourceType: 'ticket',
+                    sourceId: newTicket.id,
+                    locked: true,
+                }).catch((calendarErr) => {
+                    console.error('No se pudo crear el evento de calendario para el ticket:', calendarErr?.message || calendarErr);
+                });
 
                 // Enviar notificación automática
                 sendAutoNotification(
@@ -2185,66 +2310,85 @@ app.get('/api/calendar-events', (req, res) => {
 });
 
 app.post('/api/calendar-events', (req, res) => {
-    const { title, start, end = null, location = null } = req.body;
-    if (!title || !start) {
-        return res.status(400).json({ message: 'Title and start date are required.' });
+    const {
+        title,
+        start,
+        end = null,
+        location = null,
+        sourceType = 'manual',
+        sourceId = null,
+        locked = false,
+    } = req.body;
+    if (!title) {
+        return res.status(400).json({ message: 'Title is required.' });
     }
-    db.run(
-        'INSERT INTO calendar_events (title, location, start, end) VALUES (?, ?, ?, ?)',
-        [title, location, start, end],
-        function (insertErr) {
-            if (insertErr) return res.status(500).json({ message: insertErr.message });
-            const eventId = this.lastID;
-            db.get('SELECT * FROM calendar_events WHERE id = ?', [eventId], async (selectErr, row) => {
-                if (selectErr) return res.status(500).json({ message: selectErr.message });
-                const newEvent = mapCalendarEventRow(row);
+    upsertCalendarEvent({
+        title,
+        start: start || new Date().toISOString(),
+        end,
+        location,
+        sourceType,
+        sourceId,
+        locked,
+    })
+        .then(async (newEvent) => {
+            sendAutoNotification(
+                'event_created',
+                `Nuevo evento creado: ${newEvent.title} - Fecha: ${newEvent.start}${newEvent.location ? ` - Lugar: ${newEvent.location}` : ''}`,
+                newEvent,
+                []
+            ).catch(err => console.error('Error en notificacion:', err));
 
-                // Enviar notificación automática
-                sendAutoNotification(
-                    'event_created',
-                    `Nuevo evento creado: ${newEvent.title} - Fecha: ${newEvent.start}${newEvent.location ? ` - Lugar: ${newEvent.location}` : ''}`,
-                    newEvent,
-                    []
-                ).catch(err => console.error('Error en notificación:', err));
-
-                await auditService.logEvent({
-                    user: req.user ? req.user.email : 'system',
-                    action: 'create',
-                    resource: 'calendar_event',
-                    details: { eventId: newEvent.id, title: newEvent.title, start: newEvent.start },
-                    ip: req.ip
-                });
-
-                res.status(201).json(newEvent);
+            await logEvent({
+                user: req.user ? req.user.email : 'system',
+                action: 'create',
+                resource: 'calendar_event',
+                details: {
+                    eventId: newEvent.id,
+                    title: newEvent.title,
+                    start: newEvent.start,
+                    sourceType: newEvent.sourceType,
+                    sourceId: newEvent.sourceId,
+                    locked: newEvent.locked,
+                },
+                ip: req.ip
             });
-        }
-    );
+
+            res.status(201).json(newEvent);
+        })
+        .catch((error) => res.status(500).json({ message: error.message }));
 });
 
 app.put('/api/calendar-events/:id', (req, res) => {
     db.get('SELECT * FROM calendar_events WHERE id = ?', [req.params.id], (getErr, existing) => {
         if (getErr) return res.status(500).json({ message: getErr.message });
         if (!existing) return res.status(404).json({ message: 'Evento no encontrado.' });
+        if (existing.locked && req.body?.force !== true) {
+            return res.status(403).json({ message: 'Evento bloqueado. Modificalo desde su origen.' });
+        }
         const payload = {
             title: req.body.title ?? existing.title,
             location: req.body.location ?? existing.location,
             start: req.body.start ?? existing.start,
             end: req.body.end ?? existing.end,
+            sourceType: req.body.sourceType ?? existing.source_type ?? 'manual',
+            sourceId: req.body.sourceId ?? existing.source_id ?? null,
+            locked: req.body.locked ?? existing.locked ?? 0,
         };
         db.run(
-            `UPDATE calendar_events SET title = ?, location = ?, start = ?, end = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?`,
-            [payload.title, payload.location, payload.start, payload.end, req.params.id],
+            `UPDATE calendar_events SET title = ?, location = ?, start = ?, end = ?, source_type = ?, source_id = ?, locked = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?`,
+            [payload.title, payload.location, payload.start, payload.end, payload.sourceType, payload.sourceId, payload.locked ? 1 : 0, req.params.id],
             function (updateErr) {
                 if (updateErr) return res.status(500).json({ message: updateErr.message });
                 db.get('SELECT * FROM calendar_events WHERE id = ?', [req.params.id], async (selectErr, row) => {
                     if (selectErr) return res.status(500).json({ message: selectErr.message });
                     const updatedEvent = mapCalendarEventRow(row);
 
-                    await auditService.logEvent({
+                    await logEvent({
                         user: req.user ? req.user.email : 'system',
                         action: 'update',
                         resource: 'calendar_event',
-                        details: { eventId: updatedEvent.id, title: updatedEvent.title },
+                        details: { eventId: updatedEvent.id, title: updatedEvent.title, locked: updatedEvent.locked },
                         ip: req.ip
                     });
 
@@ -2252,6 +2396,28 @@ app.put('/api/calendar-events/:id', (req, res) => {
                 });
             }
         );
+    });
+});
+
+app.delete('/api/calendar-events/:id', (req, res) => {
+    db.get('SELECT * FROM calendar_events WHERE id = ?', [req.params.id], (getErr, existing) => {
+        if (getErr) return res.status(500).json({ message: getErr.message });
+        if (!existing) return res.status(404).json({ message: 'Evento no encontrado.' });
+        if (existing.locked) {
+            return res.status(403).json({ message: 'Evento bloqueado. Modificalo desde su origen.' });
+        }
+        db.run('DELETE FROM calendar_events WHERE id = ?', [req.params.id], function (deleteErr) {
+            if (deleteErr) return res.status(500).json({ message: deleteErr.message });
+            logEvent({
+                user: req.user ? req.user.email : 'system',
+                action: 'delete',
+                resource: 'calendar_event',
+                details: { eventId: req.params.id, title: existing.title },
+                status: 'success',
+                ip: req.ip
+            }).catch(() => {});
+            res.json({ message: 'Evento eliminado.' });
+        });
     });
 });
 

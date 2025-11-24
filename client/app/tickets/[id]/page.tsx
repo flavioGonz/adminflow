@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { ChangeEvent, DragEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft,
   Clock4,
+  History,
   Edit,
   FileText,
   Loader2,
@@ -17,11 +18,20 @@ import {
   Send,
   Trash2,
   Unlock,
+  PlusCircle,
+  FolderOpen,
+  CheckCircle2,
+  Receipt,
+  DollarSign,
+  Ticket as TicketIcon,
+  Activity,
+  AlertTriangle,
 } from "lucide-react";
+import { PageHeader } from "@/components/layout/page-header";
+import ReactCountryFlag from "react-country-flag";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -86,6 +96,37 @@ const getPriorityBadgeVariant = (value: TicketPriority) => {
   return "secondary";
 };
 
+const statusIcons: Record<TicketStatus, React.ComponentType<{ className?: string }>> = {
+  Nuevo: PlusCircle,
+  Abierto: FolderOpen,
+  "En proceso": Loader2,
+  Visita: MapPin,
+  Resuelto: CheckCircle2,
+  Facturar: Receipt,
+  Pagado: DollarSign,
+};
+
+const statusColors: Record<TicketStatus, string> = {
+  Nuevo: "text-sky-500",
+  Abierto: "text-blue-500",
+  "En proceso": "text-amber-500",
+  Visita: "text-purple-500",
+  Resuelto: "text-emerald-600",
+  Facturar: "text-orange-500",
+  Pagado: "text-lime-600",
+};
+
+const priorityOptions: TicketPriority[] = ["Alta", "Media", "Baja"];
+
+const priorityMeta: Record<
+  TicketPriority,
+  { Icon: React.ComponentType<{ className?: string }>; color: string }
+> = {
+  Alta: { Icon: AlertTriangle, color: "text-rose-500" },
+  Media: { Icon: Activity, color: "text-amber-500" },
+  Baja: { Icon: CheckCircle2, color: "text-emerald-600" },
+};
+
 export default function TicketDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
@@ -109,6 +150,8 @@ export default function TicketDetailPage() {
   const [pendingAudioNotes, setPendingAudioNotes] = useState<
     TicketAudioNote[]
   >([]);
+  const [clientTickets, setClientTickets] = useState<Ticket[]>([]);
+  const [clientTicketsLoading, setClientTicketsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -170,6 +213,22 @@ export default function TicketDetailPage() {
     setFormCurrency(ticket.amountCurrency ?? "UYU");
     setFormDescription(ticket.description ?? "");
     setFormAnnotations(ticket.annotations ?? []);
+
+    if (ticket.clientId) {
+      setClientTicketsLoading(true);
+      void fetch(`${API_URL}/tickets?clientId=${ticket.clientId}`)
+        .then(async (res) => {
+          if (!res.ok) throw new Error("No se pudieron cargar los tickets del cliente");
+          const data = (await res.json()) as Ticket[];
+          setClientTickets(data.filter((t) => t.id !== ticket.id));
+        })
+        .catch(() => {
+          setClientTickets([]);
+        })
+        .finally(() => setClientTicketsLoading(false));
+    } else {
+      setClientTickets([]);
+    }
   }, [ticket]);
 
   const metrics = useMemo(
@@ -215,30 +274,61 @@ export default function TicketDetailPage() {
       if (!ticket) return;
       setIsSaving(true);
       try {
-        const response = await fetch(
-          `${API_URL}/tickets/${ticket.id}`,
-          {
-            method: "PUT",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              status: formStatus,
-              priority: formPriority,
-              visit: formVisit,
-              amount: formAmount,
-              amountCurrency: formCurrency,
-              description: formDescription,
-              annotations: overrides?.annotations ?? formAnnotations,
-              notifyClient,
-            }),
+        let annotationsToSend = overrides?.annotations ?? formAnnotations ?? [];
+
+        // Solo crear log automático si no viene un override específico (ej. registrar nota)
+        if (!overrides?.annotations) {
+          const changes: string[] = [];
+          if (ticket.status !== formStatus) {
+            changes.push(`Estado: <strong>${ticket.status}</strong> → <strong>${formStatus}</strong>`);
           }
-        );
+          if (ticket.priority !== formPriority) {
+            changes.push(`Prioridad: <strong>${ticket.priority}</strong> → <strong>${formPriority}</strong>`);
+          }
+          if (Boolean(ticket.visit) !== Boolean(formVisit)) {
+            changes.push(`Visita: <strong>${ticket.visit ? "Sí" : "No"}</strong> → <strong>${formVisit ? "Sí" : "No"}</strong>`);
+          }
+          if (ticket.amount !== formAmount || ticket.amountCurrency !== formCurrency) {
+            changes.push(
+              `Monto: <strong>${ticket.amount ?? "--"} ${ticket.amountCurrency ?? "UYU"}</strong> → <strong>${formAmount ?? "--"} ${formCurrency}</strong>`
+            );
+          }
+          if ((ticket.description ?? "") !== (formDescription ?? "")) {
+            changes.push("Descripción actualizada");
+          }
+
+          if (changes.length) {
+            const changeNote = {
+              text: `<p><strong>Cambios del ticket</strong></p><ul>${changes.map((c) => `<li>${c}</li>`).join("")}</ul>`,
+              createdAt: new Date().toISOString(),
+              user: "Sistema",
+              attachments: [],
+              audioNotes: [],
+            };
+            annotationsToSend = [changeNote, ...annotationsToSend];
+            setFormAnnotations(annotationsToSend);
+          }
+        }
+
+        const response = await fetch(`${API_URL}/tickets/${ticket.id}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            status: formStatus,
+            priority: formPriority,
+            visit: formVisit,
+            amount: formAmount,
+            amountCurrency: formCurrency,
+            description: formDescription,
+            annotations: annotationsToSend,
+            notifyClient,
+          }),
+        });
         if (!response.ok) {
           const serverMessage = await response.text();
-          throw new Error(
-            serverMessage || "No se pudo guardar el ticket."
-          );
+          throw new Error(serverMessage || "No se pudo guardar el ticket.");
         }
         const updated = (await response.json()) as Ticket;
         setTicket(updated);
@@ -519,46 +609,37 @@ export default function TicketDetailPage() {
 
   return (
     <div className="space-y-6 p-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <Link href="/tickets">
-            <Button
-              size="sm"
-              variant="ghost"
-              className="gap-2 rounded-full border border-slate-200 px-3 py-1"
+      <PageHeader
+        title={ticket.title}
+        subtitle={`ID: ${ticket.id} • Cliente: ${ticket.clientName}`}
+        backHref="/tickets"
+        leadingIcon={<TicketIcon className="h-6 w-6 text-slate-800" />}
+        breadcrumbs={[
+          { label: "Tickets", href: "/tickets", icon: <TicketIcon className="h-3 w-3 text-slate-500" /> },
+          { label: `Ticket ${ticket.id}`, icon: <CheckCircle2 className="h-3 w-3 text-slate-500" /> },
+        ]}
+        actions={
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <Badge
+              variant={getStatusBadgeVariant(formStatus)}
+              className="text-sm uppercase"
             >
-              <ArrowLeft className="h-4 w-4" />
-              Volver
-            </Button>
-          </Link>
-          <div>
-            <h1 className="text-2xl font-semibold">{ticket.title}</h1>
-            <p className="text-sm text-muted-foreground">ID: {ticket.id}</p>
-            <p className="text-sm text-muted-foreground">
-              Cliente: {ticket.clientName}
-            </p>
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          <Badge
-            variant={getStatusBadgeVariant(formStatus)}
-            className="text-sm uppercase"
-          >
-            {formStatus}
-          </Badge>
-          <Badge
-            variant={getPriorityBadgeVariant(formPriority)}
-            className="text-sm uppercase"
-          >
-            {formPriority}
-          </Badge>
-          {formVisit && (
-            <Badge variant="outline" className="text-sm uppercase">
-              Visita
+              {formStatus}
             </Badge>
-          )}
-        </div>
-      </div>
+            <Badge
+              variant={getPriorityBadgeVariant(formPriority)}
+              className="text-sm uppercase"
+            >
+              {formPriority}
+            </Badge>
+            {formVisit && (
+              <Badge variant="outline" className="text-sm uppercase">
+                Visita
+              </Badge>
+            )}
+          </div>
+        }
+      />
 
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex flex-wrap gap-3">
@@ -597,37 +678,50 @@ export default function TicketDetailPage() {
               Último registro {sortedAnnotations[0] ? formatDateTime(sortedAnnotations[0].createdAt) : "--"}
             </span>
           </div>
-          <RichTextEditor
-            value={noteDraft}
-            onChange={setNoteDraft}
-            placeholder="Describe la intervención, acciones, resultados o bloqueos."
-            direction="ltr"
-            className="min-h-[220px]"
-          />
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex gap-2">
-              <Button
+          <div className="flex items-center justify-between gap-4 text-xs font-semibold text-muted-foreground">
+            <div className="flex items-center gap-3">
+              <button
                 type="button"
-                variant={isRecording ? "destructive" : "outline"}
-                size="sm"
-                className="gap-2"
+                aria-label={isRecording ? "Detener grabación" : "Grabar nota de voz"}
                 onClick={isRecording ? handleStopRecording : handleStartRecording}
+                className="flex h-9 w-9 items-center justify-center rounded-xl border border-border/60 bg-muted/10 transition hover:border-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               >
-                <Mic className="h-4 w-4" />
-                {isRecording ? "Detener grabación" : "Grabar nota de voz"}
-              </Button>
-
-              <div className="flex items-center space-x-2 bg-slate-50 px-3 py-2 rounded-md border border-slate-200">
-                <Checkbox
-                  id="notifyClient"
-                  checked={notifyClient}
-                  onCheckedChange={(checked) => setNotifyClient(Boolean(checked))}
-                />
-                <Label htmlFor="notifyClient" className="text-xs font-medium cursor-pointer flex items-center gap-2">
-                  <Send className="h-3 w-3 text-muted-foreground" />
-                  Notificar al cliente
-                </Label>
-              </div>
+                {isRecording ? (
+                  <Mic className="h-4 w-4 text-red-500" />
+                ) : (
+                  <Mic className="h-4 w-4 text-primary" />
+                )}
+              </button>
+              <span className="text-[11px] uppercase tracking-wide text-slate-500">
+                {pendingAudioNotes.length} audios
+              </span>
+              <button
+                type="button"
+                aria-label="Adjuntar archivos"
+                onClick={() => fileInputRef.current?.click()}
+                className="flex h-9 w-9 items-center justify-center rounded-xl border border-border/60 bg-muted/10 transition hover:border-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              >
+                <Paperclip className="h-4 w-4" />
+              </button>
+              <span className="text-[11px] uppercase tracking-wide text-slate-500">
+                {pendingAttachments.length} archivos
+              </span>
+              <button
+                type="button"
+                aria-pressed={notifyClient}
+                aria-label="Notificar al cliente"
+                onClick={() => setNotifyClient((prev) => !prev)}
+                className={`flex h-9 w-9 items-center justify-center rounded-xl border bg-muted/10 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ${
+                  notifyClient
+                    ? "border-emerald-500 text-emerald-600"
+                    : "border-border/60 text-muted-foreground"
+                }`}
+              >
+                <Send className="h-4 w-4" />
+              </button>
+              <span className="text-[11px] uppercase tracking-wide text-slate-500">
+                {notifyClient ? "Notificación activa" : "Sin notificación"}
+              </span>
             </div>
             <Button
               className="ml-auto"
@@ -637,128 +731,13 @@ export default function TicketDetailPage() {
               Registrar actividad
             </Button>
           </div>
-
-          <div className="space-y-3">
-            <div className="grid gap-3 lg:grid-cols-[1.2fr_0.8fr]">
-              <label
-                onDrop={handleDrop}
-                onDragOver={handleDragOver}
-                className="group relative flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-border/60 bg-muted/5 p-4 text-center text-sm text-muted-foreground transition hover:border-primary/70"
-              >
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  className="hidden"
-                  multiple
-                  onChange={handleFileInputChange}
-                />
-                <Paperclip className="h-5 w-5 text-muted-foreground" />
-                <p>Arrastra archivos o toca para seleccionarlos</p>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={(event) => {
-                    event.preventDefault();
-                    fileInputRef.current?.click();
-                  }}
-                >
-                  Subir adjuntos
-                </Button>
-              </label>
-              <div className="flex flex-col gap-2 rounded-2xl border border-border/70 bg-slate-50 px-3 py-3 text-sm text-slate-700 shadow-sm">
-                <div className="flex items-center justify-between text-xs text-slate-500">
-                  <span className="font-semibold text-slate-900">
-                    Adjuntos
-                  </span>
-                  <span>{pendingAttachments.length} en cola</span>
-                </div>
-                <div className="space-y-2 overflow-y-auto">
-                  {pendingAttachments.length ? (
-                    pendingAttachments.map((attachment) => (
-                      <div
-                        key={attachment.id}
-                        className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white/70 px-3 py-2 text-xs text-slate-600"
-                      >
-                        <div className="flex items-center gap-1">
-                          <Paperclip className="h-4 w-4 text-slate-500" />
-                          <div>
-                            <p className="font-medium text-slate-900">
-                              {attachment.name}
-                            </p>
-                            <p className="text-[11px] text-slate-500">
-                              {formatBytes(attachment.size)}
-                            </p>
-                          </div>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="text-destructive"
-                          onClick={() =>
-                            handleRemovePendingAttachment(attachment.id)
-                          }
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    ))
-                  ) : (
-                    <p className="text-xs text-muted-foreground">
-                      Sin adjuntos todavía.
-                    </p>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-2 rounded-2xl border border-border/70 bg-slate-50 px-4 py-3">
-              <div className="flex items-center justify-between text-xs text-slate-500">
-                <span className="font-semibold text-slate-900">
-                  Notas de voz
-                </span>
-                <span>{pendingAudioNotes.length} grabaciones</span>
-              </div>
-              <div className="space-y-2">
-                {pendingAudioNotes.length ? (
-                  pendingAudioNotes.map((audio) => (
-                    <div
-                      key={audio.id}
-                      className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white/70 px-3 py-2 text-xs text-slate-600"
-                    >
-                      <div className="flex items-center gap-2">
-                        <PlayCircle className="h-4 w-4 text-slate-500" />
-                        <div className="text-[11px]">
-                          {formatDateTime(audio.createdAt)}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handlePlayAudio(audio)}
-                        >
-                          <PlayCircle className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="text-destructive"
-                          onClick={() => handleRemovePendingAudio(audio.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-xs text-muted-foreground">
-                    No hay notas de voz grabadas.
-                  </p>
-                )}
-              </div>
-            </div>
-          </div>
+          <RichTextEditor
+            value={noteDraft}
+            onChange={setNoteDraft}
+            placeholder="Describe la intervención, acciones, resultados o bloqueos."
+            direction="ltr"
+            className="min-h-[220px]"
+          />
         </section>
 
         <section className="space-y-5 rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm">
@@ -794,16 +773,32 @@ export default function TicketDetailPage() {
                   }
                   disabled={isLocked}
                 >
-                  <SelectTrigger id="status" className="w-full">
-                    <SelectValue placeholder="Selecciona un estado" />
+                  <SelectTrigger id="status" className="w-full text-left">
+                    <SelectValue>
+                      <div className="flex items-center gap-2">
+                        {(() => {
+                          const Icon = statusIcons[formStatus] ?? Loader2;
+                          const color = statusColors[formStatus] ?? "text-slate-500";
+                          return <Icon className={`h-4 w-4 ${color}`} />;
+                        })()}
+                        <span className="leading-none">{formStatus}</span>
+                      </div>
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
-                    {["Nuevo", "Abierto", "En proceso", "Visita", "Resuelto", "Facturar"].map(
-                      (status) => (
-                        <SelectItem key={status} value={status}>
-                          {status}
-                        </SelectItem>
-                      )
+                    {(["Nuevo", "Abierto", "En proceso", "Visita", "Resuelto", "Facturar", "Pagado"] as TicketStatus[]).map(
+                      (status) => {
+                        const Icon = statusIcons[status] ?? Loader2;
+                        const color = statusColors[status] ?? "text-slate-500";
+                        return (
+                          <SelectItem key={status} value={status}>
+                            <div className="flex items-center gap-2">
+                              <Icon className={`h-4 w-4 ${color}`} />
+                              <span className="leading-none">{status}</span>
+                            </div>
+                          </SelectItem>
+                        );
+                      }
                     )}
                   </SelectContent>
                 </Select>
@@ -818,14 +813,30 @@ export default function TicketDetailPage() {
                   disabled={isLocked}
                 >
                   <SelectTrigger id="priority" className="w-full">
-                    <SelectValue placeholder="Selecciona prioridad" />
+                  <SelectValue>
+                    <div className="flex items-center gap-2">
+                      {(() => {
+                        const meta = priorityMeta[formPriority];
+                        const Icon = meta.Icon;
+                        return <Icon className={`h-4 w-4 ${meta.color}`} />;
+                      })()}
+                      <span className="leading-none">{formPriority}</span>
+                    </div>
+                  </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
-                    {["Alta", "Media", "Baja"].map((priority) => (
-                      <SelectItem key={priority} value={priority}>
-                        {priority}
-                      </SelectItem>
-                    ))}
+                    {priorityOptions.map((priority) => {
+                      const meta = priorityMeta[priority];
+                      const Icon = meta.Icon;
+                      return (
+                        <SelectItem key={priority} value={priority}>
+                          <div className="flex items-center gap-2">
+                            <Icon className={`h-4 w-4 ${meta.color}`} />
+                            <span className="leading-none">{priority}</span>
+                          </div>
+                        </SelectItem>
+                      );
+                    })}
                   </SelectContent>
                 </Select>
               </div>
@@ -865,12 +876,42 @@ export default function TicketDetailPage() {
                     }
                     disabled={isLocked}
                   >
-                    <SelectTrigger className="w-[110px]">
-                      <SelectValue placeholder="Moneda" />
+                    <SelectTrigger className="w-[130px] text-left">
+                      <SelectValue>
+                        <div className="flex items-center gap-2">
+                          <ReactCountryFlag
+                            svg
+                            countryCode={formCurrency === "USD" ? "US" : "UY"}
+                            className="inline-block h-4 w-5"
+                            aria-label={formCurrency}
+                          />
+                          <span className="text-sm font-semibold">{formCurrency}</span>
+                        </div>
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="UYU">UYU</SelectItem>
-                      <SelectItem value="USD">USD</SelectItem>
+                      <SelectItem value="UYU">
+                        <div className="flex items-center gap-2">
+                          <ReactCountryFlag
+                            svg
+                            countryCode="UY"
+                            className="inline-block h-4 w-5"
+                            aria-label="UYU"
+                          />
+                          <span>UYU</span>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="USD">
+                        <div className="flex items-center gap-2">
+                          <ReactCountryFlag
+                            svg
+                            countryCode="US"
+                            className="inline-block h-4 w-5"
+                            aria-label="USD"
+                          />
+                          <span>USD</span>
+                        </div>
+                      </SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -889,25 +930,6 @@ export default function TicketDetailPage() {
               />
             </div>
 
-            <div className="flex flex-wrap gap-2 text-xs">
-              <Badge variant="outline" className="flex items-center gap-2">
-                <Clock4 className="h-3 w-3 text-slate-400" />
-                Creado el {formatDateTime(ticket.createdAt)}
-              </Badge>
-              <Badge
-                variant={
-                  ticket.hasActiveContract ? "secondary" : "outline"
-                }
-                className="flex items-center gap-2"
-              >
-                <FileText className="h-3 w-3 text-slate-400" />
-                Contrato: {contractTitle}
-              </Badge>
-              <Badge variant="outline" className="flex items-center gap-2">
-                <MapPin className="h-3 w-3 text-slate-400" />
-                SLA: {contractSla}
-              </Badge>
-            </div>
           </div>
         </section>
       </div>
@@ -1050,3 +1072,4 @@ export default function TicketDetailPage() {
     </div>
   );
 }
+

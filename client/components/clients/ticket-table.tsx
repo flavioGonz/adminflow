@@ -20,6 +20,7 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Edit,
   Trash2,
@@ -34,11 +35,21 @@ import {
   Settings,
   ArrowUpDown,
   Lock,
+  Unlock,
+  PlusCircle,
+  FolderOpen,
+  Loader2,
+  MapPin,
+  CheckCircle,
+  Receipt,
+  DollarSign,
+  Timer,
 } from "lucide-react";
 import { DeleteTicketDialog } from "./delete-ticket-dialog";
 import { Ticket } from "@/types/ticket";
 import { Contract } from "@/types/contract";
 import { API_URL } from "@/lib/http";
+import { toast } from "sonner";
 
 interface TicketTableProps {
   tickets: Ticket[];
@@ -95,6 +106,8 @@ export function TicketTable({
   const [contractsByClient, setContractsByClient] = useState<
     Record<string, Contract>
   >({});
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [unlockedTickets, setUnlockedTickets] = useState<Set<string>>(new Set());
   const ticketsPerPage = 15;
 
   useEffect(() => {
@@ -174,6 +187,12 @@ export function TicketTable({
     }
   };
 
+  const handleSetPage = (page: number) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page);
+    }
+  };
+
   const requestSort = (key: SortKey) => {
     let direction: "ascending" | "descending" = "ascending";
     if (
@@ -205,6 +224,74 @@ export function TicketTable({
     }
   };
 
+  const statusOptions: Ticket["status"][] = ["Nuevo", "Abierto", "En proceso", "Visita", "Resuelto", "Facturar", "Pagado"];
+  const statusIcons: Record<Ticket["status"], React.ComponentType<{ className?: string }>> = {
+    Nuevo: PlusCircle,
+    Abierto: FolderOpen,
+    "En proceso": Loader2,
+    Visita: MapPin,
+    Resuelto: CheckCircle,
+    Facturar: Receipt,
+    Pagado: DollarSign,
+  };
+  const statusIconClasses: Record<Ticket["status"], string> = {
+    Nuevo: "text-sky-500",
+    Abierto: "text-blue-500",
+    "En proceso": "text-amber-500",
+    Visita: "text-purple-500",
+    Resuelto: "text-emerald-600",
+    Facturar: "text-orange-500",
+    Pagado: "text-lime-600",
+  };
+
+  const isRowLocked = (ticket: Ticket) =>
+    ticket.status === "Resuelto" && !unlockedTickets.has(ticket.id);
+
+  const handleStatusChange = async (ticket: Ticket, value: Ticket["status"]) => {
+    setUpdatingId(ticket.id);
+    try {
+      const response = await fetch(`${API_URL}/tickets/${ticket.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...ticket, status: value }),
+      });
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || `Error al actualizar estado (${response.status})`);
+      }
+      const updated = await response.json();
+      window.dispatchEvent(new Event("tickets:refresh"));
+      toast.success(`Estado actualizado a ${value}`);
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo actualizar el estado");
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  const toggleLock = (ticket: Ticket) => {
+    setUnlockedTickets((prev) => {
+      const next = new Set(prev);
+      if (next.has(ticket.id)) {
+        next.delete(ticket.id);
+      } else {
+        next.add(ticket.id);
+      }
+      return next;
+    });
+  };
+
+  const formatDateTimeWithTime = (timestamp: string) => {
+    return new Date(timestamp).toLocaleString("es-UY", {
+      timeZone: "America/Montevideo",
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
   const TimeAgo = ({ timestamp }: { timestamp: string }) => {
     const [timeAgo, setTimeAgo] = useState('');
 
@@ -231,7 +318,12 @@ export function TicketTable({
       return () => clearInterval(interval);
     }, [timestamp]);
 
-    return <span className="text-xs text-gray-500">({timeAgo})</span>;
+    return (
+      <span className="flex items-center gap-1 text-xs text-gray-500">
+        <Timer className="h-3.5 w-3.5 animate-spin [animation-duration:4s]" />
+        {timeAgo}
+      </span>
+    );
   };
 
   return (
@@ -296,16 +388,21 @@ export function TicketTable({
                 <TableRow
                   key={ticket.id}
                   onClick={() => {
-                    if (ticket.status !== "Pagado") {
+                    if (!isRowLocked(ticket) && ticket.status !== "Pagado") {
                       router.push(`/tickets/${ticket.id}`);
                     }
                   }}
-                  className={`cursor-pointer ${ticket.status === "Pagado" ? "opacity-70" : ""}`}
-                  aria-disabled={ticket.status === "Pagado"}
+                  className={`${isRowLocked(ticket) ? "cursor-not-allowed opacity-60" : "cursor-pointer"} ${ticket.status === "Pagado" ? "opacity-70" : ""}`}
+                  aria-disabled={ticket.status === "Pagado" || isRowLocked(ticket)}
                 >
                   <TableCell className="font-medium">{ticket.id}</TableCell>
                   <TableCell>
-                    {new Date(ticket.createdAt).toLocaleDateString()} <TimeAgo timestamp={ticket.createdAt} />
+                    <div className="flex flex-col">
+                      <span className="text-sm font-semibold text-slate-900">
+                        {formatDateTimeWithTime(ticket.createdAt)}
+                      </span>
+                      <TimeAgo timestamp={ticket.createdAt} />
+                    </div>
                   </TableCell>
                   <TableCell>{ticket.clientName || "Cliente sin nombre"}</TableCell>
                   <TableCell>
@@ -348,16 +445,54 @@ export function TicketTable({
                     })()}
                   </TableCell>
                   <TableCell>{ticket.title}</TableCell>
-                  <TableCell>
-                    <Badge variant={getStatusVariant(ticket.status)}>
-                      {ticket.status === "Pagado" ? "Pagado · Resuelto" : ticket.status}
-                    </Badge>
+                  <TableCell onClick={(e) => e.stopPropagation()}>
+                    <Select
+                      value={ticket.status}
+                      onValueChange={(value) => handleStatusChange(ticket, value as Ticket["status"])}
+                      disabled={updatingId === ticket.id || isRowLocked(ticket)}
+                    >
+                      <SelectTrigger className="w-40 text-left pl-3">
+                        <div className="flex items-center gap-2">
+                          {(() => {
+                            const Icon = statusIcons[ticket.status] ?? Activity;
+                            const color = statusIconClasses[ticket.status] ?? "text-slate-500";
+                            return <Icon className={`h-4 w-4 ${color}`} />;
+                          })()}
+                          <span className="leading-none">{ticket.status}</span>
+                        </div>
+                      </SelectTrigger>
+                      <SelectContent className="min-w-[180px]">
+                        {statusOptions.map((option) => {
+                          const Icon = statusIcons[option] ?? Activity;
+                          const color = statusIconClasses[option] ?? "text-slate-500";
+                          return (
+                            <SelectItem key={option} value={option}>
+                              <div className="flex items-center gap-2">
+                                <Icon className={`h-4 w-4 ${color}`} />
+                                <span className="leading-none">{option}</span>
+                              </div>
+                            </SelectItem>
+                          );
+                        })}
+                      </SelectContent>
+                    </Select>
                   </TableCell>
                   <TableCell className="text-right">
                     <div
                       className="flex justify-end space-x-2"
                       onClick={(event) => event.stopPropagation()}
                     >
+                      {ticket.status === "Resuelto" && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title={isRowLocked(ticket) ? "Desbloquear fila" : "Bloquear fila"}
+                          onClick={() => toggleLock(ticket)}
+                          className={isRowLocked(ticket) ? "text-slate-500" : "text-emerald-600"}
+                        >
+                          {isRowLocked(ticket) ? <Lock className="h-4 w-4" /> : <Unlock className="h-4 w-4" />}
+                        </Button>
+                      )}
                       {ticket.status === "Pagado" && onReopenTicket && (
                         <Button
                           variant="ghost"
@@ -370,7 +505,7 @@ export function TicketTable({
                           <Lock className="h-4 w-4" />
                         </Button>
                       )}
-                      <Button variant="ghost" size="icon" asChild>
+                      <Button variant="ghost" size="icon" asChild disabled={isRowLocked(ticket)}>
                         <Link href={`/tickets/${ticket.id}`}>
                           <Edit className="h-4 w-4" />
                         </Link>
@@ -379,7 +514,7 @@ export function TicketTable({
                         ticket={ticket}
                         onTicketDeleted={onTicketDeleted}
                       >
-                        <Button variant="ghost" size="icon">
+                        <Button variant="ghost" size="icon" disabled={isRowLocked(ticket)}>
                           <Trash2 className="h-4 w-4 text-red-500" />
                         </Button>
                       </DeleteTicketDialog>
@@ -400,20 +535,36 @@ export function TicketTable({
       <Pagination>
         <PaginationContent>
           <PaginationItem>
-            <PaginationPrevious
-              onClick={currentPage === 1 ? undefined : handlePreviousPage}
-              aria-disabled={currentPage === 1}
-              className={currentPage === 1 ? "opacity-40 pointer-events-none" : undefined}
-            />
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handlePreviousPage}
+              disabled={currentPage === 1}
+            >
+              Anterior
+            </Button>
           </PaginationItem>
+          {Array.from({ length: totalPages }, (_, index) => index + 1).map((page) => (
+            <PaginationItem key={page}>
+              <Button
+                variant={page === currentPage ? "default" : "ghost"}
+                size="sm"
+                className={page === currentPage ? "bg-slate-900 text-white hover:bg-slate-800" : undefined}
+                onClick={() => handleSetPage(page)}
+              >
+                {page}
+              </Button>
+            </PaginationItem>
+          ))}
           <PaginationItem>
-            <PaginationNext
-              onClick={currentPage === totalPages ? undefined : handleNextPage}
-              aria-disabled={currentPage === totalPages}
-              className={
-                currentPage === totalPages ? "opacity-40 pointer-events-none" : undefined
-              }
-            />
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleNextPage}
+              disabled={currentPage === totalPages}
+            >
+              Siguiente
+            </Button>
           </PaginationItem>
         </PaginationContent>
       </Pagination>

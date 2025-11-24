@@ -2,7 +2,7 @@ import markerIcon from "leaflet/dist/images/marker-icon.png";
 import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
 import markerShadow from "leaflet/dist/images/marker-shadow.png";
 
-let DefaultLeafletIcon;
+let DefaultLeafletIcon: any;
 if (typeof window !== "undefined") {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { Icon } = require("leaflet");

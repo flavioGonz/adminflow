@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
@@ -7,6 +7,7 @@ import { useParams } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/layout/page-header";
 import {
   Table,
   TableBody,
@@ -36,20 +37,28 @@ import {
 } from "@/components/ui/select";
 import {
   ArrowLeft,
+  Plus,
   User,
+  Users,
+  Hash,
   Mail,
   Ticket as TicketIcon,
   DollarSign,
   FileSpreadsheet,
   FileDown,
+  FileText,
   Award,
   Lock,
   Unlock,
+  Folder,
+  Server,
+  Network,
+  Save,
+  Trash2,
 } from "lucide-react";
 import { updateClient } from "@/lib/api-clients";
 import { API_URL } from "@/lib/http";
 import "leaflet/dist/leaflet.css";
-import L from "leaflet";
 
 const DEFAULT_POSITION: [number, number] = [-34.9, -56.1];
 
@@ -66,50 +75,63 @@ function MapCard({
   onLocationSave?: (lat: number, lng: number) => void;
 }) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
-  const mapInstanceRef = useRef<L.Map | null>(null);
-  const markerRef = useRef<L.Marker | null>(null);
+  const mapInstanceRef = useRef<any>(null);
+  const markerRef = useRef<any>(null);
   const [isLocked, setIsLocked] = useState(true);
+  const [isClient, setIsClient] = useState(false);
+  const pinIconRef = useRef<any>(null);
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   // Initialize Map
   useEffect(() => {
-    if (!mapContainerRef.current || mapInstanceRef.current) return;
+    if (!isClient || !mapContainerRef.current || mapInstanceRef.current) return;
 
-    const initialPos = getClientPosition(client);
+    const initMap = async () => {
+      const L = (await import("leaflet")).default;
 
-    const map = L.map(mapContainerRef.current, {
-      scrollWheelZoom: false,
-    }).setView(initialPos, 13);
+      const initialPos = getClientPosition(client);
 
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a>',
-    }).addTo(map);
+      const map = L.map(mapContainerRef.current!, {
+        scrollWheelZoom: true,
+      }).setView(initialPos, 13);
 
-    // Fix icons
-    const iconRetinaUrl = 'leaflet/dist/images/marker-icon-2x.png';
-    const iconUrl = 'leaflet/dist/images/marker-icon.png';
-    const shadowUrl = 'leaflet/dist/images/marker-shadow.png';
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a>',
+      }).addTo(map);
 
-    // @ts-ignore
-    delete L.Icon.Default.prototype._getIconUrl;
-    L.Icon.Default.mergeOptions({
-      iconRetinaUrl: iconRetinaUrl,
-      iconUrl: iconUrl,
-      shadowUrl: shadowUrl,
-    });
+      // Lucide-like pin using divIcon to avoid missing assets
+      pinIconRef.current = L.divIcon({
+        className: "map-pin-icon",
+        html: `<div style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:50%;background:#0ea5e9;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.2);color:white;">
+          <svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'>
+            <path d='M12 22s8-4.5 8-10a8 8 0 1 0-16 0c0 5.5 8 10 8 10Z'/>
+            <circle cx='12' cy='12' r='3'/>
+          </svg>
+        </div>`,
+        iconAnchor: [16, 32],
+      });
 
-    const marker = L.marker(initialPos, {
-      draggable: !isLocked,
-    }).addTo(map);
+      const marker = L.marker(initialPos, {
+        draggable: true,
+        autoPan: true,
+        icon: pinIconRef.current,
+      }).addTo(map);
 
-    markerRef.current = marker;
-    mapInstanceRef.current = map;
+      markerRef.current = marker;
+      mapInstanceRef.current = map;
 
-    marker.on('dragend', (event) => {
-      const { lat, lng } = event.target.getLatLng();
-      if (onLocationSave) {
-        onLocationSave(lat, lng);
-      }
-    });
+      marker.on('dragend', (event: any) => {
+        const { lat, lng } = event.target.getLatLng();
+        if (onLocationSave) {
+          onLocationSave(lat, lng);
+        }
+      });
+    };
+
+    initMap();
 
     return () => {
       if (mapInstanceRef.current) {
@@ -118,34 +140,37 @@ function MapCard({
         markerRef.current = null;
       }
     };
-  }, []);
+  }, [isClient]);
 
   // Update marker position and draggable state
   useEffect(() => {
-    if (!markerRef.current || !mapInstanceRef.current) return;
+    if (!markerRef.current || !mapInstanceRef.current || !isClient) return;
 
-    const newPos = getClientPosition(client);
-    markerRef.current.setLatLng(newPos);
-    mapInstanceRef.current.setView(newPos);
+    const updateMap = async () => {
+      const newPos = getClientPosition(client);
+      markerRef.current.setLatLng(newPos);
+      mapInstanceRef.current.setView(newPos);
 
-    if (isLocked) {
-      markerRef.current.dragging?.disable();
-    } else {
-      markerRef.current.dragging?.enable();
-    }
-  }, [client.latitude, client.longitude, isLocked]);
+      if (isLocked) {
+        markerRef.current.dragging?.disable();
+      } else {
+        markerRef.current.dragging?.enable();
+      }
+    };
+
+    updateMap();
+  }, [client.latitude, client.longitude, isLocked, isClient]);
 
   return (
-    <section className="relative isolate h-72 shrink-0 overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 shadow-xl">
+    <section className="relative isolate h-full min-h-[320px] shrink-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div
         ref={mapContainerRef}
         className="absolute inset-0 h-full w-full"
         style={{ zIndex: 0 }}
       />
-      <div className="absolute inset-0 bg-gradient-to-b from-black/30 to-black/70 pointer-events-none" style={{ zIndex: 1 }} />
-      <div className="absolute right-3 top-3 flex items-center gap-2 rounded-full border border-white/20 bg-slate-900/60 px-3 py-1 text-xs font-semibold text-white shadow-lg backdrop-blur" style={{ zIndex: 2 }}>
+      <div className="absolute right-3 top-3 flex items-center gap-2 rounded-full border border-slate-200 bg-white/90 px-3 py-1 text-xs font-semibold text-slate-700 shadow-md backdrop-blur" style={{ zIndex: 2 }}>
         <button
-          className="flex items-center gap-1 text-[0.65rem] uppercase tracking-widest text-white outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-white"
+          className="flex items-center gap-1 text-[0.65rem] uppercase tracking-widest text-slate-700 outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-slate-200"
           onClick={() => setIsLocked((prev) => !prev)}
           type="button"
         >
@@ -285,6 +310,14 @@ export default function ClientDetailPage() {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [savingSection, setSavingSection] = useState<string | null>(null);
+  const [showRackDesigner, setShowRackDesigner] = useState(false);
+  const [rackName, setRackName] = useState("Rack principal");
+  const [rackHeight, setRackHeight] = useState(42);
+  const [patchPanels, setPatchPanels] = useState<
+    { id: number; name: string; ports: number }[]
+  >([
+    { id: 1, name: "Patch Panel 1", ports: 24 },
+  ]);
 
   const fetchClient = useCallback(async () => {
     if (!id) return;
@@ -403,6 +436,36 @@ export default function ClientDetailPage() {
     fetchContracts,
   ]);
 
+  const handleAddPatchPanel = () => {
+    setPatchPanels((prev) => [
+      ...prev,
+      { id: Date.now(), name: `Patch Panel ${prev.length + 1}`, ports: 24 },
+    ]);
+  };
+
+  const handlePatchPanelChange = (
+    id: number,
+    field: "name" | "ports",
+    value: string
+  ) => {
+    setPatchPanels((prev) =>
+      prev.map((panel) =>
+        panel.id === id
+          ? { ...panel, [field]: field === "ports" ? Number(value) || 0 : value }
+          : panel
+      )
+    );
+  };
+
+  const handleRemovePatchPanel = (id: number) => {
+    setPatchPanels((prev) => prev.filter((panel) => panel.id !== id));
+  };
+
+  const handleSaveRack = () => {
+    toast.success("Rack guardado para el cliente");
+    setShowRackDesigner(false);
+  };
+
   const movementRows = useMemo<MovementRow[]>(() => {
     const rows: MovementRow[] = [];
 
@@ -410,7 +473,7 @@ export default function ClientDetailPage() {
       rows.push({
         id: ticket.id,
         type: "Ticket",
-        description: ticket.title ?? ticket.subject ?? "Ticket sin título",
+        description: ticket.title ?? ticket.subject ?? "Ticket sin Titulo",
         status: ticket.status,
         date: ticket.createdAt,
       })
@@ -480,12 +543,18 @@ export default function ClientDetailPage() {
     ],
     [tickets.length, payments.length, repositoryItems.length, contracts.length]
   );
+  const infoPillIcons: Record<string, LucideIcon> = {
+    Tickets: TicketIcon,
+    Pagos: DollarSign,
+    Repositorio: Folder,
+    Contratos: FileText,
+  };
 
   const exportTicketsExcel = () => {
     const worksheet = XLSX.utils.json_to_sheet(
       tickets.map((ticket) => ({
         ID: ticket.id,
-        Título: ticket.title ?? "Ticket sin título",
+        Titulo: ticket.title ?? "Ticket sin Titulo",
         Estado: ticket.status,
         Fecha: ticket.createdAt,
       }))
@@ -512,10 +581,10 @@ export default function ClientDetailPage() {
   const exportTicketsPDF = () => {
     const doc = new jsPDF();
     autoTable(doc, {
-      head: [["ID", "Título", "Estado", "Fecha"]],
+      head: [["ID", "Titulo", "Estado", "Fecha"]],
       body: tickets.map((ticket) => [
         ticket.id,
-        ticket.title ?? "Ticket sin título",
+        ticket.title ?? "Ticket sin Titulo",
         ticket.status,
         ticket.createdAt,
       ]),
@@ -563,47 +632,82 @@ export default function ClientDetailPage() {
     return <div className="p-6 text-red-500">Error: {error}</div>;
   }
 
+
   if (!client) {
     return <div className="p-6">Cliente no encontrado.</div>;
   }
 
+  const resourceCards = [
+    {
+      title: "Datos / Accesos",
+      description: "Credenciales y dispositivos",
+      icon: Lock,
+      href: `/clients/${client.id}/repository/access`,
+      accent: "from-blue-50 to-indigo-50",
+    },
+    {
+      title: "Repositorio",
+      description: "Documentos y archivos del cliente",
+      icon: Folder,
+      href: "/repository",
+      accent: "from-violet-50 to-purple-50",
+    },
+    {
+      title: "Racks",
+      description: "Inventario de racks y posiciones (próximamente)",
+      icon: Server,
+      onClick: () => toast.info("Racks en construcción."),
+      accent: "from-slate-50 to-slate-100",
+    },
+    {
+      title: "Diagramas",
+      description: "Diagramas de red en Excalidraw",
+      icon: Network,
+      onClick: () => window.open("https://excalidraw.com", "_blank", "noopener,noreferrer"),
+      accent: "from-emerald-50 to-teal-50",
+    },
+  ];
+
   return (
     <div className="space-y-6 p-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <Link href="/clients">
-            <Button variant="ghost" size="sm" className="gap-2">
-              <ArrowLeft className="h-4 w-4" />
-              Volver
-            </Button>
-          </Link>
-          <div>
-            <h1 className="text-2xl font-semibold">{client.name}</h1>
-            <p className="text-sm text-muted-foreground">ID: {client.id}</p>
+      <PageHeader
+        title={client.name}
+        subtitle="Ficha completa del cliente con contratos, tickets y pagos vinculados."
+        backHref="/clients"
+        leadingIcon={<User className="h-6 w-6 text-slate-800" />}
+        breadcrumbs={[
+          { label: "Clientes", href: "/clients", icon: <Users className="h-3 w-3 text-slate-500" /> },
+          { label: client.name, icon: <User className="h-3 w-3 text-slate-500" /> },
+        ]}
+        actions={null}
+        breadcrumbAction={
+          <div className="flex flex-wrap gap-2 items-center">
+            <Badge variant="outline" className="flex items-center gap-1.5 bg-white px-2 py-0.5 text-xs font-medium text-slate-700 shadow-sm">
+              <Hash className="h-3.5 w-3.5 text-slate-500" />
+              ID {client.id}
+            </Badge>
+            {infoPills.map((pill) => {
+              const Icon = infoPillIcons[pill.label] ?? Hash;
+              return (
+                <Badge
+                  key={pill.label}
+                  variant="outline"
+                  className="flex items-center gap-1.5 bg-white px-2 py-0.5 text-xs font-medium text-slate-700 shadow-sm"
+                >
+                  <Icon className="h-3.5 w-3.5 text-slate-500" />
+                  <span className="font-semibold text-slate-900">{pill.value}</span>
+                  <span className="text-slate-500">{pill.label}</span>
+                </Badge>
+              );
+            })}
           </div>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {infoPills.map((pill) => (
-            <div
-              key={pill.label}
-              className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-4 py-1.5 text-sm text-slate-600 shadow-sm"
-            >
-              <span className="text-xs uppercase tracking-wide text-slate-400">
-                {pill.label}
-              </span>
-              <span className="text-lg font-semibold text-slate-800">
-                {pill.value}
-              </span>
-              <span className="text-xs text-slate-500">{pill.meta}</span>
-            </div>
-          ))}
-        </div>
-      </div>
+        }
+      />
 
       <section className="grid gap-4 lg:grid-cols-4">
         <EditableClientCard
-          title="Datos de Contacto"
-          description="Información comercial y de comunicación"
+          title="Datos"
+          description="Info Comercial"
           icon={User}
           client={client}
           fields={[
@@ -621,25 +725,52 @@ export default function ClientDetailPage() {
           contracts={contracts}
           selectedContractId={selectedContractId}
           onContractSelect={setSelectedContractId}
+          payments={payments}
         />
-        <Link href={`/clients/${client.id}/repository/access`} className="block h-full">
-          <div className="group cursor-pointer rounded-2xl border border-slate-200 bg-gradient-to-br from-blue-50 to-indigo-50 p-6 shadow-sm transition-all hover:shadow-md hover:border-blue-300 h-full flex flex-col justify-center">
-            <div className="flex flex-col gap-4">
-              <div className="flex items-center gap-3">
-                <div className="rounded-xl bg-blue-100 p-3 group-hover:bg-blue-200 transition-colors">
-                  <Lock className="h-6 w-6 text-blue-600" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="text-lg font-semibold text-slate-800">Datos / Accesos</h3>
-                  <p className="text-sm text-slate-600">Credenciales y dispositivos</p>
-                </div>
-              </div>
-              <div className="flex items-center justify-end">
-                <ArrowLeft className="h-5 w-5 text-slate-400 rotate-180 group-hover:translate-x-1 transition-transform" />
-              </div>
-            </div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="flex items-center gap-2 mb-3">
+            <Lock className="h-5 w-5 text-blue-600" />
+            <h3 className="text-lg font-semibold text-slate-800">Accesos y Recursos</h3>
           </div>
-        </Link>
+          <div className="space-y-3">
+            {resourceCards.map((card) => {
+              const ContentIcon = card.icon;
+              const content = (
+                <div className="group flex items-center justify-between rounded-xl border border-slate-200 bg-gradient-to-r from-white to-slate-50 px-3 py-2 hover:shadow-sm transition-all hover:-translate-y-0.5">
+                  <div className="flex items-center gap-3">
+                    <div className="rounded-lg bg-slate-100 p-2 group-hover:bg-slate-200 transition-colors">
+                      <ContentIcon className="h-5 w-5 text-slate-800" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-slate-800">{card.title}</p>
+                      <p className="text-xs text-slate-500">{card.description}</p>
+                    </div>
+                  </div>
+                  <ArrowLeft className="h-4 w-4 text-slate-400 rotate-180 group-hover:translate-x-1 transition-transform" />
+                </div>
+              );
+
+              if (card.href) {
+                return (
+                  <Link key={card.title} href={card.href} className="block">
+                    {content}
+                  </Link>
+                );
+              }
+
+              return (
+                <button
+                  key={card.title}
+                  type="button"
+                  onClick={card.onClick}
+                  className="w-full text-left"
+                >
+                  {content}
+                </button>
+              );
+            })}
+          </div>
+        </div>
         <MapCard
           client={client}
           onLocationSave={(lat, lng) =>
@@ -647,6 +778,86 @@ export default function ClientDetailPage() {
           }
         />
       </section>
+
+      <Dialog open={showRackDesigner} onOpenChange={setShowRackDesigner}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Server className="h-5 w-5 text-slate-600" />
+              Diseñador de Racks
+            </DialogTitle>
+            <p className="text-sm text-muted-foreground">
+              Define el rack del cliente, su altura y patch panels.
+            </p>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Nombre del rack</Label>
+                <Input value={rackName} onChange={(e) => setRackName(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Altura (U)</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  value={rackHeight}
+                  onChange={(e) => setRackHeight(Number(e.target.value) || 0)}
+                />
+              </div>
+            </div>
+            <div className="flex items-center justify-between">
+              <Label className="text-sm font-semibold">Patch panels</Label>
+              <Button variant="outline" size="sm" className="gap-2" onClick={handleAddPatchPanel}>
+                <Plus className="h-4 w-4" />
+                Agregar
+              </Button>
+            </div>
+            <div className="space-y-3">
+              {patchPanels.map((panel) => (
+                <div
+                  key={panel.id}
+                  className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 flex items-center gap-3"
+                >
+                  <Network className="h-4 w-4 text-slate-600" />
+                  <div className="flex-1 grid grid-cols-2 gap-2">
+                    <Input
+                      value={panel.name}
+                      onChange={(e) => handlePatchPanelChange(panel.id, "name", e.target.value)}
+                      placeholder="Nombre"
+                    />
+                    <Input
+                      type="number"
+                      min={1}
+                      value={panel.ports}
+                      onChange={(e) => handlePatchPanelChange(panel.id, "ports", e.target.value)}
+                      placeholder="Puertos"
+                    />
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="text-red-500"
+                    onClick={() => handleRemovePatchPanel(panel.id)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setShowRackDesigner(false)}>
+                Cancelar
+              </Button>
+              <Button onClick={handleSaveRack} className="gap-2">
+                <Save className="h-4 w-4" />
+                Guardar rack
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
 
 
 
@@ -752,7 +963,7 @@ export default function ClientDetailPage() {
                 >
                   <div>
                     <p className="font-semibold text-slate-800">
-                      {ticket.title ?? "Ticket sin título"}
+                      {ticket.title ?? "Ticket sin Titulo"}
                     </p>
                     <p className="text-xs text-slate-500">
                       {new Date(ticket.createdAt).toLocaleDateString()}
@@ -838,7 +1049,7 @@ export default function ClientDetailPage() {
         </div>
       </section>
 
-    </div>
+    </div >
   );
 }
 
@@ -1019,34 +1230,54 @@ interface ContractSelectionCardProps {
   contracts: ClientContract[];
   selectedContractId: string | null;
   onContractSelect: (id: string | null) => void;
+  payments: Payment[];
 }
 
 function ContractSelectionCard({
   contracts,
   selectedContractId,
   onContractSelect,
+  payments,
 }: ContractSelectionCardProps) {
   const selectedContract = contracts.find(
     (contract) => contract.id === selectedContractId
   );
   const hasContract = Boolean(selectedContract);
 
+  const lastPayments = useMemo(() => {
+    return payments
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 2);
+  }, [payments]);
+
   return (
-    <section className="relative h-full overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-br from-emerald-50 to-green-50 p-6 shadow-sm">
+    <section
+      className={`relative h-full overflow-hidden rounded-2xl border bg-gradient-to-br from-emerald-50 to-green-50 p-6 shadow-sm transition-all duration-500 ${hasContract ? "border-emerald-400 ring-2 ring-emerald-100 ring-offset-2" : "border-slate-200"
+        }`}
+    >
       {/* Animated background icon */}
       <div className="absolute -right-6 -top-6 opacity-10">
         <Award className={`h-32 w-32 text-emerald-600 ${hasContract ? 'animate-pulse' : ''}`} />
       </div>
 
-      <div className="relative z-10 space-y-4">
-        <div className="flex items-center justify-between">
+      <div className="relative z-10 flex h-full flex-col justify-between space-y-4">
+        <div className="flex items-start justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wider text-emerald-700">
               Contrato vigente
             </p>
-            <p className="text-sm text-slate-600 mt-1">
-              {hasContract ? "Contrato activo" : "Sin contrato asignado"}
-            </p>
+            <div className="mt-2">
+              {hasContract ? (
+                <Badge
+                  variant="outline"
+                  className="rounded-lg border-emerald-200 bg-white/80 px-3 py-1 text-sm font-semibold text-emerald-800 shadow-sm backdrop-blur-sm"
+                >
+                  {selectedContract?.title}
+                </Badge>
+              ) : (
+                <p className="text-sm text-slate-600 mt-1">Sin contrato asignado</p>
+              )}
+            </div>
           </div>
           {hasContract && (
             <div className="rounded-full bg-emerald-100 p-2 animate-pulse">
@@ -1055,60 +1286,54 @@ function ContractSelectionCard({
           )}
         </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="contract-select" className="text-xs text-slate-600">
-            Seleccionar contrato
-          </Label>
-          <Select
-            value={selectedContractId ?? CONTRACT_NONE_VALUE}
-            onValueChange={(value) =>
-              onContractSelect(value === CONTRACT_NONE_VALUE ? null : value)
-            }
-          >
-            <SelectTrigger className="bg-white/80 border-emerald-200">
-              <SelectValue placeholder="Selecciona un contrato" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={CONTRACT_NONE_VALUE}>Sin contrato</SelectItem>
-              {contracts.map((contract) => (
-                <SelectItem key={contract.id} value={contract.id}>
-                  {contract.title}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
         {selectedContract && (
-          <div className="space-y-2 text-sm">
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-slate-600">Estado</span>
-              <Badge
-                variant="outline"
-                className="rounded-full border-emerald-300 bg-emerald-100 px-3 py-0.5 text-xs text-emerald-700"
-              >
-                {selectedContract.status ?? "Pendiente"}
-              </Badge>
+          <div className="space-y-4">
+            <div className="flex items-baseline gap-1">
+              <span className="text-2xl font-bold text-slate-800">
+                {formatCurrency(selectedContract.amount ?? 0, selectedContract.currency)}
+              </span>
+              <span className="text-xs font-medium text-slate-500">/ mes</span>
             </div>
-            {selectedContract.startDate && (
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-slate-600">Inicio</span>
-                <span className="text-xs text-slate-700 font-medium">
-                  {formatDate(selectedContract.startDate)}
-                </span>
-              </div>
-            )}
-            {selectedContract.endDate && (
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-slate-600">Vencimiento</span>
-                <span className="text-xs text-slate-700 font-medium">
-                  {formatDate(selectedContract.endDate)}
-                </span>
-              </div>
-            )}
+
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">
+                Últimos pagos
+              </p>
+              {lastPayments.length > 0 ? (
+                <div className="space-y-2">
+                  {lastPayments.map((payment) => (
+                    <div
+                      key={payment.id}
+                      className="flex items-center justify-between rounded-lg border border-emerald-100 bg-white/60 px-3 py-2 text-xs backdrop-blur-sm"
+                    >
+                      <div className="flex items-center gap-2">
+                        <div className={`h-1.5 w-1.5 rounded-full ${payment.status === 'Pagado' ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                        <span className="font-medium text-slate-700">
+                          {new Date(payment.createdAt).toLocaleDateString()}
+                        </span>
+                      </div>
+                      <span className="font-semibold text-slate-900">
+                        {formatCurrency(payment.amount)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-slate-500 italic">No hay pagos registrados</p>
+              )}
+            </div>
           </div>
         )}
       </div>
     </section>
   );
 }
+
+
+
+
+
+
+
+
+

@@ -25,6 +25,9 @@ import { Edit, Trash2 } from "lucide-react";
 import { DeleteTicketDialog } from "./delete-ticket-dialog";
 import { EditTicketDialog } from "@/components/clients/edit-ticket-dialog";
 import { Ticket } from "@/types/ticket";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { API_URL } from "@/lib/http";
+import { toast } from "sonner";
 
 interface TicketTableProps {
   tickets: Ticket[];
@@ -36,6 +39,7 @@ export function TicketTable({ tickets, onTicketUpdated, onTicketDeleted }: Ticke
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const ticketsPerPage = 5;
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
 
   const filteredTickets = tickets.filter(
     (ticket) =>
@@ -93,6 +97,30 @@ export function TicketTable({ tickets, onTicketUpdated, onTicketDeleted }: Ticke
     }
   };
 
+  const statusOptions: Ticket["status"][] = ["Nuevo", "Abierto", "En proceso", "Visita", "Resuelto", "Facturar", "Pagado"];
+
+  const handleStatusChange = async (ticket: Ticket, value: Ticket["status"]) => {
+    setUpdatingId(ticket.id);
+    try {
+      const response = await fetch(`${API_URL}/tickets/${ticket.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...ticket, status: value }),
+      });
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || `Error al actualizar estado (${response.status})`);
+      }
+      const updated = await response.json();
+      onTicketUpdated(updated);
+      toast.success(`Estado actualizado a ${value}`);
+    } catch (err: any) {
+      toast.error(err?.message || "No se pudo actualizar el estado");
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <Input
@@ -122,7 +150,22 @@ export function TicketTable({ tickets, onTicketUpdated, onTicketDeleted }: Ticke
                   <TableCell>{ticket.title}</TableCell>
                   <TableCell>{ticket.clientName}</TableCell>
                   <TableCell>
-                    <Badge variant={getStatusVariant(ticket.status)}>{ticket.status}</Badge>
+                    <Select
+                      value={ticket.status}
+                      onValueChange={(value) => handleStatusChange(ticket, value as Ticket["status"])}
+                      disabled={updatingId === ticket.id}
+                    >
+                      <SelectTrigger className="w-36">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {statusOptions.map((option) => (
+                          <SelectItem key={option} value={option}>
+                            {option}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </TableCell>
                   <TableCell>
                     <Badge variant={getPriorityVariant(ticket.priority)}>{ticket.priority}</Badge>

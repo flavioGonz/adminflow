@@ -16,6 +16,8 @@ import {
     Smartphone,
     Square,
     LucideIcon,
+    Laptop,
+    TerminalSquare,
 } from "lucide-react";
 
 export const ACCESS_TYPES = [
@@ -34,6 +36,8 @@ export const ACCESS_TYPES = [
     { value: "portero", label: "Portero", icon: Mic },
     { value: "pantalla", label: "Pantalla", icon: Tv },
     { value: "celular", label: "Celular", icon: Smartphone },
+    { value: "virtual-linux", label: "Virtual Linux", icon: TerminalSquare },
+    { value: "virtual-windows", label: "Virtual Windows", icon: Laptop },
 ] as const;
 
 export const getAccessIcon = (type: string): LucideIcon => {

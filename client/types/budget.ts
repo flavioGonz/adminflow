@@ -7,6 +7,7 @@ export interface Budget {
   title: string;
   description?: string;
   amount?: number;
+  currency?: string;
   status?: string;
   filePath?: string;
   createdAt: string;

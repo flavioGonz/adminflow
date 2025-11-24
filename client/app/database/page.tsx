@@ -194,15 +194,16 @@ export default function DatabasePage() {
     try {
       const response = await selectDatabaseEngine(engine);
       setSelectedDb(engine);
-      if (response?.data) {
-        setConfig(response.data);
+      const payload: any = (response as any)?.data ?? response;
+      if (payload) {
+        setConfig(payload);
         setFormValues({
-          mongoUri: response.data.mongoUri ?? formValues.mongoUri,
-          mongoDb: response.data.mongoDb ?? formValues.mongoDb,
-          sqlitePath: response.data.sqlitePath ?? formValues.sqlitePath,
+          mongoUri: payload.mongoUri ?? formValues.mongoUri,
+          mongoDb: payload.mongoDb ?? formValues.mongoDb,
+          sqlitePath: payload.sqlitePath ?? formValues.sqlitePath,
         });
       }
-      toast.success(response.message ?? `Motor cambiado a ${engine}`);
+      toast.success((response as any)?.message ?? `Motor cambiado a ${engine}`);
       refreshOverview();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo cambiar el motor.");

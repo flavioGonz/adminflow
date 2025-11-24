@@ -36,7 +36,7 @@ router.post('/clients/:id/access', async (req, res) => {
         const db = getMongoDb();
         if (!db) return res.status(503).json({ message: 'Base de datos no disponible' });
 
-        const { equipo, tipo_equipo, ip, user, pass, comentarios } = req.body;
+        const { equipo, tipo_equipo, ip, user, pass, comentarios, serieMac } = req.body;
 
         if (!equipo || !tipo_equipo) {
             return res.status(400).json({ message: 'Equipo y tipo son requeridos' });
@@ -49,6 +49,7 @@ router.post('/clients/:id/access', async (req, res) => {
             ip: ip || '',
             user: user || '',
             pass: pass || '', // Se guarda en texto plano por requerimiento
+            serieMac: serieMac || '',
             comentarios: comentarios || '',
             createdAt: new Date(),
             updatedAt: new Date()
@@ -76,7 +77,7 @@ router.put('/access/:accessId', async (req, res) => {
         const db = getMongoDb();
         if (!db) return res.status(503).json({ message: 'Base de datos no disponible' });
 
-        const { equipo, tipo_equipo, ip, user, pass, comentarios } = req.body;
+        const { equipo, tipo_equipo, ip, user, pass, comentarios, serieMac } = req.body;
         const accessId = new ObjectId(req.params.accessId);
 
         const updates = {
@@ -88,6 +89,7 @@ router.put('/access/:accessId', async (req, res) => {
         if (ip !== undefined) updates.ip = ip;
         if (user !== undefined) updates.user = user;
         if (pass !== undefined) updates.pass = pass;
+        if (serieMac !== undefined) updates.serieMac = serieMac;
         if (comentarios !== undefined) updates.comentarios = comentarios;
 
         const result = await db.collection('client_accesses').findOneAndUpdate(

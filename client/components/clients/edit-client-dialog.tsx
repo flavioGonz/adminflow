@@ -67,12 +67,18 @@ export function EditClientDialog({ client, onClientUpdated, children }: EditClie
       toast.error("Por favor, complete el campo Nombre.");
       return;
     }
+    const emailValue = email.trim().toLowerCase();
+    const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailValue);
+    if (!emailValue || !isValidEmail) {
+      toast.error("Email inválido. Usa un formato válido (correo@dominio.com).");
+      return;
+    }
 
     const updatedClientData = {
       name,
       alias,
       rut,
-      email,
+      email: emailValue,
       phone,
       address,
       contract,

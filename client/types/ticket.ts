@@ -20,7 +20,10 @@ export interface TicketAttachment {
 
 export interface TicketAudioNote {
   id: string;
-  createdAt: string;
+  name?: string;
+  size?: number;
+  type?: string;
+  createdAt?: string;
   dataUrl?: string;
   url?: string;
   durationSeconds?: number;

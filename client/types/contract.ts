@@ -12,6 +12,8 @@ export interface Contract {
   amount?: number;
   currency?: string;
   filePath?: string;
+  responsibilities?: string;
+  recurrence?: string;
   createdAt?: string;
   updatedAt?: string;
 }

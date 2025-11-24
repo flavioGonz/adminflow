@@ -25,7 +25,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { PlusCircle, User, FileText, BarChart, AlertTriangle, Calendar, Clock } from "lucide-react";
 import { toast } from "sonner";
-import { Ticket } from "@/app/tickets/page";
+import { Ticket } from "@/types/ticket";
 
 interface CreateTicketDialogProps {
   onTicketCreated: (ticket: Ticket) => void;
@@ -153,7 +153,11 @@ export function CreateTicketDialog({ onTicketCreated }: CreateTicketDialogProps)
                 </Select>
               </div>
               <div className="flex items-center space-x-2">
-                <Checkbox id="visit" checked={visit} onCheckedChange={setVisit} />
+                <Checkbox
+                  id="visit"
+                  checked={visit}
+                  onCheckedChange={(checked) => setVisit(checked === true)}
+                />
                 <Label htmlFor="visit">Visita</Label>
               </div>
             </div>

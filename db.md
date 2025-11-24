@@ -18,12 +18,12 @@ La aplicación utiliza una arquitectura de base de datos **híbrida**, donde **S
 | `clients` | Clientes del sistema. | `id`, `name`, `alias`, `rut`, `email`, `phone`, `address`, `latitude`, `longitude`, `contract` (BOOL), `notifications_enabled` (BOOL). |
 | `repository` | Datos técnicos por cliente. | `id`, `client_id` FK, `equipo`, `usuario`, `password`, `mac_serie`, `comentarios`, `name`, `type`, `category`, `format`, `credential`, `notes`, `content`, `file_name`. |
 | `tickets` | Gestión de incidencias. | `id`, `client_id` FK, `title`, `status`, `priority`, `amount`, `visit`, `annotations` (JSON), `description`, `attachments` (JSON), `audioNotes` (JSON). |
-| `contracts` | Contratos de servicio. | `id`, `client_id` FK, `title`, `description`, `startDate`, `endDate`, `status`, `sla`, `contractType`, `amount`, `currency`, `file_path`. |
+| `contracts` | Contratos de servicio. | `id`, `client_id` FK, `title`, `description`, `responsibilities`, `recurrence`, `startDate`, `endDate`, `status`, `sla`, `contractType`, `amount`, `currency`, `file_path`. |
 | `budgets` | Presupuestos generados. | `id`, `client_id` FK, `title`, `description`, `amount`, `status`, `sections` (JSON), `file_path`. |
 | `budget_items` | Líneas de presupuesto. | `id`, `budget_id` FK, `product_id` FK, `description`, `quantity`, `unit_price`. |
 | `products` | Catálogo de servicios/productos. | `id`, `name`, `description`, `manufacturer`, `category`, `price_uyu`, `price_usd`, `badge`, `image_url`. |
 | `payments` | Registro de pagos/cobros. | `id` (UUID string), `invoice`, `ticket_id`, `client_id`, `amount`, `status`, `method`, `concept`, `currency`. |
-| `calendar_events` | Eventos de calendario. | `id`, `title`, `location`, `start`, `end`. |
+| `calendar_events` | Eventos de calendario. | `id`, `title`, `location`, `start`, `end`, `source_type`, `source_id`, `locked`. |
 | `sync_events` | Cola de eventos de sincronización. | `id`, `collection`, `payload` (JSON). Usado para reintentos de sync. |
 | `audit_logs` | Auditoría de acciones del sistema. | `id`, `user`, `action`, `resource`, `details` (JSON), `status`, `ip`, `createdAt`. |
 

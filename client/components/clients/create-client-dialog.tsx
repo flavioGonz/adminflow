@@ -42,8 +42,10 @@ export function CreateClientDialog({ onClientCreated }: CreateClientDialogProps)
       toast.error("Por favor, complete el campo Nombre.");
       return;
     }
-    if (!email.trim()) {
-      toast.error("Por favor, complete el campo Email.");
+    const emailValue = email.trim().toLowerCase();
+    const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailValue);
+    if (!emailValue || !isValidEmail) {
+      toast.error("Email inválido. Usa un formato válido (correo@dominio.com).");
       return;
     }
 
@@ -57,7 +59,7 @@ export function CreateClientDialog({ onClientCreated }: CreateClientDialogProps)
           name: name.trim(),
           alias: alias.trim(),
           rut: rut.trim(),
-          email: email.trim().toLowerCase(),
+          email: emailValue,
           phone: phone.trim(),
           address: address.trim(),
           contract,

@@ -14,21 +14,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-} from "@/components/ui/command";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from "@/components/ui/command";
 import { toast } from "sonner";
 import {
   AlignLeft,
@@ -50,20 +38,22 @@ import { Client } from "@/types/client";
 import { Contract } from "@/types/contract";
 import { PdfViewerModal } from "@/components/contracts/pdf-viewer-modal";
 import { cn } from "@/lib/utils";
+import ReactCountryFlag from "react-country-flag";
 
 const contractStatuses = ["Nuevo", "En curso", "Renovado", "Finalizado"];
-const contractTypes = ["Soporte", "Mantenimiento", "Consultoría", "Proyecto"];
+const contractTypes = ["Soporte", "Mantenimiento", "Consultoria", "Proyecto"];
 
-type Currency = "ARS" | "USD";
+type Currency = "UYU" | "USD";
 
 interface CurrencyOption {
   value: Currency;
   label: string;
+  flagCode: string;
 }
 
 const currencyOptions: CurrencyOption[] = [
-  { value: "ARS", label: "Pesos" },
-  { value: "USD", label: "Dólares" },
+  { value: "UYU", label: "Pesos uruguayos", flagCode: "UY" },
+  { value: "USD", label: "Dolares", flagCode: "US" },
 ];
 
 interface CreateContractDialogProps {
@@ -71,24 +61,23 @@ interface CreateContractDialogProps {
   children: React.ReactNode;
 }
 
-export function CreateContractDialog({
-  onContractCreated,
-  children,
-}: CreateContractDialogProps) {
+export function CreateContractDialog({ onContractCreated, children }: CreateContractDialogProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [clientId, setClientId] = useState("");
   const [clientName, setClientName] = useState("");
   const [clients, setClients] = useState<Client[]>([]);
   const [openCombobox, setOpenCombobox] = useState(false);
+  const [recurrence, setRecurrence] = useState("Mensual");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [responsibilities, setResponsibilities] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [status, setStatus] = useState("Nuevo");
   const [sla, setSla] = useState("");
   const [contractType, setContractType] = useState("");
   const [amount, setAmount] = useState<number>(0);
-  const [currency, setCurrency] = useState<Currency>("ARS");
+  const [currency, setCurrency] = useState<Currency>("UYU");
   const [loading, setLoading] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null);
@@ -118,18 +107,6 @@ export function CreateContractDialog({
     setFilePreviewUrl(null);
   }, [file]);
 
-  const handleFileDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      const droppedFile = e.dataTransfer.files[0];
-      if (droppedFile.type === "application/pdf") {
-        setFile(droppedFile);
-      } else {
-        toast.error("Solo se permiten archivos PDF.");
-      }
-    }
-  };
-
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const selectedFile = e.target.files[0];
@@ -155,6 +132,7 @@ export function CreateContractDialog({
         clientName: clients.find((c) => c.id === clientId)?.name || "",
         title,
         description,
+        responsibilities,
         startDate,
         endDate,
         status,
@@ -162,6 +140,7 @@ export function CreateContractDialog({
         contractType,
         amount,
         currency,
+        recurrence,
       };
 
       const createdContract = await createContract(newContractData);
@@ -175,8 +154,7 @@ export function CreateContractDialog({
       onContractCreated();
       resetForm();
     } catch (error: unknown) {
-      const message =
-        error instanceof Error ? error.message : "Error al crear contrato.";
+      const message = error instanceof Error ? error.message : "Error al crear contrato.";
       toast.error(message);
       console.error("Error creating contract:", error);
     } finally {
@@ -189,13 +167,15 @@ export function CreateContractDialog({
     setClientName("");
     setTitle("");
     setDescription("");
+    setResponsibilities("");
     setStartDate("");
     setEndDate("");
     setStatus("Nuevo");
     setSla("");
     setContractType("");
     setAmount(0);
-    setCurrency("ARS");
+    setCurrency("UYU");
+    setRecurrence("Mensual");
     setFile(null);
   };
 
@@ -205,77 +185,72 @@ export function CreateContractDialog({
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>{children}</DialogTrigger>
-      <DialogContent className="w-full max-w-screen-2xl">
+      <DialogContent className="w-full max-w-screen-2xl md:max-w-5xl">
         <DialogHeader>
           <DialogTitle>Nuevo contrato</DialogTitle>
-          <DialogDescription>
-            Completa los datos principales del acuerdo y genera el registro.
-          </DialogDescription>
+          <DialogDescription>Completa los datos principales del acuerdo y genera el registro.</DialogDescription>
         </DialogHeader>
-        <form
-          onSubmit={handleSubmit}
-          className="space-y-6 py-4"
-        >
+        <form onSubmit={handleSubmit} className="space-y-6 py-4">
           <div className="grid gap-5 md:grid-cols-2">
             <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="clientId" className="text-left">
-                  Cliente
-                </Label>
-                <Popover open={openCombobox} onOpenChange={setOpenCombobox}>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      role="combobox"
-                      aria-expanded={openCombobox}
-                      className="justify-between"
-                    >
-                      {clientName || "Selecciona cliente..."}
-                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 text-muted-foreground" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-full p-0">
-                    <Command>
-                      <CommandInput placeholder="Buscar cliente..." />
-                      <CommandEmpty>No se encontró cliente.</CommandEmpty>
-                      <CommandGroup>
-                        {clients.map((client) => (
-                          <CommandItem
-                            key={client.id}
-                            value={client.name}
-                            onSelect={() => {
-                              setClientId(client.id);
-                              setClientName(client.name);
-                              setOpenCombobox(false);
-                            }}
-                          >
-                            <Check
-                              className={cn(
-                                "mr-2 h-4 w-4",
-                                clientId === client.id ? "opacity-100" : "opacity-0"
-                              )}
-                            />
-                            {client.name}
-                          </CommandItem>
-                        ))}
-                      </CommandGroup>
-                    </Command>
-                  </PopoverContent>
-                </Popover>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label htmlFor="clientId" className="text-left">
+                    Cliente
+                  </Label>
+                  <Popover open={openCombobox} onOpenChange={setOpenCombobox}>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" role="combobox" aria-expanded={openCombobox} className="justify-between">
+                        {clientName || "Selecciona cliente..."}
+                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 text-muted-foreground" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-full p-0">
+                      <Command>
+                        <CommandInput placeholder="Buscar cliente..." />
+                        <CommandEmpty>No se encontro cliente.</CommandEmpty>
+                        <CommandGroup>
+                          {clients.map((client) => (
+                            <CommandItem
+                              key={client.id}
+                              value={client.name}
+                              onSelect={() => {
+                                setClientId(client.id);
+                                setClientName(client.name);
+                                setOpenCombobox(false);
+                              }}
+                            >
+                              <Check className={cn("mr-2 h-4 w-4", clientId === client.id ? "opacity-100" : "opacity-0")} />
+                              {client.name}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-left">Recurrencia</Label>
+                  <Select value={recurrence} onValueChange={setRecurrence}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecciona recurrencia" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Semanal">Semanal</SelectItem>
+                      <SelectItem value="Mensual">Mensual</SelectItem>
+                      <SelectItem value="Anual">Anual</SelectItem>
+                      <SelectItem value="Otro">Otro</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="title" className="text-left">
-                  Título
+                  Titulo
                 </Label>
                 <div className="relative">
                   <Tag className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="title"
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    required
-                    className="pl-10"
-                  />
+                  <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} required className="pl-10" />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -296,7 +271,7 @@ export function CreateContractDialog({
                     />
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    {amountSymbol} {currency === "USD" ? "Dólares" : "Pesos"}
+                    {amountSymbol} {currency === "USD" ? "Dolares" : "Pesos"}
                   </p>
                 </div>
                 <div className="space-y-2">
@@ -307,8 +282,11 @@ export function CreateContractDialog({
                     </SelectTrigger>
                     <SelectContent>
                       {currencyOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
+                        <SelectItem key={option.value} value={option.value} className="flex items-center gap-2">
+                          <span className="inline-flex items-center gap-2">
+                            <ReactCountryFlag svg countryCode={option.flagCode} className="inline-block h-4 w-5" />
+                            {option.label}
+                          </span>
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -324,13 +302,7 @@ export function CreateContractDialog({
                   </Label>
                   <div className="relative">
                     <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="startDate"
-                      type="date"
-                      value={startDate}
-                      onChange={(e) => setStartDate(e.target.value)}
-                      className="pl-10"
-                    />
+                    <Input id="startDate" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="pl-10" />
                   </div>
                 </div>
                 <div className="space-y-2">
@@ -339,13 +311,7 @@ export function CreateContractDialog({
                   </Label>
                   <div className="relative">
                     <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="endDate"
-                      type="date"
-                      value={endDate}
-                      onChange={(e) => setEndDate(e.target.value)}
-                      className="pl-10"
-                    />
+                    <Input id="endDate" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="pl-10" />
                   </div>
                 </div>
               </div>
@@ -376,12 +342,7 @@ export function CreateContractDialog({
                   </Label>
                   <div className="relative">
                     <Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="sla"
-                      value={sla}
-                      onChange={(e) => setSla(e.target.value)}
-                      className="pl-10"
-                    />
+                    <Input id="sla" value={sla} onChange={(e) => setSla(e.target.value)} className="pl-10" />
                   </div>
                 </div>
               </div>
@@ -411,7 +372,7 @@ export function CreateContractDialog({
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="description" className="text-left">
-                Descripción
+                Descripcion
               </Label>
               <div className="relative">
                 <AlignLeft className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
@@ -424,54 +385,50 @@ export function CreateContractDialog({
                 />
               </div>
             </div>
-            <div className="space-y-2">
-              <Label className="text-left">Adjuntar contrato (PDF)</Label>
-              <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="text-sm"
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  <FileText className="mr-2 h-4 w-4" />
-                  Seleccionar archivo
-                </Button>
-                <span>
-                  {file ? (
-                    <span className="font-medium text-foreground">{file.name}</span>
-                  ) : (
-                    "PDF (max 5MB)"
-                  )}
-                </span>
-                {file && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-red-500"
-                    onClick={removeFile}
-                  >
-                    <X className="h-4 w-4" />
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label className="text-left">Deberes y Responsabilidades</Label>
+                <Textarea
+                  value={responsibilities}
+                  onChange={(e) => setResponsibilities(e.target.value)}
+                  className="py-3"
+                  rows={4}
+                  placeholder="Detalle las obligaciones y responsabilidades clave del contrato"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-left">Adjuntar contrato (PDF)</Label>
+                <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                  <Button variant="outline" size="sm" className="text-sm" onClick={() => fileInputRef.current?.click()}>
+                    <FileText className="mr-2 h-4 w-4" />
+                    Seleccionar archivo
                   </Button>
+                  <span>{file ? <span className="font-medium text-foreground">{file.name}</span> : "PDF (max 5MB)"}</span>
+                  {file && (
+                    <Button variant="ghost" size="sm" className="text-red-500" onClick={removeFile}>
+                      <X className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+                <input
+                  ref={fileInputRef}
+                  id="contract-file"
+                  type="file"
+                  className="hidden"
+                  accept=".pdf"
+                  onChange={handleFileChange}
+                />
+                {filePreviewUrl && (
+                  <div className="flex items-center gap-2 text-xs">
+                    <PdfViewerModal filePath={filePreviewUrl}>
+                      <Button variant="ghost" size="icon">
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                    </PdfViewerModal>
+                    <span className="text-muted-foreground">Previsualizar</span>
+                  </div>
                 )}
               </div>
-              <input
-                ref={fileInputRef}
-                id="contract-file"
-                type="file"
-                className="hidden"
-                accept=".pdf"
-                onChange={handleFileChange}
-              />
-              {filePreviewUrl && (
-                <div className="flex items-center gap-2 text-xs">
-                  <PdfViewerModal filePath={filePreviewUrl}>
-                    <Button variant="ghost" size="icon">
-                      <Eye className="h-4 w-4" />
-                    </Button>
-                  </PdfViewerModal>
-                  <span className="text-muted-foreground">Previsualizar</span>
-                </div>
-              )}
             </div>
           </div>
 

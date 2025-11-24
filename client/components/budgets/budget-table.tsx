@@ -23,11 +23,16 @@ import {
   CheckCircle,
   DollarSign,
   Tag,
-  AlignLeft
+  AlignLeft,
+  Package,
+  Calendar,
 } from "lucide-react";
 import { Budget } from "@/types/budget";
 import Link from "next/link";
 import { DeleteBudgetDialog } from "./delete-budget-dialog";
+import ReactCountryFlag from "react-country-flag";
+import { fetchBudgetItems } from "@/lib/api-budgets";
+import { BudgetItem } from "@/types/budget-item";
 
 interface BudgetTableProps {
   budgets: Budget[];
@@ -48,6 +53,10 @@ export function BudgetTable({
     direction: "ascending" | "descending";
   } | null>(null);
   const budgetsPerPage = 10;
+
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const [itemsByBudget, setItemsByBudget] = useState<Record<string, BudgetItem[]>>({});
+  const [loadingItems, setLoadingItems] = useState<Record<string, boolean>>({});
 
   const filteredBudgets = useMemo(() => {
     return budgets.filter(
@@ -105,15 +114,50 @@ export function BudgetTable({
 
   const requestSort = (key: SortKey) => {
     let direction: "ascending" | "descending" = "ascending";
-    if (
-      sortConfig &&
-      sortConfig.key === key &&
-      sortConfig.direction === "ascending"
-    ) {
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === "ascending") {
       direction = "descending";
     }
     setSortConfig({ key, direction });
   };
+
+  const toggleExpand = async (budgetId: string) => {
+    setExpandedRows((prev) => {
+      const next = new Set(prev);
+      if (next.has(budgetId)) {
+        next.delete(budgetId);
+      } else {
+        next.add(budgetId);
+      }
+      return next;
+    });
+
+    if (!itemsByBudget[budgetId]) {
+      setLoadingItems((prev) => ({ ...prev, [budgetId]: true }));
+      try {
+        const items = await fetchBudgetItems(budgetId);
+        setItemsByBudget((prev) => ({ ...prev, [budgetId]: items }));
+      } catch (error) {
+        console.error("Error cargando items de presupuesto", error);
+      } finally {
+        setLoadingItems((prev) => ({ ...prev, [budgetId]: false }));
+      }
+    }
+  };
+
+  const currencyInfo = (currency?: string) => {
+    if (!currency) return { label: "UYU", code: "UY" };
+    const norm = currency.toUpperCase();
+    if (norm === "USD" || norm === "US" || norm === "DOLAR") {
+      return { label: "USD", code: "US" };
+    }
+    if (norm === "UYU" || norm === "UY" || norm === "PESO") {
+      return { label: "UYU", code: "UY" };
+    }
+    return { label: norm, code: undefined };
+  };
+
+  const formatCurrency = (value: number, code: string) =>
+    new Intl.NumberFormat("es-UY", { style: "currency", currency: code }).format(value);
 
   return (
     <div className="space-y-4">
@@ -121,6 +165,7 @@ export function BudgetTable({
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead />
               <TableHead>
                 <div className="flex items-center gap-2">
                   <User className="h-4 w-4" />
@@ -141,6 +186,12 @@ export function BudgetTable({
                   <ArrowUpDown className="h-4 w-4" />
                 </div>
               </TableHead>
+              <TableHead>
+                <div className="flex items-center gap-2">
+                  <Calendar className="h-4 w-4" />
+                  Creación
+                </div>
+              </TableHead>
               <TableHead onClick={() => requestSort("status")}>
                 <div className="flex items-center gap-2 cursor-pointer">
                   <CheckCircle className="h-4 w-4" />
@@ -155,57 +206,165 @@ export function BudgetTable({
                   <ArrowUpDown className="h-4 w-4" />
                 </div>
               </TableHead>
-              <TableHead className="text-right">
-                Acciones
-              </TableHead>
+              <TableHead className="text-right">Acciones</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {currentBudgets.length > 0 ? (
-              currentBudgets.map((budget) => (
-                <TableRow key={budget.id}>
-                  <TableCell className="font-medium">
-                    {budget.clientName}
-                  </TableCell>
-                  <TableCell>{budget.title}</TableCell>
-                  <TableCell>
-                    {budget.description
-                      ? budget.description.length > 30
-                        ? `${budget.description.slice(0, 30)}...`
-                        : budget.description
-                      : ""}
-                  </TableCell>
-                  <TableCell>{budget.status}</TableCell>
-                  <TableCell>
-                    {budget.amount !== undefined
-                      ? new Intl.NumberFormat("es-US", {
-                          style: "currency",
-                          currency: "USD",
-                        }).format(budget.amount)
-                      : ""}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end space-x-2">
-                      <Link href={`/budgets/${budget.id}`}>
-                        <Button variant="ghost" size="icon">
-                          <Edit className="h-4 w-4" />
+              currentBudgets.map((budget) => {
+                const isOpen = expandedRows.has(budget.id);
+                const items = itemsByBudget[budget.id] || [];
+                const currency = currencyInfo(budget.currency);
+                return (
+                  <React.Fragment key={budget.id}>
+                    <TableRow className="align-top">
+                      <TableCell className="w-10">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => toggleExpand(budget.id)}
+                          aria-label={isOpen ? "Contraer" : "Expandir"}
+                        >
+                          {isOpen ? "-" : "+"}
                         </Button>
-                      </Link>
-                      <DeleteBudgetDialog
-                        budget={budget}
-                        onBudgetDeleted={onBudgetDeleted}
-                      >
-                        <Button variant="ghost" size="icon">
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </DeleteBudgetDialog>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
+                      </TableCell>
+                      <TableCell className="font-medium">{budget.clientName}</TableCell>
+                      <TableCell>{budget.title}</TableCell>
+                      <TableCell>
+                        {budget.description
+                          ? budget.description.length > 30
+                            ? `${budget.description.slice(0, 30)}...`
+                            : budget.description
+                          : ""}
+                      </TableCell>
+                      <TableCell>
+                        {budget.createdAt
+                          ? new Date(budget.createdAt).toLocaleDateString("es-UY")
+                          : ""}
+                      </TableCell>
+                      <TableCell>{budget.status}</TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap items-center gap-2">
+                          {currency.code && (
+                            <ReactCountryFlag
+                              svg
+                              countryCode={currency.code}
+                              className="inline-block h-4 w-5 rounded-sm"
+                              aria-label={currency.label}
+                            />
+                          )}
+                          <span className="inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs font-semibold text-slate-700">
+                            {currency.label}
+                          </span>
+                          {budget.amount !== undefined
+                            ? new Intl.NumberFormat("es-UY", {
+                                style: "currency",
+                                currency: currency.label === "USD" ? "USD" : "UYU",
+                              }).format(budget.amount)
+                            : ""}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end space-x-2">
+                          <Link href={`/budgets/${budget.id}`}>
+                            <Button variant="ghost" size="icon">
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                          </Link>
+                          <DeleteBudgetDialog budget={budget} onBudgetDeleted={onBudgetDeleted}>
+                            <Button variant="ghost" size="icon">
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </DeleteBudgetDialog>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                    {isOpen && (
+                      <TableRow className="bg-slate-50/60">
+                        <TableCell colSpan={8} className="p-0">
+                          <div className="px-6 py-4">
+                            <p className="mb-2 text-sm font-semibold text-slate-700">
+                              Productos / servicios cotizados
+                            </p>
+                            {loadingItems[budget.id] ? (
+                              <p className="text-xs text-muted-foreground">Cargando items...</p>
+                            ) : items.length ? (
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-sm">
+                                  <thead className="text-left text-xs uppercase text-slate-500">
+                                    <tr>
+                                      <th className="py-2 pr-4">#</th>
+                                      <th className="py-2 pr-4">Producto</th>
+                                      <th className="py-2 pr-4">Cantidad</th>
+                                      <th className="py-2 pr-4">Unitario</th>
+                                      <th className="py-2 pr-4">Total</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="text-slate-700">
+                                    {items.map((item, index) => (
+                                    <tr key={item.id} className="border-t text-[13px]">
+                                      <td className="py-2 pr-4 font-semibold text-slate-600">{index + 1}</td>
+                                      <td className="py-2 pr-4">
+                                        <div className="flex items-center gap-2">
+                                          <Package className="h-3.5 w-3.5 text-slate-600" />
+                                          <span>{item.productName || item.description}</span>
+                                        </div>
+                                      </td>
+                                      <td className="py-2 pr-4">{item.quantity}</td>
+                                      <td className="py-2 pr-4">
+                                        {(() => {
+                                          const unit = item.unitPrice ?? (item.total && item.quantity ? item.total / item.quantity : 0);
+                                          return (
+                                          <div className="flex items-center gap-2">
+                                            {currency.code && (
+                                              <ReactCountryFlag
+                                                svg
+                                                countryCode={currency.code}
+                                                className="inline-block h-3.5 w-5 rounded-sm"
+                                                aria-label={currency.label}
+                                              />
+                                            )}
+                                            <span>{formatCurrency(unit, currency.label === "USD" ? "USD" : "UYU")}</span>
+                                          </div>
+                                          );
+                                        })()}
+                                      </td>
+                                      <td className="py-2 pr-4 font-semibold">
+                                        {(() => {
+                                          const total = item.total ?? (item.unitPrice && item.quantity ? item.unitPrice * item.quantity : 0);
+                                          return (
+                                          <div className="flex items-center gap-2">
+                                            {currency.code && (
+                                              <ReactCountryFlag
+                                                svg
+                                                countryCode={currency.code}
+                                                className="inline-block h-3.5 w-5 rounded-sm"
+                                                aria-label={currency.label}
+                                              />
+                                            )}
+                                            <span>{formatCurrency(total, currency.label === "USD" ? "USD" : "UYU")}</span>
+                                          </div>
+                                          );
+                                        })()}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            ) : (
+                              <p className="text-xs text-muted-foreground">Sin productos/servicios cargados.</p>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </React.Fragment>
+                );
+              })
             ) : (
               <TableRow>
-                <TableCell colSpan={6} className="h-24 text-center">
+                <TableCell colSpan={7} className="h-24 text-center">
                   No se encontraron presupuestos.
                 </TableCell>
               </TableRow>
@@ -226,9 +385,7 @@ export function BudgetTable({
             <PaginationNext
               onClick={currentPage === totalPages ? undefined : handleNextPage}
               aria-disabled={currentPage === totalPages}
-              className={
-                currentPage === totalPages ? "opacity-40 pointer-events-none" : undefined
-              }
+              className={currentPage === totalPages ? "opacity-40 pointer-events-none" : undefined}
             />
           </PaginationItem>
         </PaginationContent>

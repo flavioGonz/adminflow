@@ -1,7 +1,6 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-
 import { EditTicketDialog } from "@/components/clients/edit-ticket-dialog";
 import { Ticket } from "@/types/ticket";
 

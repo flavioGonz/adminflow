@@ -1,15 +1,15 @@
-import NextAuth from "next-auth";
+import NextAuth, { type NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 
 const EXPRESS_BASE_URL = process.env.EXPRESS_BASE_URL || "http://localhost:5000";
 
-export const authOptions = {
+export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
       name: "Credenciales",
       credentials: {
         email: { label: "Email", type: "text", placeholder: "admin@adminflow.uy" },
-        password: { label: "Contraseña", type: "password" },
+        password: { label: "Contrasena", type: "password" },
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) {
@@ -40,17 +40,18 @@ export const authOptions = {
   },
   callbacks: {
     async jwt({ token, user }) {
-      if (user?.token) {
-        token.accessToken = user.token;
+      if ((user as any)?.token) {
+        token.accessToken = (user as any).token;
       }
       return token;
     },
     async session({ session, token }) {
-      session.user = {
+      const sessionWithToken = session as any;
+      sessionWithToken.user = {
         ...(session.user ?? {}),
-        accessToken: token.accessToken as string | undefined,
+        accessToken: (token as any).accessToken as string | undefined,
       };
-      return session;
+      return sessionWithToken;
     },
   },
   pages: {

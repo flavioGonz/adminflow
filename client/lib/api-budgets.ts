@@ -58,6 +58,7 @@ export async function deleteBudget(id: string): Promise<void> {
   });
   if (!response.ok) {
     const errorText = await response.text();
+    if (response.status === 404) return;
     throw new Error(errorText || `Failed to delete budget (status ${response.status})`);
   }
 }

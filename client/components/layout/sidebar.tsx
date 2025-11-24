@@ -8,6 +8,14 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogD
 import { Badge } from "@/components/ui/badge";
 import { useSession, signOut } from "next-auth/react";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Bell,
   Calculator,
   CalendarCheck,
@@ -17,8 +25,13 @@ import {
   FileText,
   Folder,
   LayoutDashboard,
+  LifeBuoy,
   LogOut,
   Map,
+  MessageCircleQuestion,
+  BookOpen,
+  Send,
+  ExternalLink,
   Package,
   Settings,
   Ticket,
@@ -45,7 +58,7 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
 type NavItem = {
   name: string;
   href: string;
-  icon: (props: React.ComponentProps<typeof LayoutDashboard>) => JSX.Element;
+  icon: (props: React.ComponentProps<typeof LayoutDashboard>) => React.ReactNode;
 };
 
 const navItems: NavItem[] = [
@@ -103,7 +116,8 @@ function SidebarLayout() {
   const { data: session } = useSession();
 
   const userName = session?.user?.name ?? "Usuario";
-  const userRole = session?.user?.role ?? "Equipo";
+  const userRole = (session?.user as any)?.role ?? "Equipo";
+  const userEmail = session?.user?.email ?? "Sin correo";
   const avatarInitials = useMemo(
     () =>
       userName
@@ -124,7 +138,7 @@ function SidebarLayout() {
     signOut({ callbackUrl: "/login" });
   };
 
-  const openTickets = session?.user?.assignedTickets ?? 3;
+  const openTickets = (session?.user as any)?.assignedTickets ?? 3;
 
   return (
     <aside className={`flex h-full flex-col border-r border-slate-200 bg-white ${collapsed ? "w-20" : "w-56"}`}>
@@ -139,20 +153,69 @@ function SidebarLayout() {
         </Button>
       </div>
       <div className="flex-1 overflow-y-auto px-1 py-2">
-        <SidebarNavItem item={navItems[0]} active={pathname?.startsWith(navItems[0].href)} collapsed={collapsed} />
+        <SidebarNavItem item={navItems[0]} active={!!pathname?.startsWith(navItems[0].href)} collapsed={collapsed} />
         <div className="space-y-1">
           {navItems.slice(1).map((item) => (
-            <SidebarNavItem key={item.href} item={item} active={pathname?.startsWith(item.href)} collapsed={collapsed} />
+            <SidebarNavItem key={item.href} item={item} active={!!pathname?.startsWith(item.href)} collapsed={collapsed} />
           ))}
         </div>
       </div>
       <div className="px-4 pb-3">
         <div className="mb-3 rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white to-slate-100 p-3 shadow-sm">
-          <p className="text-[9px] uppercase tracking-[0.4em] text-slate-400">Usuario</p>
-          <p className="text-base font-semibold text-slate-900 leading-tight">{userName}</p>
-          <div className="mt-2 flex items-center gap-2 text-[11px] font-semibold text-slate-600">
-            <span className="h-2 w-2 rounded-full bg-emerald-400" />
-            {openTickets} tickets abiertos
+          <div className="flex items-start gap-3">
+            <div className="flex-1">
+              <p className="text-[9px] uppercase tracking-[0.4em] text-slate-400">{userRole}</p>
+              <p className="text-base font-semibold text-slate-900 leading-tight">{userName}</p>
+              <p className="text-xs font-medium text-slate-500">{userEmail}</p>
+              <div className="mt-2 flex items-center gap-2 text-[11px] font-semibold text-slate-600">
+                <span className="h-2 w-2 rounded-full bg-emerald-400" />
+                {openTickets} tickets abiertos
+              </div>
+            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-slate-600 hover:bg-slate-200 mt-1 ml-auto mr-6"
+                >
+                  <LifeBuoy className="h-4 w-4" />
+                  <span className="sr-only">Ayuda</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" side="right" sideOffset={8} className="w-56">
+                <DropdownMenuLabel className="text-xs uppercase text-slate-500">
+                  Ayuda y soporte
+                </DropdownMenuLabel>
+                <DropdownMenuItem asChild className="cursor-pointer">
+                  <Link href="https://www.shadcn.io/docs" target="_blank" className="flex items-center gap-2">
+                    <BookOpen className="h-4 w-4" />
+                    Documentacion
+                    <ExternalLink className="ml-auto h-3 w-3 text-slate-400" />
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild className="cursor-pointer">
+                  <Link href="mailto:soporte@adminflow.uy" className="flex items-center gap-2">
+                    <MessageCircleQuestion className="h-4 w-4" />
+                    Centro de ayuda
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild className="cursor-pointer">
+                  <Link href="mailto:feedback@adminflow.uy" className="flex items-center gap-2">
+                    <Send className="h-4 w-4" />
+                    Enviar feedback
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild className="cursor-pointer">
+                  <Link href="https://status.adminflow.uy" target="_blank" className="flex items-center gap-2">
+                    <LifeBuoy className="h-4 w-4" />
+                    Estado del sistema
+                    <ExternalLink className="ml-auto h-3 w-3 text-slate-400" />
+                  </Link>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </div>

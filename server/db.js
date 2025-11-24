@@ -154,6 +154,9 @@ const db = new sqlite3.Database(dbPath, (err) => {
         location TEXT,
         start TEXT NOT NULL,
         end TEXT,
+        source_type TEXT DEFAULT 'manual',
+        source_id TEXT,
+        locked BOOLEAN DEFAULT 0,
         createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
         updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
       )
@@ -276,6 +279,9 @@ const db = new sqlite3.Database(dbPath, (err) => {
     addColumnIfMissing('repository', 'notes', 'notes TEXT');
     addColumnIfMissing('repository', 'content', 'content TEXT');
     addColumnIfMissing('repository', 'file_name', 'file_name TEXT');
+    addColumnIfMissing('calendar_events', 'source_type', "source_type TEXT DEFAULT 'manual'");
+    addColumnIfMissing('calendar_events', 'source_id', 'source_id TEXT');
+    addColumnIfMissing('calendar_events', 'locked', 'locked BOOLEAN DEFAULT 0');
 
     db.run(`
       CREATE TABLE IF NOT EXISTS budgets (

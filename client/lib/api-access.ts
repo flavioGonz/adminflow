@@ -8,6 +8,7 @@ export interface AccessItem {
     ip: string;
     user: string;
     pass: string;
+    serieMac?: string;
     comentarios: string;
     createdAt: string;
     updatedAt: string;

@@ -10,6 +10,9 @@ import {
 } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { toast } from "sonner";
+import { updateClient } from "@/lib/api-clients";
 import {
   Pagination,
   PaginationContent,
@@ -26,15 +29,14 @@ import {
   Mail,
   Phone,
   MapPin,
-  FileText,
   Settings,
   ArrowUpDown,
   FileSpreadsheet,
   FileDown,
-
   MessageCircle,
   Bell,
   BellOff,
+  ShieldCheck,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { EditClientDialog } from "./edit-client-dialog";
@@ -72,6 +74,7 @@ export function ClientTable({
     direction: "ascending" | "descending";
   } | null>(null);
   const clientsPerPage = 10;
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
   const handleExportExcel = () => {
     const worksheet = XLSX.utils.json_to_sheet(sortedClients);
@@ -173,6 +176,19 @@ export function ClientTable({
     setSortConfig({ key, direction });
   };
 
+  const handleToggleNotifications = async (client: Client, checked: boolean) => {
+    setTogglingId(client.id);
+    try {
+      const updated = await updateClient(client.id, { notificationsEnabled: checked });
+      onClientUpdated(updated);
+      toast.success(`Notificaciones ${checked ? "activadas" : "desactivadas"} para ${client.name}`);
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo actualizar notificaciones");
+    } finally {
+      setTogglingId(null);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
@@ -197,6 +213,12 @@ export function ClientTable({
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead>
+                <div className="flex items-center gap-2">
+                  <Hash className="h-4 w-4" />
+                  ID
+                </div>
+              </TableHead>
               <TableHead onClick={() => requestSort("name")}>
                 <div className="flex items-center gap-2 cursor-pointer">
                   <User className="h-4 w-4" />
@@ -239,13 +261,6 @@ export function ClientTable({
                   <ArrowUpDown className="h-4 w-4" />
                 </div>
               </TableHead>
-              <TableHead onClick={() => requestSort("contract")}>
-                <div className="flex items-center gap-2 cursor-pointer">
-                  <FileText className="h-4 w-4" />
-                  Contrato
-                  <ArrowUpDown className="h-4 w-4" />
-                </div>
-              </TableHead>
               <TableHead onClick={() => requestSort("notificationsEnabled")}>
                 <div className="flex items-center gap-2 cursor-pointer">
                   <Bell className="h-4 w-4" />
@@ -276,7 +291,18 @@ export function ClientTable({
                   onClick={() => router.push(`/clients/${client.id}`)}
                   className="cursor-pointer"
                 >
-                  <TableCell className="font-medium">{client.name}</TableCell>
+                  <TableCell className="font-medium">#{client.id}</TableCell>
+                  <TableCell className="font-medium">
+                    <div className="space-y-1">
+                      <div>{client.name}</div>
+                      {client.contract && (
+                        <div className="flex items-center gap-2 text-xs text-emerald-700">
+                          <ShieldCheck className="h-3.5 w-3.5" />
+                          <span>{typeof client.contract === "string" ? client.contract : "Contrato activo"}</span>
+                        </div>
+                      )}
+                    </div>
+                  </TableCell>
                   <TableCell>{client.alias}</TableCell>
                   <TableCell>{client.rut}</TableCell>
                   <TableCell>{client.email}</TableCell>
@@ -300,22 +326,14 @@ export function ClientTable({
                   </TableCell>
                   <TableCell>{client.address}</TableCell>
                   <TableCell>
-                    <Badge variant={client.contract ? "default" : "destructive"}>
-                      {client.contract ? "Activo" : "Inactivo"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    {client.notificationsEnabled !== false ? (
-                      <Badge variant="outline" className="bg-sky-50 text-sky-700 border-sky-200">
-                        <Bell className="mr-1 h-3 w-3" />
-                        Sí
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline" className="bg-slate-50 text-slate-500 border-slate-200">
-                        <BellOff className="mr-1 h-3 w-3" />
-                        No
-                      </Badge>
-                    )}
+                    <div onClick={(e) => e.stopPropagation()} className="flex items-center">
+                      <Switch
+                        checked={client.notificationsEnabled !== false}
+                        onCheckedChange={(checked) => handleToggleNotifications(client, Boolean(checked))}
+                        disabled={togglingId === client.id}
+                        className="scale-75 origin-left data-[state=checked]:bg-sky-500"
+                      />
+                    </div>
                   </TableCell>
                   <TableCell>
                     {client.createdAt

@@ -34,6 +34,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { PageHeader } from "@/components/layout/page-header";
 import {
   AlignLeft,
   ArrowLeft,
@@ -50,15 +51,16 @@ import {
   ImageIcon,
 } from "lucide-react";
 import { BudgetPdfPreview } from "@/components/budgets/budget-pdf-preview";
+import { API_URL } from "@/lib/http";
 
 const budgetStatuses = ["Nuevo", "Enviado", "Aprobado", "Rechazado"];
-const BACKEND_URL = "http://localhost:5000";
 
 const createDefaultSections = (description?: string): BudgetSection[] => [
   { id: "resumen", title: "Resumen ejecutivo", content: description || "Describe el objetivo y resultados esperados." },
   { id: "alcance", title: "Alcance del servicio", content: "Detalla entregables, ventanas de atención y criterios de aceptación." },
   { id: "terminos", title: "Términos y condiciones", content: "Incluye formas de pago, garantías y responsabilidades." },
 ];
+
 
 const readFileAsArrayBuffer = (file: File): Promise<ArrayBuffer> =>
   new Promise((resolve, reject) => {
@@ -239,29 +241,52 @@ export default function EditBudgetPage() {
   }, [coverPreviewUrl]);
 
   useEffect(() => {
-    if (!coverPreviewUrl || coverPreviewUrl === defaultCoverUrl || coverPreviewUrl.startsWith("blob:")) {
+    // Skip download for blob URLs or empty values
+    if (!coverPreviewUrl || coverPreviewUrl.startsWith("blob:")) {
       return;
     }
+
+    // For default cover, load it from public folder
+    if (coverPreviewUrl === defaultCoverUrl) {
+      fetch(defaultCoverUrl)
+        .then(response => {
+          if (!response.ok) throw new Error("Default cover not found");
+          return response.arrayBuffer();
+        })
+        .then(buffer => setCoverFileData(buffer))
+        .catch(error => {
+          console.warn("Could not load default cover:", error);
+          // It's okay if default cover is not found, PDF will work without it
+        });
+      return;
+    }
+
+    // For custom covers from server
     let cancelled = false;
     const controller = new AbortController();
     const downloadUrl =
-      coverPreviewUrl.startsWith("http") ? coverPreviewUrl : `${BACKEND_URL}${coverPreviewUrl}`;
+      coverPreviewUrl.startsWith("http") ? coverPreviewUrl : `${API_URL}${coverPreviewUrl}`;
+
     const fetchCover = async () => {
       try {
         const response = await fetch(downloadUrl, { signal: controller.signal });
         if (!response.ok) {
-          throw new Error("No se pudo descargar la portada.");
+          throw new Error(`HTTP ${response.status}: No se pudo descargar la portada.`);
         }
         const buffer = await response.arrayBuffer();
         if (!cancelled) {
           setCoverFileData(buffer);
         }
       } catch (error) {
-        if (!cancelled) {
-          console.error("Cover download error:", error);
+        if (!cancelled && (error as any)?.name !== 'AbortError') {
+          console.warn("Cover download failed, falling back to default:", error);
+          // Fallback to default cover if custom cover fails
+          setCoverPreviewUrl(defaultCoverUrl);
+          setCoverName("Portada oficial");
         }
       }
     };
+
     fetchCover();
     return () => {
       cancelled = true;
@@ -498,6 +523,7 @@ export default function EditBudgetPage() {
       return;
     }
     try {
+      await syncCatalogChanges();
       const result = await updateBudget(id, {
         title,
         description,
@@ -570,6 +596,36 @@ export default function EditBudgetPage() {
     }
   };
 
+  const syncCatalogChanges = useCallback(async () => {
+    for (const product of products) {
+      const form = rowFormValues[product.id];
+      const existing = itemsWithProduct(product);
+      if (!form) continue;
+      const qty = Number(form.quantity);
+      const price = Number(form.unitPrice);
+      if (qty <= 0) {
+        if (existing) {
+          await deleteBudgetItem(existing.id);
+        }
+        continue;
+      }
+      const payload = {
+        description: product.name,
+        quantity: qty,
+        unitPrice: price,
+        productId: product.id,
+      };
+      if (existing) {
+        if (existing.quantity !== qty || existing.unitPrice !== price) {
+          await updateBudgetItem(existing.id, payload);
+        }
+      } else {
+        await createBudgetItem(id, payload);
+      }
+    }
+    await loadItems();
+  }, [products, rowFormValues, itemsWithProduct, id, loadItems]);
+
   const handleProductDelete = async (item: BudgetItem, productId: string) => {
     setRowStatus((prev) => ({ ...prev, [productId]: "deleting" }));
     try {
@@ -608,483 +664,483 @@ export default function EditBudgetPage() {
   return (
     <DashboardLayout>
       <div className="space-y-6">
-        <div className="flex items-center gap-3">
-          <Button variant="outline" size="icon" onClick={() => router.back()}>
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <div>
-            <h1 className="text-2xl font-semibold">Editar Presupuesto</h1>
-            <p className="text-sm text-muted-foreground">ID: {budget.id}</p>
-          </div>
-        </div>
+        <PageHeader
+          title="Editar Presupuesto"
+          subtitle={`ID: ${budget.id} • Cliente: ${headerClientName}`}
+          backHref="/budgets"
+          leadingIcon={<FileText className="h-6 w-6 text-slate-800" />}
+          breadcrumbs={[
+            { label: "Presupuestos", href: "/budgets", icon: <FileText className="h-3 w-3 text-slate-500" /> },
+            { label: `Presupuesto ${budget.id}`, icon: <Tag className="h-3 w-3 text-slate-500" /> },
+          ]}
+        />
 
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)]">
           <div className="space-y-4">
             <Tabs defaultValue="details" className="space-y-4">
-            <TabsList>
-              <TabsTrigger value="details" className="flex items-center gap-1">
-                <Tag className="h-4 w-4" />
-                Detalles
-              </TabsTrigger>
-              <TabsTrigger value="catalog" className="flex items-center gap-1">
-                <Search className="h-4 w-4" />
-                Catálogo de productos
-              </TabsTrigger>
-              <TabsTrigger value="pdf" className="flex items-center gap-1">
-                <FileText className="h-4 w-4" />
-                Diseño del PDF
-              </TabsTrigger>
-              <TabsTrigger value="cover" className="flex items-center gap-1">
-                <CloudUpload className="h-4 w-4" />
-                Portada y branding
-              </TabsTrigger>
-              <TabsTrigger value="send" className="flex items-center gap-1">
-                <Mail className="h-4 w-4" />
-                Enviar presupuesto
-              </TabsTrigger>
-            </TabsList>
+              <TabsList>
+                <TabsTrigger value="details" className="flex items-center gap-1">
+                  <Tag className="h-4 w-4" />
+                  Detalles
+                </TabsTrigger>
+                <TabsTrigger value="catalog" className="flex items-center gap-1">
+                  <Search className="h-4 w-4" />
+                  Catálogo de productos
+                </TabsTrigger>
+                <TabsTrigger value="pdf" className="flex items-center gap-1">
+                  <FileText className="h-4 w-4" />
+                  Diseño del PDF
+                </TabsTrigger>
+                <TabsTrigger value="cover" className="flex items-center gap-1">
+                  <CloudUpload className="h-4 w-4" />
+                  Portada y branding
+                </TabsTrigger>
+                <TabsTrigger value="send" className="flex items-center gap-1">
+                  <Mail className="h-4 w-4" />
+                  Enviar presupuesto
+                </TabsTrigger>
+              </TabsList>
 
-            <TabsContent value="details">
-            <Card>
-              <CardHeader className="flex items-center justify-between gap-6">
-                <div>
-                  <CardTitle>Información del presupuesto</CardTitle>
-                  <p className="text-xs text-muted-foreground">Actualiza el título, estado y monto sin salir del presupuesto.</p>
-                </div>
-                <Button form="budget-form" type="submit" disabled={saving} className="whitespace-nowrap">
-                  {saving ? "Guardando..." : "Guardar cambios"}
-                </Button>
-              </CardHeader>
-              <CardContent>
-                <form id="budget-form" onSubmit={handleSubmit} className="space-y-5">
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="grid gap-2">
-                      <Label>Estado</Label>
-                      <div className="relative">
-                        <CheckCircle className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Select value={status} onValueChange={(value) => setStatus(value)}>
-                          <SelectTrigger className="pl-8">
-                            <SelectValue placeholder="Selecciona un estado" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {budgetStatuses.map((option) => (
-                              <SelectItem key={option} value={option}>
-                                {option}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                    <div className="grid gap-2">
-                      <Label>Monto (UYU)</Label>
-                      <div className="relative">
-                        <DollarSign className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Input
-                          type="number"
-                          value={amount}
-                          onChange={(e) => setAmount(Number(e.target.value))}
-                          className="pl-8"
-                          disabled
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </form>
-                <div className="mt-8 space-y-4 text-slate-900">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-black text-base">Portada editable</CardTitle>
-                    <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <input
-                        type="checkbox"
-                        checked={coverEnabled}
-                        onChange={(event) => setCoverEnabled(event.target.checked)}
-                        className="h-3 w-3 rounded border border-slate-400 text-slate-900 focus:ring-0"
-                      />
-                      {coverEnabled ? "Activo" : "Desactivado"}
-                    </label>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Controla título y cliente que se superponen sobre la portada del PDF.
-                  </p>
-                  <div className="grid gap-3">
+              <TabsContent value="details">
+                <Card>
+                  <CardHeader className="flex items-center justify-between gap-6">
                     <div>
-                      <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Título de portada</p>
-                      <Input
-                        value={title}
-                        onChange={(event) => setTitle(event.target.value)}
-                        className="bg-white/90 text-slate-900"
-                        disabled={!coverEnabled}
-                      />
+                      <CardTitle>Información del presupuesto</CardTitle>
+                      <p className="text-xs text-muted-foreground">Actualiza el título, estado y monto sin salir del presupuesto.</p>
                     </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Cliente</p>
-                      <Select
-                        value={selectedClientId || ""}
-                        onValueChange={(value) => handleClientSelect(value)}
-                        disabled={!coverEnabled || !clients.length}
-                      >
-                        <SelectTrigger className="bg-white/90 text-slate-900">
-                          <SelectValue placeholder={clientsLoading ? "Cargando clientes..." : "Selecciona un cliente"} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {clients.map((client) => (
-                            <SelectItem key={client.id} value={client.id}>
-                              {client.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                  <div
-                    className={`group relative ${
-                      coverEnabled ? "bg-slate-50" : "bg-slate-100 opacity-70"
-                    } px-4 py-6 text-center`}
-                    onDragOver={(event) => {
-                      if (coverEnabled) event.preventDefault();
-                    }}
-                    onDrop={(event) => {
-                      if (coverEnabled) {
-                        event.preventDefault();
-                        handleCoverDrop(event as React.DragEvent<HTMLDivElement>);
-                      }
-                    }}
-                  >
-                    <CloudUpload className="mx-auto mb-2 h-6 w-6 text-slate-500" />
-                    <p className="text-sm font-semibold text-slate-800">Arrastra un PDF o haz clic para subirlo</p>
-                    <p className="text-xs text-muted-foreground">Usaremos este PDF como fondo de la primera hoja.</p>
-                    <input
-                      id="cover-input"
-                      type="file"
-                      accept="application/pdf"
-                      onChange={handleCoverUpload}
-                      className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-                      disabled={!coverEnabled}
-                    />
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        if (!coverEnabled) return;
-                        const input = document.getElementById("cover-input");
-                        if (input) {
-                          (input as HTMLInputElement).click();
-                        }
-                      }}
-                      disabled={!coverEnabled}
-                    >
-                      <FileText className="mr-2 h-4 w-4" />
-                      Cambiar portada
+                    <Button form="budget-form" type="submit" disabled={saving} className="whitespace-nowrap">
+                      {saving ? "Guardando..." : "Guardar cambios"}
                     </Button>
-                    <Button variant="ghost" size="sm" onClick={handleResetCover} disabled={!coverEnabled}>
-                      Restablecer portada oficial
-                    </Button>
-                  </div>
-                  {uploadProgress > 0 && (
-                    <div className="space-y-1">
-                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
-                        <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${uploadProgress}%` }} />
-                      </div>
-                      <p className="text-xs font-semibold text-emerald-600">{uploadProgress}% cargado</p>
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-            </TabsContent>
-
-            <TabsContent value="catalog">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Catálogo compartido</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="rounded-2xl border border-slate-200 bg-background p-4 shadow-sm">
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <p className="text-sm font-semibold text-muted-foreground">Busca un producto o servicio</p>
-                        <p className="text-xs text-muted-foreground">Controla cantidad y precio desde esta tabla integrada.</p>
-                      </div>
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Search className="h-4 w-4" />
-                        <Input
-                          placeholder="Buscar..."
-                          value={catalogSearch}
-                          onChange={(e) => setCatalogSearch(e.target.value)}
-                          className="text-xs"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                  <ScrollArea className="max-h-[520px] w-full">
-                    <Table className="w-full">
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Producto</TableHead>
-                          <TableHead>Fabricante</TableHead>
-                          <TableHead>Precios</TableHead>
-                          <TableHead className="w-24">Cantidad</TableHead>
-                          <TableHead className="w-32">P. Unit.</TableHead>
-                          <TableHead className="w-28">Total</TableHead>
-                          <TableHead className="text-right">Acciones</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {filteredProducts.map((product) => {
-                          const item = itemsWithProduct(product);
-                          const form = rowFormValues[product.id] || { quantity: 0, unitPrice: product.priceUYU };
-                          const status = rowStatus[product.id] ?? "idle";
-                          return (
-                            <TableRow key={product.id}>
-                              <TableCell className="flex items-center gap-3">
-                                <div className="h-10 w-10 overflow-hidden rounded-lg border bg-neutral-50">
-                                  {product.imageUrl ? (
-                                    <img src={product.imageUrl} alt={product.name} className="h-full w-full object-cover" />
-                                  ) : (
-                                    <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
-                                      <ImageIcon className="h-4 w-4" />
-                                    </div>
-                                  )}
-                                </div>
-                                <div>
-                                  <p className="font-semibold">{product.name}</p>
-                                  <p className="text-xs text-muted-foreground">{product.description}</p>
-                                </div>
-                              </TableCell>
-                              <TableCell>{product.manufacturer}</TableCell>
-                              <TableCell className="space-y-1">
-                                <Badge className="text-[10px] px-2 py-0.5">{product.badge}</Badge>
-                                <div className="flex gap-2 text-xs text-muted-foreground">
-                                  <span>${product.priceUYU} UYU</span>
-                                  <span>${product.priceUSD} USD</span>
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <Input
-                                  type="number"
-                                  min={0}
-                                  value={form.quantity}
-                                  onChange={(e) => updateRowValue(product.id, "quantity", Number(e.target.value))}
-                                />
-                              </TableCell>
-                              <TableCell>
-                                <Input
-                                  type="number"
-                                  min={0}
-                                  value={form.unitPrice}
-                                  onChange={(e) => updateRowValue(product.id, "unitPrice", Number(e.target.value))}
-                                />
-                              </TableCell>
-                              <TableCell>
-                                ${(form.quantity * form.unitPrice).toFixed(2)}
-                              </TableCell>
-                              <TableCell className="flex flex-wrap justify-end gap-2">
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => handleProductSave(product, item)}
-                                  disabled={status !== "idle"}
-                                >
-                                  {item ? "Actualizar" : "Agregar"}
-                                </Button>
-                                {item && (
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    onClick={() => handleProductDelete(item, product.id)}
-                                    disabled={status !== "idle"}
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                )}
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })}
-                        {filteredProducts.length === 0 && (
-                          <TableRow>
-                            <TableCell colSpan={7} className="text-center text-xs text-muted-foreground">
-                              No hay productos que coincidan con la búsqueda.
-                            </TableCell>
-                          </TableRow>
-                        )}
-                      </TableBody>
-                    </Table>
-                  </ScrollArea>
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="pdf">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Diseño del PDF</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-3">
-                    {sections.map((section) => (
-                      <div
-                        key={section.id}
-                        draggable
-                        onDragStart={() => handleDragStart(section.id)}
-                        onDragOver={handleDragOver}
-                        onDrop={() => handleDrop(section.id)}
-                        onDragEnd={dragEnd}
-                        className={cn(
-                          "space-y-3 rounded-2xl border bg-white/80 p-4 shadow-sm transition-colors",
-                          draggedSectionId === section.id ? "border-sky-500 ring-1 ring-sky-100" : "border-slate-200"
-                        )}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex items-center gap-2">
-                            <GripVertical className="cursor-grab text-muted-foreground" aria-label="Arrastra para reordenar" />
+                  </CardHeader>
+                  <CardContent>
+                    <form id="budget-form" onSubmit={handleSubmit} className="space-y-5">
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <div className="grid gap-2">
+                          <Label>Estado</Label>
+                          <div className="relative">
+                            <CheckCircle className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            <Select value={status} onValueChange={(value) => setStatus(value)}>
+                              <SelectTrigger className="pl-8">
+                                <SelectValue placeholder="Selecciona un estado" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {budgetStatuses.map((option) => (
+                                  <SelectItem key={option} value={option}>
+                                    {option}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                        <div className="grid gap-2">
+                          <Label>Monto (UYU)</Label>
+                          <div className="relative">
+                            <DollarSign className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                             <Input
-                              value={section.title}
-                              onChange={(e) => handleSectionFieldChange(section.id, "title", e.target.value)}
-                              placeholder="Título de sección"
-                              className="flex-1"
+                              type="number"
+                              value={amount}
+                              onChange={(e) => setAmount(Number(e.target.value))}
+                              className="pl-8"
+                              disabled
                             />
                           </div>
-                          <Button variant="ghost" size="icon" onClick={() => handleSectionRemove(section.id)} disabled={sections.length === 1}>
-                            <Trash2 className="h-4 w-4 text-red-500" />
-                          </Button>
                         </div>
-                        <RichTextEditor value={section.content} onChange={(value) => handleSectionFieldChange(section.id, "content", value)} placeholder="Describe el contenido que aparecerá en esta hoja" className="min-h-[140px]" />
                       </div>
-                    ))}
-                  </div>
-                  <div className="flex justify-end">
-                    <Button variant="outline" size="sm" onClick={() => setSections((prev) => [...prev, { id: `custom-${Date.now()}`, title: `Sección ${prev.length + 1}`, content: "" }])}>
-                      <Tag className="mr-2 h-4 w-4" />
-                      Agregar sección
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-
-            <TabsContent value="cover">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Portada y branding</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <p className="text-sm text-muted-foreground">
-                    La portada reemplaza la primera hoja y reutiliza la información del presupuesto para el encabezado principal.
-                  </p>
-                  <div
-                    className="group relative rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center transition hover:border-slate-400"
-                    onDragOver={(event) => event.preventDefault()}
-                    onDrop={handleCoverDrop}
-                  >
-                    <CloudUpload className="mx-auto mb-3 h-6 w-6 text-slate-500" />
-                    <p className="text-sm font-semibold text-slate-800">Arrastra un PDF o haz clic para buscar</p>
-                    <p className="text-xs text-muted-foreground">Aceptamos PDF con la portada del presupuesto.</p>
-                    <input
-                      id="cover-input"
-                      type="file"
-                      accept="application/pdf"
-                      onChange={handleCoverUpload}
-                      className="absolute inset-0 cursor-pointer opacity-0"
-                    />
-                    {uploadProgress > 0 && (
-                      <div className="mt-4 space-y-1">
-                        <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
-                          <div
-                            className="h-full rounded-full bg-emerald-500 transition-all"
-                            style={{ width: `${uploadProgress}%` }}
+                    </form>
+                    <div className="mt-8 space-y-4 text-slate-900">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-black text-base">Portada editable</CardTitle>
+                        <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <input
+                            type="checkbox"
+                            checked={coverEnabled}
+                            onChange={(event) => setCoverEnabled(event.target.checked)}
+                            className="h-3 w-3 rounded border border-slate-400 text-slate-900 focus:ring-0"
+                          />
+                          {coverEnabled ? "Activo" : "Desactivado"}
+                        </label>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Controla título y cliente que se superponen sobre la portada del PDF.
+                      </p>
+                      <div className="grid gap-3">
+                        <div>
+                          <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Título de portada</p>
+                          <Input
+                            value={title}
+                            onChange={(event) => setTitle(event.target.value)}
+                            className="bg-white/90 text-slate-900"
+                            disabled={!coverEnabled}
                           />
                         </div>
-                        <p className="text-xs font-semibold text-emerald-600">{uploadProgress}% cargado</p>
+                        <div>
+                          <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Cliente</p>
+                          <Select
+                            value={selectedClientId || ""}
+                            onValueChange={(value) => handleClientSelect(value)}
+                            disabled={!coverEnabled || !clients.length}
+                          >
+                            <SelectTrigger className="bg-white/90 text-slate-900">
+                              <SelectValue placeholder={clientsLoading ? "Cargando clientes..." : "Selecciona un cliente"} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {clients.map((client) => (
+                                <SelectItem key={client.id} value={client.id}>
+                                  {client.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
                       </div>
-                    )}
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-xs text-muted-foreground">Portada actual: {coverName}</p>
-                    {coverFileData && (
-                      <a
-                        href={coverPreviewUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-xs font-semibold text-sky-600 hover:text-sky-700"
+                      <div
+                        className={`group relative ${coverEnabled ? "bg-slate-50" : "bg-slate-100 opacity-70"
+                          } px-4 py-6 text-center`}
+                        onDragOver={(event) => {
+                          if (coverEnabled) event.preventDefault();
+                        }}
+                        onDrop={(event) => {
+                          if (coverEnabled) {
+                            event.preventDefault();
+                            handleCoverDrop(event as React.DragEvent<HTMLDivElement>);
+                          }
+                        }}
                       >
-                        Ver archivo cargado
-                      </a>
-                    )}
-                    <Button variant="outline" size="sm" onClick={handleResetCover}>
-                      Restaurar portada oficial
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
+                        <CloudUpload className="mx-auto mb-2 h-6 w-6 text-slate-500" />
+                        <p className="text-sm font-semibold text-slate-800">Arrastra un PDF o haz clic para subirlo</p>
+                        <p className="text-xs text-muted-foreground">Usaremos este PDF como fondo de la primera hoja.</p>
+                        <input
+                          id="cover-input"
+                          type="file"
+                          accept="application/pdf"
+                          onChange={handleCoverUpload}
+                          className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                          disabled={!coverEnabled}
+                        />
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            if (!coverEnabled) return;
+                            const input = document.getElementById("cover-input");
+                            if (input) {
+                              (input as HTMLInputElement).click();
+                            }
+                          }}
+                          disabled={!coverEnabled}
+                        >
+                          <FileText className="mr-2 h-4 w-4" />
+                          Cambiar portada
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={handleResetCover} disabled={!coverEnabled}>
+                          Restablecer portada oficial
+                        </Button>
+                      </div>
+                      {uploadProgress > 0 && (
+                        <div className="space-y-1">
+                          <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
+                            <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${uploadProgress}%` }} />
+                          </div>
+                          <p className="text-xs font-semibold text-emerald-600">{uploadProgress}% cargado</p>
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
 
-            <TabsContent value="send">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Enviar presupuesto</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <Textarea
-                    value={contactNote}
-                    onChange={(event) => {
-                      setContactNote(event.target.value);
-                      setCustomContactNote(true);
-                    }}
-                    className="min-h-[160px]"
-                    placeholder="Escribe un mensaje personalizado para el cliente..."
-                  />
-                  <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
-                    <div className="flex items-center gap-1">
-                      <Mail className="h-4 w-4 text-muted-foreground" />
-                      {budget.clientEmail || "Email no registrado"}
+              <TabsContent value="catalog">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Catálogo compartido</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="rounded-2xl border border-slate-200 bg-background p-4 shadow-sm">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="text-sm font-semibold text-muted-foreground">Busca un producto o servicio</p>
+                          <p className="text-xs text-muted-foreground">Controla cantidad y precio desde esta tabla integrada.</p>
+                        </div>
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <Search className="h-4 w-4" />
+                          <Input
+                            placeholder="Buscar..."
+                            value={catalogSearch}
+                            onChange={(e) => setCatalogSearch(e.target.value)}
+                            className="text-xs"
+                          />
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-1">
-                      <MessageCircle className="h-4 w-4 text-muted-foreground" />
-                      {budget.clientPhone || "Teléfono no registrado"}
+                    <ScrollArea className="max-h-[520px] w-full">
+                      <Table className="w-full">
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Producto</TableHead>
+                            <TableHead>Fabricante</TableHead>
+                            <TableHead>Precios</TableHead>
+                            <TableHead className="w-24">Cantidad</TableHead>
+                            <TableHead className="w-32">P. Unit.</TableHead>
+                            <TableHead className="w-28">Total</TableHead>
+                            <TableHead className="text-right">Acciones</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {filteredProducts.map((product) => {
+                            const item = itemsWithProduct(product);
+                            const form = rowFormValues[product.id] || { quantity: 0, unitPrice: product.priceUYU };
+                            const status = rowStatus[product.id] ?? "idle";
+                            return (
+                              <TableRow key={product.id}>
+                                <TableCell className="flex items-center gap-3">
+                                  <div className="h-10 w-10 overflow-hidden rounded-lg border bg-neutral-50">
+                                    {product.imageUrl ? (
+                                      <img src={product.imageUrl} alt={product.name} className="h-full w-full object-cover" />
+                                    ) : (
+                                      <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
+                                        <ImageIcon className="h-4 w-4" />
+                                      </div>
+                                    )}
+                                  </div>
+                                  <div>
+                                    <p className="font-semibold">{product.name}</p>
+                                    <p className="text-xs text-muted-foreground">{product.description}</p>
+                                  </div>
+                                </TableCell>
+                                <TableCell>{product.manufacturer}</TableCell>
+                                <TableCell className="space-y-1">
+                                  <Badge className="text-[10px] px-2 py-0.5">{product.badge}</Badge>
+                                  <div className="flex gap-2 text-xs text-muted-foreground">
+                                    <span>${product.priceUYU} UYU</span>
+                                    <span>${product.priceUSD} USD</span>
+                                  </div>
+                                </TableCell>
+                                <TableCell>
+                                  <Input
+                                    type="number"
+                                    min={0}
+                                    value={form.quantity}
+                                    onChange={(e) => updateRowValue(product.id, "quantity", Number(e.target.value))}
+                                  />
+                                </TableCell>
+                                <TableCell>
+                                  <Input
+                                    type="number"
+                                    min={0}
+                                    value={form.unitPrice}
+                                    onChange={(e) => updateRowValue(product.id, "unitPrice", Number(e.target.value))}
+                                  />
+                                </TableCell>
+                                <TableCell>
+                                  ${(form.quantity * form.unitPrice).toFixed(2)}
+                                </TableCell>
+                                <TableCell className="flex flex-wrap justify-end gap-2">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleProductSave(product, item)}
+                                    disabled={status !== "idle"}
+                                  >
+                                    {item ? "Actualizar" : "Agregar"}
+                                  </Button>
+                                  {item && (
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={() => handleProductDelete(item, product.id)}
+                                      disabled={status !== "idle"}
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  )}
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                          {filteredProducts.length === 0 && (
+                            <TableRow>
+                              <TableCell colSpan={7} className="text-center text-xs text-muted-foreground">
+                                No hay productos que coincidan con la búsqueda.
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </TableBody>
+                      </Table>
+                    </ScrollArea>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="pdf">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Diseño del PDF</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-3">
+                      {sections.map((section) => (
+                        <div
+                          key={section.id}
+                          draggable
+                          onDragStart={() => handleDragStart(section.id)}
+                          onDragOver={handleDragOver}
+                          onDrop={() => handleDrop(section.id)}
+                          onDragEnd={dragEnd}
+                          className={cn(
+                            "space-y-3 rounded-2xl border bg-white/80 p-4 shadow-sm transition-colors",
+                            draggedSectionId === section.id ? "border-sky-500 ring-1 ring-sky-100" : "border-slate-200"
+                          )}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-center gap-2">
+                              <GripVertical className="cursor-grab text-muted-foreground" aria-label="Arrastra para reordenar" />
+                              <Input
+                                value={section.title}
+                                onChange={(e) => handleSectionFieldChange(section.id, "title", e.target.value)}
+                                placeholder="Título de sección"
+                                className="flex-1"
+                              />
+                            </div>
+                            <Button variant="ghost" size="icon" onClick={() => handleSectionRemove(section.id)} disabled={sections.length === 1}>
+                              <Trash2 className="h-4 w-4 text-red-500" />
+                            </Button>
+                          </div>
+                          <RichTextEditor value={section.content} onChange={(value) => handleSectionFieldChange(section.id, "content", value)} placeholder="Describe el contenido que aparecerá en esta hoja" className="min-h-[140px]" />
+                        </div>
+                      ))}
                     </div>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Button variant="outline" onClick={handleSendEmail} disabled={!budget.clientEmail || sharingPdf}>
-                      <Mail className="mr-2 h-4 w-4" />
-                      Enviar por correo
-                    </Button>
-                    <Button variant="outline" onClick={handleSendWhatsApp} disabled={!budget.clientPhone || sharingPdf}>
-                      <MessageCircle className="mr-2 h-4 w-4" />
-                      Enviar por WhatsApp
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
-            
+                    <div className="flex justify-end">
+                      <Button variant="outline" size="sm" onClick={() => setSections((prev) => [...prev, { id: `custom-${Date.now()}`, title: `Sección ${prev.length + 1}`, content: "" }])}>
+                        <Tag className="mr-2 h-4 w-4" />
+                        Agregar sección
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+
+              <TabsContent value="cover">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Portada y branding</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <p className="text-sm text-muted-foreground">
+                      La portada reemplaza la primera hoja y reutiliza la información del presupuesto para el encabezado principal.
+                    </p>
+                    <div
+                      className="group relative rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center transition hover:border-slate-400"
+                      onDragOver={(event) => event.preventDefault()}
+                      onDrop={handleCoverDrop}
+                    >
+                      <CloudUpload className="mx-auto mb-3 h-6 w-6 text-slate-500" />
+                      <p className="text-sm font-semibold text-slate-800">Arrastra un PDF o haz clic para buscar</p>
+                      <p className="text-xs text-muted-foreground">Aceptamos PDF con la portada del presupuesto.</p>
+                      <input
+                        id="cover-input"
+                        type="file"
+                        accept="application/pdf"
+                        onChange={handleCoverUpload}
+                        className="absolute inset-0 cursor-pointer opacity-0"
+                      />
+                      {uploadProgress > 0 && (
+                        <div className="mt-4 space-y-1">
+                          <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
+                            <div
+                              className="h-full rounded-full bg-emerald-500 transition-all"
+                              style={{ width: `${uploadProgress}%` }}
+                            />
+                          </div>
+                          <p className="text-xs font-semibold text-emerald-600">{uploadProgress}% cargado</p>
+                        </div>
+                      )}
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">Portada actual: {coverName}</p>
+                      {coverFileData && (
+                        <a
+                          href={coverPreviewUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-xs font-semibold text-sky-600 hover:text-sky-700"
+                        >
+                          Ver archivo cargado
+                        </a>
+                      )}
+                      <Button variant="outline" size="sm" onClick={handleResetCover}>
+                        Restaurar portada oficial
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="send">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Enviar presupuesto</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <Textarea
+                      value={contactNote}
+                      onChange={(event) => {
+                        setContactNote(event.target.value);
+                        setCustomContactNote(true);
+                      }}
+                      className="min-h-[160px]"
+                      placeholder="Escribe un mensaje personalizado para el cliente..."
+                    />
+                    <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
+                      <div className="flex items-center gap-1">
+                        <Mail className="h-4 w-4 text-muted-foreground" />
+                        {budget.clientEmail || "Email no registrado"}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <MessageCircle className="h-4 w-4 text-muted-foreground" />
+                        {budget.clientPhone || "Teléfono no registrado"}
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button variant="outline" onClick={handleSendEmail} disabled={!budget.clientEmail || sharingPdf}>
+                        <Mail className="mr-2 h-4 w-4" />
+                        Enviar por correo
+                      </Button>
+                      <Button variant="outline" onClick={handleSendWhatsApp} disabled={!budget.clientPhone || sharingPdf}>
+                        <MessageCircle className="mr-2 h-4 w-4" />
+                        Enviar por WhatsApp
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
             </Tabs>
           </div>
 
-        <div className="space-y-4">
-          <Card className="h-full">
-            <CardHeader className="flex items-center justify-between">
-              <div>
-                <CardTitle>Vista previa profesional</CardTitle>
-                <p className="text-xs text-muted-foreground">Vea su presupuesto antes de ser enviado.</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button className="bg-slate-900 text-white hover:bg-slate-800" onClick={() => previewRef.current?.generate()}>
-                  Actualizar PDF
-                </Button>
-                <Button
-                  variant="secondary"
-                  className="bg-slate-600 text-white hover:bg-slate-500 whitespace-nowrap"
-                  onClick={() => setConfirmSaveOpen(true)}
-                  disabled={saving}
-                >
-                  {saving ? "Guardando..." : "Guardar cambios"}
-                </Button>
-              </div>
+          <div className="space-y-4">
+            <Card className="h-full">
+              <CardHeader className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Vista previa profesional</CardTitle>
+                  <p className="text-xs text-muted-foreground">Vea su presupuesto antes de ser enviado.</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button className="bg-slate-900 text-white hover:bg-slate-800" onClick={() => previewRef.current?.generate()}>
+                    Actualizar PDF
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    className="bg-slate-600 text-white hover:bg-slate-500 whitespace-nowrap"
+                    onClick={() => setConfirmSaveOpen(true)}
+                    disabled={saving}
+                  >
+                    {saving ? "Guardando..." : "Guardar cambios"}
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent>
                 <BudgetPdfPreview

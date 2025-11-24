@@ -1,14 +1,14 @@
-﻿# APIs de AdminFlow
+﻿ï»¿# APIs de AdminFlow
 
 Base URL: `http://localhost:5000`
-Todas las llamadas devuelven JSON. Si se envía cuerpo, use `Content-Type: application/json`. Las rutas protegidas (p. ej. `/profile`) esperan `Authorization: Bearer <token>` y la cookie `connect.sid` (la sesión se abre en `/login`).
+Todas las llamadas devuelven JSON. Si se envÃ­a cuerpo, use `Content-Type: application/json`. Las rutas protegidas (p. ej. `/profile`) esperan `Authorization: Bearer <token>` y la cookie `connect.sid` (la sesiÃ³n se abre en `/login`).
 
 ---
 
-## Autenticación general
+## AutenticaciÃ³n general
 
 ### `GET /`
-Ping rápido del servidor. Sin parámetros.
+Ping rÃ¡pido del servidor. Sin parÃ¡metros.
 
 ### `POST /register`
 - Cuerpo: `{ "email": string, "password": string }`.
@@ -21,7 +21,7 @@ Ping rápido del servidor. Sin parámetros.
 - Genera JWT con `JWT_SECRET` y expira en 1 hora.
 
 ### `POST /logout`
-- Destruye la sesión de SQLite y borra la cookie `connect.sid`.
+- Destruye la sesiÃ³n de SQLite y borra la cookie `connect.sid`.
 
 ### `GET /profile`
 - Protegida por middleware `authenticateToken`.
@@ -33,7 +33,7 @@ Ping rápido del servidor. Sin parámetros.
 ## Usuarios registrados (Mongo)
 
 ### `GET /api/users/registered`
-Devuelve la cola de usuarios sincronizados en Mongo (`_id`, `sqliteId`, `email`, `roles`, `metadata`, `createdAt`, `updatedAt`). Retorna `503` si Mongo no está conectado.
+Devuelve la cola de usuarios sincronizados en Mongo (`_id`, `sqliteId`, `email`, `roles`, `metadata`, `createdAt`, `updatedAt`). Retorna `503` si Mongo no estÃ¡ conectado.
 
 ### `PATCH /api/users/registered/:id`
 Actualiza roles/metadata/email de un registro existente (puede suministrarse `_id` de Mongo o `sqliteId`). El cuerpo debe ser un objeto con alguno de los campos; se registra en `sync_events`.
@@ -46,10 +46,10 @@ Actualiza roles/metadata/email de un registro existente (puede suministrarse `_i
 Lista todas las configuraciones (`tickets`, `contracts`, `payments`, `products`, `budgets`, `clients`, `users`). Si Mongo no tiene documentos, retorna los defaults.
 
 ### `GET /api/config/:module`
-Obtiene o crea el documento del módulo solicitado.
+Obtiene o crea el documento del mÃ³dulo solicitado.
 
 ### `POST /api/config/:module`
-Guarda o actualiza la configuración. Body: objeto arbitrario (`data`, `notifyOn`, `templates`, etc.). Devuelve el documento persistido.
+Guarda o actualiza la configuraciÃ³n. Body: objeto arbitrario (`data`, `notifyOn`, `templates`, etc.). Devuelve el documento persistido.
 
 ---
 
@@ -59,23 +59,23 @@ Guarda o actualiza la configuración. Body: objeto arbitrario (`data`, `notifyOn
 Devuelve `{ module: 'database', data: { engine, mongoUri, mongoDb, sqlitePath }, engine }` leyendo `.selected-db.json`.
 
 ### `POST /api/system/database`
-Actualiza la configuración guardada y persiste los nuevos valores (puedes cambiar URI/engine/paths). Devuelve la misma estructura que el GET.
+Actualiza la configuraciÃ³n guardada y persiste los nuevos valores (puedes cambiar URI/engine/paths). Devuelve la misma estructura que el GET.
 
 ### `POST /api/system/database/verify`
-Valida una conexión.
+Valida una conexiÃ³n.
 - Body: `{ engine: 'mongodb' | 'sqlite', mongoUri?, mongoDb?, sqlitePath? }`.
 - Mongo: necesita URI y DB; hace `ping`.
 - SQLite: prueba que el archivo `sqlitePath` existe.
 
 ### `GET /api/system/database/overview`
-Devuelve un resumen con conteos de tablas SQLite (`sqlite.tables`) y colecciones Mongo (`mongo.collections`, `mongo.size`), más el `engine` activo.
+Devuelve un resumen con conteos de tablas SQLite (`sqlite.tables`) y colecciones Mongo (`mongo.collections`, `mongo.size`), mÃ¡s el `engine` activo.
 
 ### `GET /api/system/database/export/:engine`
-Simula una exportación serializada a JSON (`engine` debe ser `mongodb` o `sqlite`). Agrega headers `Content-Disposition` y retorna `{ message, timestamp }`.
+Simula una exportaciÃ³n serializada a JSON (`engine` debe ser `mongodb` o `sqlite`). Agrega headers `Content-Disposition` y retorna `{ message, timestamp }`.
 
 ### `POST /api/db/select`
 - Body: `{ engine: 'sqlite' | 'mongodb' }`.
-- Cambia la selección persistida (reiniciar el servidor para que el motor activo se reevalúe).
+- Cambia la selecciÃ³n persistida (reiniciar el servidor para que el motor activo se reevalÃºe).
 
 ### `POST /api/db/sync`
 - Body: `{ engine: 'sqlite' | 'mongodb' }`.
@@ -94,11 +94,11 @@ Replica SQLite en Mongo borrando las colecciones antes de insertar (`dropExistin
 
 ## Notificaciones
 
-AdminFlow incluye un **sistema de notificaciones automáticas** que envía alertas por múltiples canales (Email, Telegram, WhatsApp, Slack) cuando ocurren eventos importantes en el sistema.
+AdminFlow incluye un **sistema de notificaciones automÃ¡ticas** que envÃ­a alertas por mÃºltiples canales (Email, Telegram, WhatsApp, Slack) cuando ocurren eventos importantes en el sistema.
 
-### Sistema de Notificaciones Automáticas
+### Sistema de Notificaciones AutomÃ¡ticas
 
-El servidor envía notificaciones automáticamente para los siguientes eventos:
+El servidor envÃ­a notificaciones automÃ¡ticamente para los siguientes eventos:
 
 **Tickets:**
 - `ticket_created`: Cuando se crea un nuevo ticket
@@ -119,29 +119,29 @@ El servidor envía notificaciones automáticamente para los siguientes eventos:
 **Calendario:**
 - `event_created`: Cuando se crea un nuevo evento
 
-La configuración de qué canales usar para cada evento se guarda en MongoDB (colección `configurations`, módulo `notifications`) y se puede administrar desde `/notifications`.
+La configuraciÃ³n de quÃ© canales usar para cada evento se guarda en MongoDB (colecciÃ³n `configurations`, mÃ³dulo `notifications`) y se puede administrar desde `/notifications`.
 
 ### `POST /api/notifications/send`
 - Body: `{ event: string, message: string, channels?: string[], metadata?: object, recipients?: string[] }`.
-- Requiere que `notificationService.isReady()` (al menos un canal configurado). Si no lo está responde `503`.
+- Requiere que `notificationService.isReady()` (al menos un canal configurado). Si no lo estÃ¡ responde `503`.
 - Ejecuta cada canal configurado (`email`, `telegram`, `whatsapp`, `slack`) y guarda el resultado en Mongo + `sync_events`.
-- **Nota**: Este endpoint se usa principalmente para pruebas. Las notificaciones automáticas se envían internamente cuando ocurren los eventos.
+- **Nota**: Este endpoint se usa principalmente para pruebas. Las notificaciones automÃ¡ticas se envÃ­an internamente cuando ocurren los eventos.
 
 ### `GET /api/notifications/history`
 - Query opcional `limit` (default 25).
-- Consulta la colección `notifications` en Mongo; si no hay conexión devuelve los eventos de `sync_events`.
+- Consulta la colecciÃ³n `notifications` en Mongo; si no hay conexiÃ³n devuelve los eventos de `sync_events`.
 - Devuelve un array de notificaciones con: `{ event, message, channels, recipients, metadata, results, createdAt }`.
 
 ### `POST /api/notifications/verify-smtp`
 - Body: `{ host: string, port: string, user: string, pass: string }`.
-- Verifica la conexión SMTP con los parámetros proporcionados usando `nodemailer.createTransport().verify()`.
-- Devuelve `{ success: true, message: 'Conexión SMTP exitosa' }` si la conexión es exitosa.
-- Devuelve `{ success: false, message: 'Error de conexión SMTP', detail: string }` con código `500` si falla.
-- Útil para validar credenciales SMTP antes de guardar la configuración.
+- Verifica la conexiÃ³n SMTP con los parÃ¡metros proporcionados usando `nodemailer.createTransport().verify()`.
+- Devuelve `{ success: true, message: 'ConexiÃ³n SMTP exitosa' }` si la conexiÃ³n es exitosa.
+- Devuelve `{ success: false, message: 'Error de conexiÃ³n SMTP', detail: string }` con cÃ³digo `500` si falla.
+- Ãštil para validar credenciales SMTP antes de guardar la configuraciÃ³n.
 
 ### `POST /api/config/notifications`
 - Body: `{ channels: object, templates: object, events: array }`.
-- Guarda la configuración de canales, plantillas y eventos de notificación en MongoDB (colección `configurations`, módulo `notifications`).
+- Guarda la configuraciÃ³n de canales, plantillas y eventos de notificaciÃ³n en MongoDB (colecciÃ³n `configurations`, mÃ³dulo `notifications`).
 - **Estructura de `channels`**: 
   ```json
   {
@@ -166,9 +166,9 @@ La configuración de qué canales usar para cada evento se guarda en MongoDB (co
 - Devuelve el documento completo guardado con estructura `{ module: 'notifications', data: {...}, createdAt, updatedAt }`.
 
 ### `GET /api/config/notifications`
-- Obtiene la configuración de canales, plantillas y eventos de notificación desde MongoDB.
+- Obtiene la configuraciÃ³n de canales, plantillas y eventos de notificaciÃ³n desde MongoDB.
 - Devuelve `{ module: 'notifications', data: { channels, templates, events } }`.
-- Si no existe configuración, devuelve valores por defecto vacíos.
+- Si no existe configuraciÃ³n, devuelve valores por defecto vacÃ­os.
 
 ---
 
@@ -197,16 +197,16 @@ Acepta `[Client]` o `{ clients: [Client] }`. Retorna `{ total, imported, failed,
 
 ### Repositorio
 - `GET /api/clients/:id/repository`: obtiene documentos/credenciales asociados (normaliza `name`, `type`, `category`, `format`, `credential`, `notes`, `content`, `fileName`).
-- `POST /api/clients/:id/repository`: requiere `{ name, type }`; guarda categoría/formato/credential/opciones adicionales y retorna la entrada.
+- `POST /api/clients/:id/repository`: requiere `{ name, type }`; guarda categorÃ­a/formato/credential/opciones adicionales y retorna la entrada.
 - `PUT /api/repository/:id`: actualiza los campos enumerados y actualiza `updatedAt`.
 - `DELETE /api/repository/:id`: elimina la entrada.
 
 ### Accesos y Credenciales
 
-Gestión de dispositivos, IPs y contraseñas del cliente (colección MongoDB `client_accesses`).
+Gestion de dispositivos, IPs, contrasenas y serie/MAC del cliente (coleccion MongoDB `client_accesses`). Soporta tipos clasicos (router, firewall, camara) y accesos virtuales (`virtual-linux`, `virtual-windows`).
 
 #### `GET /api/clients/:id/access`
-Obtiene todos los accesos de un cliente ordenados por fecha de creación (más recientes primero).
+Obtiene todos los accesos de un cliente ordenados por fecha de creacion (mas recientes primero).
 
 **Respuesta:**
 ```json
@@ -219,6 +219,7 @@ Obtiene todos los accesos de un cliente ordenados por fecha de creación (más r
     "ip": "192.168.1.1",
     "user": "admin",
     "pass": "admin123",
+    "serieMac": "AA:BB:CC:DD:EE:FF",
     "comentarios": "Acceso principal",
     "createdAt": "2023-10-27T10:00:00.000Z",
     "updatedAt": "2023-10-27T10:00:00.000Z"
@@ -227,6 +228,8 @@ Obtiene todos los accesos de un cliente ordenados por fecha de creación (más r
 ```
 
 #### `POST /api/clients/:id/access`
+
+
 Crea un nuevo acceso para el cliente.
 
 **Body:**
@@ -237,16 +240,16 @@ Crea un nuevo acceso para el cliente.
   "ip": "10.0.0.50",
   "user": "root",
   "pass": "s3cr3t",
-  "comentarios": "Servidor de producción"
+  "comentarios": "Servidor de producciÃ³n"
 }
 ```
 
 **Validaciones:**
 - `equipo` (requerido): Nombre del equipo/dispositivo
 - `tipo_equipo` (requerido): Tipo de equipo (router, switch, servidor, firewall, etc.)
-- `ip` (opcional): Dirección IP o URL
+- `ip` (opcional): DirecciÃ³n IP o URL
 - `user` (opcional): Usuario de acceso
-- `pass` (opcional): Contraseña (se guarda en texto plano por diseño del repositorio)
+- `pass` (opcional): ContraseÃ±a (se guarda en texto plano por diseÃ±o del repositorio)
 - `comentarios` (opcional): Notas adicionales
 
 **Respuesta:** El acceso creado con `_id` y timestamps.
@@ -275,7 +278,7 @@ Elimina un acceso permanentemente.
 ```
 
 **Errores comunes:**
-- `400`: ID inválido
+- `400`: ID invÃ¡lido
 - `404`: Acceso no encontrado
 - `503`: Base de datos no disponible
 
@@ -313,14 +316,14 @@ Lista todos los contratos (`CONTRACT_SELECT_BASE`).
 Contratos filtrados por cliente.
 
 ### `POST /api/contracts`
-- Body: `{ clientId, title, description?, startDate?, endDate?, status?, sla?, contractType?, amount?, currency? }`.
-- `clientId` y `title` obligatorios.
+- Body: `{ clientId, title, description?, responsibilities?, recurrence?, startDate?, endDate?, status?, sla?, contractType?, amount?, currency? }`.
+- `clientId` y `title` obligatorios. El campo `responsibilities` almacena deberes/responsabilidades asociados al acuerdo; `recurrence` define la periodicidad (Semanal, Mensual, Anual u Otro).
 
 ### `PUT /api/contracts/:id`
-Actualiza todos los campos y responde con la fila actualizada.
+Actualiza todos los campos, incluyendo `responsibilities` y `recurrence`, y responde con la fila actualizada.
 
 ### `DELETE /api/contracts/:id`
-Elimina el contrato y, si tenía `file_path`, borra el archivo.
+Elimina el contrato y, si tenÃ­a `file_path`, borra el archivo.
 
 ### `POST /api/contracts/import`
 Importa un array (o `{ contracts: [] }`). Valida `clientId`.
@@ -347,7 +350,7 @@ Lista por cliente.
 - `clientId` y `title` obligatorios; `sections` se serializa a JSON.
 
 ### `PUT /api/budgets/:id`
-Actualiza título, descripción, monto, estado, cliente y secciones.
+Actualiza tÃ­tulo, descripciÃ³n, monto, estado, cliente y secciones.
 
 ### `DELETE /api/budgets/:id`
 Elimina el presupuesto.
@@ -362,14 +365,14 @@ Elimina el presupuesto.
 - `GET /api/budgets/:id/items`: lista los items relacionados.
 - `POST /api/budgets/:id/items`: requiere `{ description, quantity, unitPrice }`, `productId` opcional.
 - `PUT /api/items/:itemId`: actualiza el item; `description`, `quantity` y `unitPrice` obligatorios.
-- `DELETE /api/items/:itemId`: elimina el ítem.
+- `DELETE /api/items/:itemId`: elimina el Ã­tem.
 
 ---
 
 ## Productos
 
 ### `GET /api/products`
-Catálogo completo.
+CatÃ¡logo completo.
 
 ### `POST /api/products`
 - Body: `{ name, description?, manufacturer, category?, badge?, priceUYU?, priceUSD?, imageUrl? }`.
@@ -397,7 +400,7 @@ Detalle completo.
 - `annotations`, `attachments`, `audioNotes` se guardan como JSON.
 
 ### `PUT /api/tickets/:id`
-- Mantiene los arrays si no se reenvían.
+- Mantiene los arrays si no se reenvÃ­an.
 - Si el nuevo `status` es `Facturar`, llama a `ensurePendingPaymentForTicket` (genera un pago pendiente si no existe).
 
 ### `DELETE /api/tickets/:id`
@@ -411,11 +414,25 @@ Tickets de un cliente.
 ## Calendario
 
 ### `GET /api/calendar-events`
-Eventos ordenados por `start`.
+Devuelve eventos ordenados por `start` con metadata completa: `{ id, title, start, end?, location?, sourceType, sourceId, locked }`.
 
 ### `POST /api/calendar-events`
-- Body: `{ title, start, end?, location? }`.
-- `title` y `start` obligatorios.
+- Body: `{ title, start?, end?, location?, sourceType?, sourceId?, locked? }`.
+- `title` es obligatorio; si `start` no llega se usa la fecha actual.
+- Cuando `sourceType` no es `manual`, el evento queda bloqueado (`locked: true`) y solo puede modificarse desde su modulo de origen.
 
 ### `PUT /api/calendar-events/:id`
-Actualiza título, ubicación, fechas.
+Actualiza titulo, ubicacion y fechas de un evento no bloqueado. Si el evento esta bloqueado responde `403` con el mensaje "Evento bloqueado. Modificalo desde su origen".
+
+### Eventos automaticos
+- Al crear Tickets, Pagos o Contratos el servidor genera/actualiza eventos en el calendario con `sourceType` (`ticket`, `payment`, `contract`), `sourceId` y `locked: true`.
+- Estos eventos aparecen con icono segun el tipo y un candado en el cliente; se editan solo desde el modulo que los creo.
+
+
+### `DELETE /api/calendar-events/:id`
+Elimina un evento manual (bloqueados devuelven `403`).
+
+### Eventos automaticos
+- Al crear Tickets, Pagos o Contratos el servidor genera/actualiza eventos en el calendario con `sourceType` (`ticket`, `payment`, `contract`), `sourceId` y `locked: true`.
+- Estos eventos aparecen con icono segun el tipo y un candado en el cliente; se editan solo desde el modulo que los creo.
+
