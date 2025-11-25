@@ -4,16 +4,17 @@
 
 ### **Paso 1: Limpiar Configuración Anterior**
 
-En el PC remoto, ejecuta estos comandos:
+En el PC remoto, ejecuta este comando:
 
 ```bash
 cd C:\Users\soporte-win11\Desktop\node\adminflow\server
 
-# Eliminar archivos de configuración antigua
+# Opción A: Usar el script de limpieza (recomendado)
+npm run clean-install
+
+# Opción B: Limpieza manual
 del .selected-db.json
 del .installed
-
-# Si existe, también eliminar la base de datos SQLite antigua
 del database\database.sqlite
 ```
 

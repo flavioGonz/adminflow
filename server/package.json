@@ -6,6 +6,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node index.js",
     "dev": "nodemon .",
+    "clean-install": "node scripts/clean-install.js",
     "setup-mongo": "node scripts/setup-mongo.js",
     "init-mongo": "node scripts/init-mongodb.js",
     "migrate-to-mongo": "node scripts/migrate-sqlite-to-mongo.js",
