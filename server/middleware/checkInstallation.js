@@ -27,10 +27,13 @@ function checkInstallation(req, res, next) {
 
     // Si no está instalado, retornar error 503
     if (!isInstalled()) {
+        console.warn(`⚠️  Petición bloqueada: ${req.method} ${req.path} - Sistema no instalado`);
         return res.status(503).json({
+            success: false,
             error: 'Sistema no instalado',
-            message: 'Por favor completa la instalación en /install',
-            redirectTo: '/install'
+            message: 'El sistema requiere instalación. Por favor completa el wizard de instalación.',
+            redirectTo: '/install',
+            installUrl: 'http://localhost:3000/install'
         });
     }
 
