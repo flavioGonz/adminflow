@@ -5,20 +5,6 @@ Todas las llamadas devuelven JSON. Si se envÃ­a cuerpo, use `Content-Type: app
 
 ---
 
-## AutenticaciÃ³n general
-
-### `GET /`
-Ping rÃ¡pido del servidor. Sin parÃ¡metros.
-
-### `POST /register`
-- Cuerpo: `{ "email": string, "password": string }`.
-- Devuelve: `{ message: 'User registered successfully', userId: number }`.
-- Registra el usuario en SQLite y replica `sqliteId`/`email` en Mongo (`trackRegisteredUser`). Maneja `409` si el email ya existe.
-
-### `POST /login`
-- Cuerpo: `{ "email": string, "password": string }`.
-- Devuelve: `{ message: 'Logged in successfully', token: string }` y mantiene `req.session.userId`.
-- Genera JWT con `JWT_SECRET` y expira en 1 hora.
 
 ### `POST /logout`
 - Destruye la sesiÃ³n de SQLite y borra la cookie `connect.sid`.
