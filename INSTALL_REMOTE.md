@@ -75,6 +75,9 @@ npm run dev
 
 ### **Paso 5: Completar Instalación Web**
 
+<img width="924" height="699" alt="image" src="https://github.com/user-attachments/assets/fd97434e-00f7-4273-9c3a-bc5a39191249" />
+
+
 1. Abre tu navegador
 2. Ve a: `http://localhost:3000/install`
 3. Completa el wizard:
