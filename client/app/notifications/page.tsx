@@ -31,6 +31,7 @@ import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { ShinyText } from "@/components/ui/shiny-text";
 import { SystemApi, NotificationConfig, SystemUser } from "@/lib/api-system";
 
 type NotificationModule = {
@@ -445,11 +446,18 @@ export default function NotificationsPage() {
     <div className="space-y-6 p-4 md:p-8">
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Configuración de Alertas</h1>
-          <p className="text-sm text-muted-foreground">
-            Define qué eventos deben generar notificaciones por cada canal
-          </p>
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-lg bg-gradient-to-br from-red-500 to-rose-600">
+            <Bell className="h-6 w-6 text-white" />
+          </div>
+          <div>
+            <h1 className="text-3xl font-bold">
+              <ShinyText size="3xl" weight="bold">Configuración de Alertas</ShinyText>
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              Define qué eventos deben generar notificaciones por cada canal
+            </p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <Button onClick={() => setTestEmailModalOpen(true)} variant="outline" size="sm">

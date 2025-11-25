@@ -38,7 +38,9 @@ import {
   Trash2,
   Edit,
   Upload,
+  FolderArchive,
 } from "lucide-react";
+import { ShinyText } from "@/components/ui/shiny-text";
 import { toast } from "sonner";
 import { Client } from "@/types/client";
 import {
@@ -366,9 +368,18 @@ export default function RepositoryPage() {
       </AlertDialog>
       <div className="space-y-6">
         <div className="space-y-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-3xl font-semibold">Bóveda de archivos</h1>
-            <Badge variant="secondary">Fotos · Backups · Credenciales</Badge>
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-gradient-to-br from-slate-500 to-gray-600">
+              <FolderArchive className="h-6 w-6 text-white" />
+            </div>
+            <div>
+              <h1 className="text-3xl font-bold">
+                <ShinyText size="3xl" weight="bold">Bóveda de archivos</ShinyText>
+              </h1>
+              <div className="flex items-center gap-2 mt-1">
+                <Badge variant="secondary">Fotos · Backups · Credenciales</Badge>
+              </div>
+            </div>
           </div>
           <p className="text-sm text-muted-foreground max-w-2xl">
             Esta sección es la bóveda del cliente: aquí se respaldan imágenes, documentos,

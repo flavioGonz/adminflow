@@ -20,7 +20,8 @@ import { Label } from "@/components/ui/label";
 import { Product } from "@/types/product";
 import { fetchAllProducts, createProduct, updateProduct, deleteProduct } from "@/lib/api-products";
 import { toast } from "sonner";
-import { Activity, ImageIcon, Layers, Search, Star, Tag, Edit3, Trash2 } from "lucide-react";
+import { Activity, ImageIcon, Layers, Search, Star, Tag, Edit3, Trash2, Package } from "lucide-react";
+import { ShinyText } from "@/components/ui/shiny-text";
 
 type ProductBadge = "Servicio" | "Producto";
 
@@ -204,11 +205,18 @@ export default function ProductsPage() {
   return (
     <DashboardLayout>
       <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-semibold">Productos y servicios</h1>
-          <p className="text-sm text-muted-foreground">
-            Administra el catálogo con badges, categorías, precios en USD/UYU e imágenes.
-          </p>
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-lg bg-gradient-to-br from-orange-500 to-red-600">
+            <Package className="h-6 w-6 text-white" />
+          </div>
+          <div>
+            <h1 className="text-3xl font-bold">
+              <ShinyText size="3xl" weight="bold">Productos y servicios</ShinyText>
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              Administra el catálogo con badges, categorías, precios en USD/UYU e imágenes.
+            </p>
+          </div>
         </div>
 
         <div className="grid gap-4 md:grid-cols-3">

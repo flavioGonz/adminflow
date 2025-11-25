@@ -7,7 +7,9 @@ import {
   FileDown,
   FileSpreadsheet,
   PlusCircle,
+  Calculator,
 } from "lucide-react";
+import { ShinyText } from "@/components/ui/shiny-text";
 import DashboardLayout from "@/components/layout/dashboard-layout";
 import { BudgetTable } from "@/components/budgets/budget-table";
 import { CreateBudgetDialog } from "@/components/budgets/create-budget-dialog";
@@ -126,11 +128,18 @@ export default function BudgetsPage() {
     <DashboardLayout>
       <div className="space-y-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold">Presupuestos</h1>
-            <p className="text-sm text-muted-foreground">
-              Administra tus presupuestos.
-            </p>
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-gradient-to-br from-cyan-500 to-blue-600">
+              <Calculator className="h-6 w-6 text-white" />
+            </div>
+            <div>
+              <h1 className="text-3xl font-bold">
+                <ShinyText size="3xl" weight="bold">Presupuestos</ShinyText>
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                Administra tus presupuestos.
+              </p>
+            </div>
           </div>
           <div className="flex flex-wrap gap-2">
             <Input

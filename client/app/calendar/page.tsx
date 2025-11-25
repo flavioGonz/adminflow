@@ -25,7 +25,8 @@ import {
 import { Combobox } from "@/components/ui/combobox";
 import { useToast } from "@/hooks/use-toast";
 import { User2 } from "lucide-react";
-import { CalendarPlus, CircleDollarSign, Clock4, Edit3, FileBadge2, Lock, MapPin, Save, Ticket, Trash2, X } from "lucide-react";
+import { CalendarPlus, CircleDollarSign, Clock4, Edit3, FileBadge2, Lock, MapPin, Save, Ticket, Trash2, X, Calendar } from "lucide-react";
+import { ShinyText } from "@/components/ui/shiny-text";
 
 type CalendarEvent = {
   id: string;
@@ -300,9 +301,9 @@ export default function CalendarPage() {
         ? "bg-amber-700 border-amber-900 text-white"
         : sourceType === "payment"
           ? "bg-emerald-700 border-emerald-900 text-white"
-        : sourceType === "contract"
-          ? "bg-indigo-700 border-indigo-900 text-white"
-        : "bg-slate-900 border-slate-800 text-white";
+          : sourceType === "contract"
+            ? "bg-indigo-700 border-indigo-900 text-white"
+            : "bg-slate-900 border-slate-800 text-white";
     const icon =
       sourceType === "ticket" ? (
         <Ticket className="h-4 w-4 text-white" />
@@ -351,10 +352,25 @@ export default function CalendarPage() {
 
   return (
     <DashboardLayout className="p-0">
-      <div className="flex h-[calc(100vh-64px)] w-full overflow-hidden px-6 py-6">
-          <div className="flex-1">
-            <FullCalendar
-              plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
+      <div className="px-6 pt-6 pb-2">
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-lg bg-gradient-to-br from-pink-500 to-rose-600">
+            <Calendar className="h-6 w-6 text-white" />
+          </div>
+          <div>
+            <h1 className="text-3xl font-bold">
+              <ShinyText size="3xl" weight="bold">Calendario</ShinyText>
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              Gestiona eventos, vencimientos y recordatorios.
+            </p>
+          </div>
+        </div>
+      </div>
+      <div className="flex h-[calc(100vh-140px)] w-full overflow-hidden px-6 pb-6">
+        <div className="flex-1">
+          <FullCalendar
+            plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
             locale={esLocale}
             firstDay={1}
             initialView="timeGridWeek"
@@ -477,7 +493,7 @@ export default function CalendarPage() {
             </div>
           </div>
 
-      <DialogFooter className="mt-6 flex items-center justify-end gap-3">
+          <DialogFooter className="mt-6 flex items-center justify-end gap-3">
             {modalMode === "edit" && !editingLocked ? (
               <Button variant="outline" className="text-red-600 hover:text-red-700" onClick={handleDelete} disabled={saving}>
                 <Trash2 className="mr-2 h-4 w-4" />

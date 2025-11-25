@@ -44,6 +44,7 @@ import {
   Trash2,
   User,
 } from "lucide-react";
+import { ShinyText } from "@/components/ui/shiny-text";
 import Link from "next/link";
 import { toast } from "sonner";
 import { Ticket } from "@/types/ticket";
@@ -65,11 +66,11 @@ const formatCurrencyValue = (value: number, currency: Currency = "UYU") =>
   }).format(value);
 
 const statusVariant: Record<PaymentStatus, "default" | "secondary" | "destructive"> =
-  {
-    Pendiente: "destructive",
-    "A confirmar": "secondary",
-    Pagado: "default",
-  };
+{
+  Pendiente: "destructive",
+  "A confirmar": "secondary",
+  Pagado: "default",
+};
 
 const statusOrder: PaymentStatus[] = ["Pendiente", "A confirmar", "Pagado"];
 
@@ -316,47 +317,47 @@ function PaymentDialog({
               ))}
             </datalist>
           </div>
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-1">
-                <label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  <Hash className="h-4 w-4 text-muted-foreground" />
-                  Ticket asociado
-                </label>
-                <Input
-                  list={ticketDatalistId}
-                  value={ticketQuery}
-                  onChange={(event) => handleTicketSearch(event.target.value)}
-                  placeholder="Busca un ticket facturable"
-                  className="mb-2"
-                />
-                <datalist id={ticketDatalistId}>
-                  {filteredTickets.slice(0, 15).map((ticket) => (
-                    <option key={ticket.id} value={ticket.title ?? ticket.id} />
-                  ))}
-                </datalist>
-              </div>
+          <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-1">
-                <label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  <ShieldCheck className="h-4 w-4 text-muted-foreground" />
-                  Estado
-                </label>
-                <Select
-                  value={formState.status}
-                  onValueChange={(value) =>
-                    onFormChange({ ...formState, status: value as PaymentStatus })
-                  }
-                >
-                  <SelectTrigger className="bg-white">
-                    <SelectValue placeholder="Seleccione" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Pendiente">Pendiente</SelectItem>
-                    <SelectItem value="A confirmar">A confirmar</SelectItem>
-                    <SelectItem value="Pagado">Pagado</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              <label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                <Hash className="h-4 w-4 text-muted-foreground" />
+                Ticket asociado
+              </label>
+              <Input
+                list={ticketDatalistId}
+                value={ticketQuery}
+                onChange={(event) => handleTicketSearch(event.target.value)}
+                placeholder="Busca un ticket facturable"
+                className="mb-2"
+              />
+              <datalist id={ticketDatalistId}>
+                {filteredTickets.slice(0, 15).map((ticket) => (
+                  <option key={ticket.id} value={ticket.title ?? ticket.id} />
+                ))}
+              </datalist>
             </div>
+            <div className="space-y-1">
+              <label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                <ShieldCheck className="h-4 w-4 text-muted-foreground" />
+                Estado
+              </label>
+              <Select
+                value={formState.status}
+                onValueChange={(value) =>
+                  onFormChange({ ...formState, status: value as PaymentStatus })
+                }
+              >
+                <SelectTrigger className="bg-white">
+                  <SelectValue placeholder="Seleccione" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Pendiente">Pendiente</SelectItem>
+                  <SelectItem value="A confirmar">A confirmar</SelectItem>
+                  <SelectItem value="Pagado">Pagado</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
         </div>
         <DialogFooter className="space-x-2">
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
@@ -459,10 +460,10 @@ function ConfirmPaymentDialog({
               </Select>
             </div>
             <div className="space-y-1">
-                <label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  <MessageCircle className="h-4 w-4 text-muted-foreground" />
-                  Nota
-                </label>
+              <label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                <MessageCircle className="h-4 w-4 text-muted-foreground" />
+                Nota
+              </label>
               <textarea
                 className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus-visible:ring focus-visible:ring-primary/40"
                 rows={3}
@@ -752,15 +753,24 @@ export default function PaymentsPage() {
     </div>
   );
 
+
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-semibold">Pagos</h1>
-            <p className="text-sm text-muted-foreground">
-              Controla cobranzas y estados de los tickets en facturación.
-            </p>
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600">
+              <CreditCard className="h-6 w-6 text-white" />
+            </div>
+            <div>
+              <h1 className="text-3xl font-bold">
+                <ShinyText size="3xl" weight="bold">Pagos</ShinyText>
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                Controla cobranzas y estados de los tickets en facturación.
+              </p>
+            </div>
           </div>
           <div className="flex flex-wrap items-center gap-3">
             {statusList}

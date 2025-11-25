@@ -40,6 +40,7 @@ import {
   type DbEngine,
 } from "@/lib/api-database";
 import { cn } from "@/lib/utils";
+import { ShinyText } from "@/components/ui/shiny-text";
 
 type DatabaseConfig = {
   engine: DbEngine;
@@ -292,11 +293,18 @@ export default function DatabasePage() {
     <div className="space-y-6 p-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Base de Datos</h1>
-          <p className="text-muted-foreground">
-            Administra conexiones, monitorea estadísticas y sincroniza datos
-          </p>
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-lg bg-gradient-to-br from-purple-500 to-indigo-600">
+            <Database className="h-6 w-6 text-white" />
+          </div>
+          <div>
+            <h1 className="text-3xl font-bold">
+              <ShinyText size="3xl" weight="bold">Base de Datos</ShinyText>
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              Administra conexiones, monitorea estadísticas y sincroniza datos
+            </p>
+          </div>
         </div>
         <Button onClick={refreshOverview} variant="outline" size="sm">
           <RefreshCw className={cn("mr-2 h-4 w-4", isLoadingOverview && "animate-spin")} />
