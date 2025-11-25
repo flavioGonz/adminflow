@@ -344,6 +344,180 @@ export default function SystemPage() {
     }
   }, [activeTab, previewEvent]);
 
+  // Template generators
+  const getEmailTemplate = (eventType: string) => {
+    const templates: Record<string, string> = {
+      'email_created': `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nuevo Ticket Creado</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f3f4f6;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f3f4f6; padding: 40px 20px;">
+    <tr>
+      <td align="center">
+        <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+          <!-- Header -->
+          <tr>
+            <td style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px 30px; text-align: center;">
+              <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 600;">🎫 Nuevo Ticket</h1>
+            </td>
+          </tr>
+          <!-- Content -->
+          <tr>
+            <td style="padding: 40px 30px;">
+              <p style="margin: 0 0 20px; font-size: 16px; color: #374151;">Hola <strong>{{clientName}}</strong>,</p>
+              <p style="margin: 0 0 30px; font-size: 16px; color: #374151; line-height: 1.6;">
+                Se ha creado un nuevo ticket <strong>#{{ticketId}}</strong> en el sistema. A continuación los detalles:
+              </p>
+              
+              <!-- Info Box -->
+              <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f9fafb; border-radius: 8px; padding: 20px; margin: 0 0 30px;">
+                <tr>
+                  <td>
+                    <p style="margin: 0 0 10px; font-size: 14px; color: #6b7280;"><strong style="color: #111827;">Estado:</strong> {{status}}</p>
+                    <p style="margin: 0 0 10px; font-size: 14px; color: #6b7280;"><strong style="color: #111827;">Fecha:</strong> {{date}}</p>
+                    <p style="margin: 0; font-size: 14px; color: #6b7280;"><strong style="color: #111827;">Descripción:</strong> {{description}}</p>
+                  </td>
+                </tr>
+              </table>
+              
+              <!-- CTA Button -->
+              <table width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td align="center">
+                    <a href="{{url}}" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-weight: 600; font-size: 16px;">Ver Ticket</a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <!-- Footer -->
+          <tr>
+            <td style="background-color: #f9fafb; padding: 20px 30px; text-align: center; border-top: 1px solid #e5e7eb;">
+              <p style="margin: 0; font-size: 12px; color: #6b7280;">Enviado automáticamente por AdminFlow</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`,
+      'email_payment_received': `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pago Recibido</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f0fdf4;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f0fdf4; padding: 40px 20px;">
+    <tr>
+      <td align="center">
+        <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+          <tr>
+            <td style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 40px 30px; text-align: center;">
+              <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 600;">💰 Pago Recibido</h1>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 40px 30px;">
+              <p style="margin: 0 0 20px; font-size: 16px; color: #374151;">Hola <strong>{{clientName}}</strong>,</p>
+              <p style="margin: 0 0 30px; font-size: 16px; color: #374151; line-height: 1.6;">
+                Hemos recibido tu pago de <strong style="color: #10b981; font-size: 24px;">{{amount}}</strong>. ¡Gracias!
+              </p>
+              <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f0fdf4; border-radius: 8px; padding: 20px; margin: 0 0 30px;">
+                <tr>
+                  <td>
+                    <p style="margin: 0 0 10px; font-size: 14px; color: #6b7280;"><strong style="color: #111827;">Fecha:</strong> {{date}}</p>
+                    <p style="margin: 0; font-size: 14px; color: #6b7280;"><strong style="color: #111827;">Ticket:</strong> #{{ticketId}}</p>
+                  </td>
+                </tr>
+              </table>
+              <table width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td align="center">
+                    <a href="{{url}}" style="display: inline-block; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-weight: 600; font-size: 16px;">Ver Detalles</a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="background-color: #f0fdf4; padding: 20px 30px; text-align: center; border-top: 1px solid #d1fae5;">
+              <p style="margin: 0; font-size: 12px; color: #6b7280;">Enviado automáticamente por AdminFlow</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`,
+    };
+
+    return templates[eventType] || templates['email_created'];
+  };
+
+  const getTextTemplate = (eventType: string) => {
+    const templates: Record<string, string> = {
+      'whatsapp_created': `🎫 *Nuevo Ticket Creado*
+
+👤 Cliente: {{clientName}}
+🔢 Ticket: #{{ticketId}}
+📅 Fecha: {{date}}
+📊 Estado: {{status}}
+
+📝 {{description}}
+
+🔗 Ver detalles: {{url}}
+
+_Enviado automáticamente por AdminFlow_`,
+      'whatsapp_payment_received': `💰 *Pago Recibido*
+
+¡Hola {{clientName}}!
+
+Hemos recibido tu pago de *{{amount}}*
+
+📅 Fecha: {{date}}
+🎫 Ticket: #{{ticketId}}
+
+¡Gracias por tu pago!
+
+_Enviado automáticamente por AdminFlow_`,
+      'telegram_created': `🎫 <b>Nuevo Ticket Creado</b>
+
+👤 Cliente: {{clientName}}
+🔢 Ticket: #{{ticketId}}
+📅 Fecha: {{date}}
+📊 Estado: {{status}}
+
+📝 {{description}}
+
+<a href="{{url}}">Ver detalles</a>
+
+<i>Enviado automáticamente por AdminFlow</i>`,
+      'slack_created': `🎫 *Nuevo Ticket Creado*
+
+*Cliente:* {{clientName}}
+*Ticket:* #{{ticketId}}
+*Fecha:* {{date}}
+*Estado:* {{status}}
+
+*Descripción:* {{description}}
+
+<{{url}}|Ver detalles>
+
+_Enviado automáticamente por AdminFlow_`,
+    };
+
+    return templates[eventType] || templates['whatsapp_created'];
+  };
+
+
   const handleCreateUser = () => {
     setEditingUser(null);
     setSelectedRoles([]);
@@ -1061,7 +1235,7 @@ export default function SystemPage() {
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-semibold">Editor de Plantillas</h2>
-                <p className="text-sm text-muted-foreground">Diseña las plantillas para correos y notificaciones de cada canal</p>
+                <p className="text-sm text-muted-foreground">Diseña plantillas espectaculares para cada canal y evento</p>
               </div>
               <Button size="sm" onClick={handleSaveConfig}>
                 <Save className="mr-2 h-4 w-4" />
@@ -1069,209 +1243,229 @@ export default function SystemPage() {
               </Button>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-              {/* Sidebar - Selector de Canal y Evento */}
-              <Card className="lg:col-span-3">
+            {/* Selectors - Visual Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Canal Selector */}
+              <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-sm">Configuración</CardTitle>
+                  <CardTitle className="text-sm">Selecciona el Canal</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  {/* Selector de Canal */}
-                  <div className="space-y-2">
-                    <Label className="text-xs font-semibold">Canal</Label>
-                    <Select value={previewEvent.split('_')[0] || 'email'} onValueChange={(val) => setPreviewEvent(val + '_created')}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="email">
-                          <div className="flex items-center gap-2">
-                            <Mail className="h-4 w-4 text-sky-500" />
-                            Email
-                          </div>
-                        </SelectItem>
-                        <SelectItem value="whatsapp">
-                          <div className="flex items-center gap-2">
-                            <MessageCircle className="h-4 w-4 text-emerald-500" />
-                            WhatsApp
-                          </div>
-                        </SelectItem>
-                        <SelectItem value="telegram">
-                          <div className="flex items-center gap-2">
-                            <Send className="h-4 w-4 text-blue-500" />
-                            Telegram
-                          </div>
-                        </SelectItem>
-                        <SelectItem value="slack">
-                          <div className="flex items-center gap-2">
-                            <Slack className="h-4 w-4 text-amber-500" />
-                            Slack
-                          </div>
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
+                <CardContent>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { id: 'email', label: 'Email', icon: Mail, color: 'sky' },
+                      { id: 'whatsapp', label: 'WhatsApp', icon: MessageCircle, color: 'emerald' },
+                      { id: 'telegram', label: 'Telegram', icon: Send, color: 'blue' },
+                      { id: 'slack', label: 'Slack', icon: Slack, color: 'amber' }
+                    ].map(channel => {
+                      const Icon = channel.icon;
+                      const isActive = previewEvent.startsWith(channel.id);
+                      return (
+                        <button
+                          key={channel.id}
+                          onClick={() => setPreviewEvent(`${channel.id}_created`)}
+                          className={cn(
+                            "flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all",
+                            isActive
+                              ? `border-${channel.color}-500 bg-${channel.color}-50`
+                              : "border-slate-200 hover:border-slate-300"
+                          )}
+                        >
+                          <Icon className={cn("h-6 w-6", `text-${channel.color}-500`)} />
+                          <span className="text-sm font-medium">{channel.label}</span>
+                        </button>
+                      );
+                    })}
                   </div>
-
-                  {/* Selector de Evento */}
-                  <div className="space-y-2">
-                    <Label className="text-xs font-semibold">Tipo de Evento</Label>
-                    <Select value={previewEvent} onValueChange={setPreviewEvent}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="ticket_created">Nuevo Ticket</SelectItem>
-                        <SelectItem value="ticket_updated">Actualización de Ticket</SelectItem>
-                        <SelectItem value="ticket_closed">Ticket Cerrado</SelectItem>
-                        <SelectItem value="payment_received">Pago Recibido</SelectItem>
-                        <SelectItem value="contract_signed">Contrato Firmado</SelectItem>
-                        <SelectItem value="budget_created">Presupuesto Creado</SelectItem>
-                        <SelectItem value="budget_approved">Presupuesto Aprobado</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="pt-4 border-t">
-                    <h4 className="text-xs font-semibold mb-2">Variables Disponibles</h4>
-                    <div className="space-y-1">
-                      <code className="block text-[10px] bg-slate-100 px-2 py-1 rounded">{'{{clientName}}'}</code>
-                      <code className="block text-[10px] bg-slate-100 px-2 py-1 rounded">{'{{ticketId}}'}</code>
-                      <code className="block text-[10px] bg-slate-100 px-2 py-1 rounded">{'{{amount}}'}</code>
-                      <code className="block text-[10px] bg-slate-100 px-2 py-1 rounded">{'{{date}}'}</code>
-                      <code className="block text-[10px] bg-slate-100 px-2 py-1 rounded">{'{{status}}'}</code>
-                    </div>
-                  </div>
-
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => fetchPreview()}
-                    disabled={previewLoading}
-                  >
-                    {previewLoading ? "Cargando..." : "Refrescar Vista"}
-                  </Button>
                 </CardContent>
               </Card>
 
-              {/* Editor y Preview */}
-              <div className="lg:col-span-9 space-y-4">
-                {/* Editor */}
-                <Card>
-                  <CardHeader className="pb-3">
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-sm">Editor de Plantilla</CardTitle>
-                      <Badge variant="outline" className="gap-1">
-                        <Code className="h-3 w-3" />
-                        {previewEvent.startsWith('email') ? 'HTML' : 'Markdown'}
-                      </Badge>
+              {/* Event Selector */}
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm">Tipo de Evento</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Select value={previewEvent.split('_').slice(1).join('_')} onValueChange={(val) => {
+                    const channel = previewEvent.split('_')[0];
+                    setPreviewEvent(`${channel}_${val}`);
+                  }}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="created">🎫 Nuevo Ticket</SelectItem>
+                      <SelectItem value="updated">🔄 Actualización de Ticket</SelectItem>
+                      <SelectItem value="closed">✅ Ticket Cerrado</SelectItem>
+                      <SelectItem value="payment_received">💰 Pago Recibido</SelectItem>
+                      <SelectItem value="contract_signed">📝 Contrato Firmado</SelectItem>
+                      <SelectItem value="budget_created">📊 Presupuesto Creado</SelectItem>
+                      <SelectItem value="budget_approved">✔️ Presupuesto Aprobado</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Preview Section - TOP */}
+            <Card className="border-2 border-slate-200">
+              <div className="bg-gradient-to-r from-slate-100 to-slate-50 border-b p-3 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="flex gap-1.5">
+                    <div className="w-3 h-3 rounded-full bg-red-400"></div>
+                    <div className="w-3 h-3 rounded-full bg-amber-400"></div>
+                    <div className="w-3 h-3 rounded-full bg-emerald-400"></div>
+                  </div>
+                  <div className="text-sm text-slate-600 font-medium">
+                    Vista Previa - {previewEvent.startsWith('email') ? '📧 Email' : previewEvent.startsWith('whatsapp') ? '💬 WhatsApp' : previewEvent.startsWith('telegram') ? '✈️ Telegram' : '💼 Slack'}
+                  </div>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => fetchPreview()}
+                  disabled={previewLoading}
+                >
+                  <RotateCcw className={cn("h-4 w-4", previewLoading && "animate-spin")} />
+                </Button>
+              </div>
+              <div className="bg-white min-h-[500px] w-full overflow-auto relative">
+                {previewLoading ? (
+                  <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
+                    <div className="flex flex-col items-center gap-3">
+                      <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
+                      <p className="text-sm text-slate-500">Generando preview...</p>
                     </div>
-                  </CardHeader>
-                  <CardContent>
-                    <textarea
-                      className="w-full h-64 p-4 font-mono text-sm border rounded-md bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary"
-                      placeholder={
-                        previewEvent.startsWith('email')
-                          ? '<!DOCTYPE html>\n<html>\n<head>\n  <title>{{eventName}}</title>\n</head>\n<body>\n  <h1>Hola {{clientName}}</h1>\n  <p>Tu ticket #{{ticketId}} ha sido creado.</p>\n</body>\n</html>'
-                          : '🎫 *Nuevo Ticket Creado*\n\nCliente: {{clientName}}\nTicket: #{{ticketId}}\nFecha: {{date}}\n\n_Enviado automáticamente por AdminFlow_'
-                      }
-                      value={config.templates?.[previewEvent] || ''}
-                      onChange={(e) => {
+                  </div>
+                ) : previewEvent.startsWith('email') ? (
+                  <iframe
+                    srcDoc={config.templates?.[previewEvent] || previewHtml}
+                    className="w-full h-[500px] border-0"
+                    title="Email Preview"
+                  />
+                ) : (
+                  <div className="p-8">
+                    <div className={cn(
+                      "max-w-md mx-auto rounded-2xl p-6 shadow-lg",
+                      previewEvent.startsWith('whatsapp') && "bg-gradient-to-br from-emerald-50 to-emerald-100 border-2 border-emerald-300",
+                      previewEvent.startsWith('telegram') && "bg-gradient-to-br from-blue-50 to-blue-100 border-2 border-blue-300",
+                      previewEvent.startsWith('slack') && "bg-gradient-to-br from-amber-50 to-amber-100 border-2 border-amber-300"
+                    )}>
+                      <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed">
+                        {(config.templates?.[previewEvent] || '')
+                          .replace(/{{clientName}}/g, 'Juan Pérez')
+                          .replace(/{{ticketId}}/g, '1234')
+                          .replace(/{{amount}}/g, '$1,500')
+                          .replace(/{{date}}/g, new Date().toLocaleDateString())
+                          .replace(/{{status}}/g, 'Pendiente')
+                          .replace(/{{eventName}}/g, 'Nuevo Ticket')}
+                      </pre>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </Card>
+
+            {/* Code Editor - BOTTOM */}
+            <Card>
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm">Editor de Código</CardTitle>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="gap-1">
+                      <Code className="h-3 w-3" />
+                      {previewEvent.startsWith('email') ? 'HTML' : 'Markdown'}
+                    </Badge>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        const template = previewEvent.startsWith('email')
+                          ? getEmailTemplate(previewEvent)
+                          : getTextTemplate(previewEvent);
                         setConfig({
                           ...config,
                           templates: {
                             ...config.templates,
-                            [previewEvent]: e.target.value
+                            [previewEvent]: template
                           }
                         });
                       }}
-                    />
-                    <div className="flex items-center gap-2 mt-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          const template = previewEvent.startsWith('email')
-                            ? '<!DOCTYPE html>\n<html>\n<head>\n  <meta charset="UTF-8">\n  <title>{{eventName}}</title>\n</head>\n<body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">\n  <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 10px 10px 0 0;">\n    <h1 style="color: white; margin: 0;">{{eventName}}</h1>\n  </div>\n  <div style="background: white; padding: 30px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 10px 10px;">\n    <p>Hola <strong>{{clientName}}</strong>,</p>\n    <p>Tu ticket <strong>#{{ticketId}}</strong> ha sido creado exitosamente.</p>\n    <div style="background: #f3f4f6; padding: 15px; border-radius: 5px; margin: 20px 0;">\n      <p style="margin: 0;"><strong>Estado:</strong> {{status}}</p>\n      <p style="margin: 5px 0 0 0;"><strong>Fecha:</strong> {{date}}</p>\n    </div>\n    <p style="color: #6b7280; font-size: 12px; margin-top: 30px;">Enviado automáticamente por AdminFlow</p>\n  </div>\n</body>\n</html>'
-                            : '🎫 *{{eventName}}*\n\n👤 Cliente: {{clientName}}\n🔢 Ticket: #{{ticketId}}\n📅 Fecha: {{date}}\n📊 Estado: {{status}}\n\n_Enviado automáticamente por AdminFlow_';
-                          setConfig({
-                            ...config,
-                            templates: {
-                              ...config.templates,
-                              [previewEvent]: template
-                            }
-                          });
-                        }}
-                      >
-                        <Wand2 className="h-4 w-4 mr-2" />
-                        Usar Plantilla Base
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          setConfig({
-                            ...config,
-                            templates: {
-                              ...config.templates,
-                              [previewEvent]: ''
-                            }
-                          });
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4 mr-2" />
-                        Limpiar
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
+                    >
+                      <Wand2 className="h-4 w-4 mr-2" />
+                      Plantilla Base
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setConfig({
+                          ...config,
+                          templates: {
+                            ...config.templates,
+                            [previewEvent]: ''
+                          }
+                        });
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Limpiar
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <textarea
+                  className="w-full h-80 p-4 font-mono text-xs border rounded-md bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary resize-none"
+                  placeholder={
+                    previewEvent.startsWith('email')
+                      ? '<!DOCTYPE html>\n<html>\n<head>\n  <title>{{eventName}}</title>\n</head>\n<body>\n  <h1>Hola {{clientName}}</h1>\n  <p>Tu ticket #{{ticketId}} ha sido creado.</p>\n</body>\n</html>'
+                      : '🎫 *Nuevo Ticket Creado*\n\nCliente: {{clientName}}\nTicket: #{{ticketId}}\nFecha: {{date}}\n\n_Enviado automáticamente por AdminFlow_'
+                  }
+                  value={config.templates?.[previewEvent] || ''}
+                  onChange={(e) => {
+                    setConfig({
+                      ...config,
+                      templates: {
+                        ...config.templates,
+                        [previewEvent]: e.target.value
+                      }
+                    });
+                  }}
+                />
 
-                {/* Preview */}
-                <Card className="border-2 border-slate-200">
-                  <div className="bg-slate-100 border-b p-2 flex items-center gap-2">
-                    <div className="flex gap-1.5">
-                      <div className="w-3 h-3 rounded-full bg-red-400"></div>
-                      <div className="w-3 h-3 rounded-full bg-amber-400"></div>
-                      <div className="w-3 h-3 rounded-full bg-emerald-400"></div>
-                    </div>
-                    <div className="text-xs text-slate-500 font-medium ml-2">
-                      Vista Previa - {previewEvent.startsWith('email') ? 'Email' : previewEvent.startsWith('whatsapp') ? 'WhatsApp' : previewEvent.startsWith('telegram') ? 'Telegram' : 'Slack'}
-                    </div>
+                {/* Variables Helper */}
+                <div className="mt-4 p-4 bg-slate-50 rounded-lg border">
+                  <h4 className="text-xs font-semibold mb-3 text-slate-700">Variables Disponibles</h4>
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+                    {['{{clientName}}', '{{ticketId}}', '{{amount}}', '{{date}}', '{{status}}', '{{eventName}}', '{{description}}', '{{url}}'].map(v => (
+                      <code
+                        key={v}
+                        className="block text-[10px] bg-white px-2 py-1.5 rounded border border-slate-200 hover:border-primary cursor-pointer transition-colors"
+                        onClick={() => {
+                          const textarea = document.querySelector('textarea');
+                          if (textarea) {
+                            const start = textarea.selectionStart;
+                            const end = textarea.selectionEnd;
+                            const text = textarea.value;
+                            const newText = text.substring(0, start) + v + text.substring(end);
+                            setConfig({
+                              ...config,
+                              templates: {
+                                ...config.templates,
+                                [previewEvent]: newText
+                              }
+                            });
+                          }
+                        }}
+                      >
+                        {v}
+                      </code>
+                    ))}
                   </div>
-                  <div className="bg-white min-h-[400px] w-full overflow-auto relative">
-                    {previewLoading ? (
-                      <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
-                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-                      </div>
-                    ) : previewEvent.startsWith('email') ? (
-                      <iframe
-                        srcDoc={config.templates?.[previewEvent] || previewHtml}
-                        className="w-full h-[400px] border-0"
-                        title="Email Preview"
-                      />
-                    ) : (
-                      <div className="p-6">
-                        <div className={cn(
-                          "max-w-md mx-auto rounded-lg p-4 shadow-sm",
-                          previewEvent.startsWith('whatsapp') && "bg-emerald-50 border border-emerald-200",
-                          previewEvent.startsWith('telegram') && "bg-blue-50 border border-blue-200",
-                          previewEvent.startsWith('slack') && "bg-amber-50 border border-amber-200"
-                        )}>
-                          <pre className="whitespace-pre-wrap font-sans text-sm">
-                            {(config.templates?.[previewEvent] || '')
-                              .replace(/{{clientName}}/g, 'Juan Pérez')
-                              .replace(/{{ticketId}}/g, '1234')
-                              .replace(/{{amount}}/g, '$1,500')
-                              .replace(/{{date}}/g, new Date().toLocaleDateString())
-                              .replace(/{{status}}/g, 'Pendiente')
-                              .replace(/{{eventName}}/g, 'Nuevo Ticket')}
-                          </pre>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </Card>
-              </div>
-            </div>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         )}
 
