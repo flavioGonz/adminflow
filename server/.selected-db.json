@@ -1,6 +1,6 @@
 {
   "engine": "mongodb",
-  "mongoUri": "mongodb://crm.infratec.com.uy:29999/adminflow",
+  "mongoUri": "mongodb://crm.infratec.com.uy:29999",
   "mongoDb": "adminflow",
-  "sqlitePath": "C:\\Users\\Flavio\\Documents\\EXPRESS\\adminflow\\server\\database\\database.sqlite"
+  "sqlitePath": "database/database.sqlite"
 }

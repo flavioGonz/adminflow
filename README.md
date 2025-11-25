@@ -339,60 +339,51 @@ EXPRESS_BASE_URL=http://localhost:5000
 
 ```
 
-### **4. Configurar MongoDB**
+### **4. Elegir base de datos (nueva, existente o respaldo)**
 
-AdminFlow usa MongoDB como base de datos principal y **se inicializa automáticamente** al arrancar el servidor por primera vez.
+Estado de motores:
+- MongoDB 5.6+: soporte actual (productivo, auto-inicializa colecciones)
+- SQLite 3: soporte actual (local/offline, archivo unico)
+- PostgreSQL 14+/15+: planificado (requiere conector `pg` y migraciones)
+- MySQL 8+: planificado (requiere conector `mysql2` y migraciones)
 
-#### **Opción A: MongoDB Local**
-
-```bash
-# 1. Instalar MongoDB (si no lo tienes)
-# Windows: https://www.mongodb.com/try/download/community
-# Linux: sudo apt-get install -y mongodb-org
-# macOS: brew install mongodb-community
-
-# 2. Iniciar MongoDB
-# Windows: El servicio se inicia automáticamente
-# Linux/macOS: sudo systemctl start mongod
-
-# 3. Verificar que MongoDB esté ejecutándose
-mongosh  # Debería conectar sin errores
-```
-
-#### **Opción B: MongoDB Atlas (Cloud - Recomendado para producción)**
-
-```bash
-# 1. Crear cuenta gratuita en https://www.mongodb.com/cloud/atlas
-# 2. Crear cluster (M0 gratis)
-# 3. Configurar usuario y contraseña
-# 4. Whitelist IP (0.0.0.0/0 para desarrollo)
-# 5. Obtener connection string:
-#    mongodb+srv://usuario:password@cluster0.xxxxx.mongodb.net/adminflow
-```
-
-#### **Configurar Connection String**
-
-Edita `server/.selected-db.json` (o se creará automáticamente):
+Selecciona el motor con `DB_ENGINE` (`mongodb`, `sqlite`, `postgres`, `mysql`) o editando `server/.selected-db.json`:
 
 ```json
 {
   "engine": "mongodb",
-  "mongoUri": "mongodb://localhost:27017",  // O tu URI de Atlas
+  "mongoUri": "mongodb://localhost:27017",
   "mongoDb": "adminflow",
-  "sqlitePath": "database/database.sqlite"
+  "sqlitePath": "database/database.sqlite",
+  "postgresUrl": "postgres://usuario:password@localhost:5432/adminflow",
+  "mysqlUrl": "mysql://usuario:password@localhost:3306/adminflow"
 }
 ```
 
-O usa variables de entorno en `server/.env`:
+#### MongoDB (actual)
+- Nueva base: instala MongoDB, asegurate de que el servicio esta arriba y deja `mongoUri`/`mongoDb`. El servidor creara colecciones y el admin por defecto en el primer arranque o ejecuta `npm run init-mongo`.
+- Base existente o respaldo: si tienes un dump, restaura con `mongorestore --uri="<uri>" --db=<nombre> /ruta/backup/adminflow`; si la BD ya esta corriendo, solo apunta la URI.
+- Cloud: igual flujo usando Atlas con URI `mongodb+srv://`.
 
-```env
-MONGODB_URI=mongodb://localhost:27017
-MONGODB_DB=adminflow
-```
+#### SQLite (actual)
+- Nueva base: borra `server/database/database.sqlite` (o deja que el instalador la cree) y manten `engine: "sqlite"`.
+- Base existente o respaldo: apunta `sqlitePath` al archivo `.sqlite` que ya tengas; para restaurar un respaldo copia el archivo al `sqlitePath`.
+- El servidor creara tablas y el usuario admin en el primer arranque si el archivo no existe.
 
-### **5. Iniciar la Aplicación**
+#### PostgreSQL (planificado)
+- Nueva base: crea la BD y usuario antes de arrancar: `createdb adminflow` y `psql -c "create user adminflow with password '***'; grant all on database adminflow to adminflow;"`.
+- Base existente o respaldo: importa un dump con `pg_restore -d adminflow /ruta/backup.dump` o `psql adminflow < backup.sql`, y usa `engine: "postgres"` y `postgresUrl`.
+- Requiere habilitar el conector `pg` y migraciones; la seleccion aparecera en el instalador cuando este disponible.
 
-**¡No necesitas ejecutar scripts de inicialización!** El servidor detecta automáticamente si MongoDB necesita ser inicializado y lo hace en el primer arranque.
+#### MySQL (planificado)
+- Nueva base: `mysql -uroot -p -e "CREATE DATABASE adminflow; CREATE USER 'adminflow'@'%' IDENTIFIED BY '***'; GRANT ALL PRIVILEGES ON adminflow.* TO 'adminflow'@'%'; FLUSH PRIVILEGES;"`.
+- Base existente o respaldo: importa `mysqldump` con `mysql -u adminflow -p adminflow < backup.sql` y usa `engine: "mysql"` y `mysqlUrl`.
+- Requiere habilitar el conector `mysql2` y migraciones; se expondra como opcion en el instalador web.
+
+
+### **5. Iniciar la Aplicacion**
+
+Para MongoDB y SQLite no necesitas scripts manuales: el servidor crea las estructuras y el admin por defecto al primer arranque. Cuando se activen PostgreSQL/MySQL, deberas correr las migraciones iniciales antes de levantar el servidor.
 
 #### Terminal 1 - Backend
 ```bash
@@ -499,6 +490,56 @@ cd client
 npm run dev
 ```
 La aplicación estará en `http://localhost:3000`
+
+### **6. Acceder al Sistema**
+1. Abrir navegador en `http://localhost:3000`
+2. Login con credenciales por defecto:
+   - **Email**: `admin@adminflow.uy`
+   - **Password**: `admin`
+
+### **7. Verificar Instalación**
+
+Una vez dentro del sistema:
+1. Ve a `/database` para ver el estado de MongoDB
+2. Verifica que aparezcan las 13+ colecciones
+3. Crea un cliente de prueba
+4. Crea un ticket de prueba
+
+---
+
+## 🔄 Migración de Datos (Opcional)
+
+Si tienes datos existentes en SQLite que quieres migrar:
+
+```bash
+cd server
+npm run migrate-to-mongo
+```
+
+Este script copiará todos los datos de SQLite a MongoDB preservando:
+- ✅ Relaciones entre tablas
+- ✅ IDs autoincrementales
+- ✅ Fechas y timestamps
+- ✅ Datos JSON (convertidos a objetos nativos)
+
+
+### **5. Iniciar la Aplicacion (resumen)**
+
+Aplica al motor definido en `.selected-db.json` (MongoDB/SQLite hoy; PostgreSQL/MySQL cuando se activen con sus conectores).
+
+#### Terminal 1 - Backend
+```bash
+cd server
+npm run dev
+```
+El servidor estara en `http://localhost:5000`
+
+#### Terminal 2 - Frontend
+```bash
+cd client
+npm run dev
+```
+La aplicacion estara en `http://localhost:3000`
 
 ### **6. Acceder al Sistema**
 1. Abrir navegador en `http://localhost:3000`

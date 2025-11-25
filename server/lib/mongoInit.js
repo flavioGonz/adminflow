@@ -11,7 +11,7 @@ const path = require('path');
  * @param {string} dbName - Nombre de la base de datos
  * @returns {Promise<{success: boolean, message: string, collections: string[]}>}
  */
-async function initializeMongoDB(mongoUri, dbName = 'adminflow') {
+async function initializeMongoDB(mongoUri, dbName = 'adminflow', isNew = false) {
     let client;
 
     try {
@@ -21,6 +21,17 @@ async function initializeMongoDB(mongoUri, dbName = 'adminflow') {
 
         const db = client.db(dbName);
         console.log(`✅ Conectado a base de datos: ${dbName}`);
+
+        // Si es una instalación nueva, eliminar la base de datos existente
+        if (isNew) {
+            console.log('⚠️  Modo "Nueva Base de Datos" seleccionado. Eliminando base de datos existente...');
+            try {
+                await db.dropDatabase();
+                console.log('✅ Base de datos eliminada correctamente.');
+            } catch (dropError) {
+                console.warn('⚠️  No se pudo eliminar la base de datos (puede que no existiera):', dropError.message);
+            }
+        }
 
         // Leer el diagrama JSON
         const diagramPath = path.join(__dirname, '../database/MongoDB_Diagrama.json');
@@ -340,10 +351,42 @@ async function testMongoConnection(mongoUri, dbName = 'adminflow') {
     }
 }
 
+/**
+ * Obtiene estadísticas básicas de la base de datos
+ */
+async function getDatabaseStats(mongoUri, dbName = 'adminflow') {
+    let client;
+    try {
+        client = new MongoClient(mongoUri);
+        await client.connect();
+        const db = client.db(dbName);
+        const collections = await db.listCollections().toArray();
+
+        const stats = await Promise.all(collections.map(async (col) => {
+            const count = await db.collection(col.name).countDocuments();
+            return { name: col.name, count };
+        }));
+
+        const dbStats = await db.command({ dbStats: 1 });
+
+        return {
+            collections: stats,
+            size: dbStats.storageSize || 0
+        };
+    } catch (error) {
+        console.error('Error getting stats:', error);
+        return null;
+    } finally {
+        if (client) await client.close();
+    }
+}
+
 module.exports = {
     initializeMongoDB,
     testMongoConnection,
     createIndexes,
     createDefaultAdmin,
-    createDefaultConfigurations
+    createDefaultAdmin,
+    createDefaultConfigurations,
+    getDatabaseStats
 };

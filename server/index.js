@@ -2432,39 +2432,9 @@ app.delete('/api/calendar-events/:id', (req, res) => {
     });
 });
 
-const startServer = async () => {
-    console.log('\n🚀 Iniciando AdminFlow Server...\n');
+const { startServer } = require('./lib/serverStart');
 
-    // Auto-inicializar MongoDB
-    const { autoInitMongo } = require('./lib/autoInitMongo');
-    const mongoStatus = await autoInitMongo();
-
-    // Guardar estado global para middleware
-    global.mongoInitialized = mongoStatus.success && mongoStatus.initialized;
-    global.mongoInitError = mongoStatus.error || null;
-
-    if (!global.mongoInitialized) {
-        console.warn('⚠️  ADVERTENCIA: MongoDB no está disponible');
-        console.warn('   Las operaciones de base de datos fallarán');
-        console.warn('   Verifica la configuración y reinicia el servidor\n');
-    }
-
-    // Determinar motor de BD (legacy, ahora siempre MongoDB)
-    const engine = await determineDbEngine();
-    console.log(`🗄️  Motor de BD: ${engine}\n`);
-
-    // Iniciar servidor HTTP
-    app.listen(PORT, () => {
-        console.log('╔════════════════════════════════════════════════════════╗');
-        console.log('║              🎉 SERVIDOR INICIADO                      ║');
-        console.log('╚════════════════════════════════════════════════════════╝');
-        console.log(`\n🌐 Servidor corriendo en: http://localhost:${PORT}`);
-        console.log(`📊 MongoDB: ${global.mongoInitialized ? '✅ Conectado' : '❌ No disponible'}`);
-        console.log(`🔐 Credenciales por defecto: admin@adminflow.uy / admin\n`);
-    });
-};
-
-startServer().catch((error) => {
+startServer(app, PORT).catch((error) => {
     console.error('\n❌ Error fatal arrancando el servidor:', error);
     console.error('   Stack:', error.stack);
     process.exit(1);

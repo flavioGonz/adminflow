@@ -3,6 +3,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { initDB } = require('../db');
 
 const INSTALL_LOCK_FILE = path.join(__dirname, '../.installed');
 
@@ -38,6 +39,15 @@ async function startServer(app, PORT) {
 
     // Sistema instalado, proceder con inicialización normal
     console.log('✅ Sistema instalado, inicializando...\n');
+
+    try {
+        // Inicializar SQLite
+        await initDB();
+        console.log('✅ SQLite inicializado');
+    } catch (dbError) {
+        console.error('❌ Error inicializando SQLite:', dbError);
+        process.exit(1);
+    }
 
     // Auto-inicializar MongoDB
     const { autoInitMongo } = require('./autoInitMongo');

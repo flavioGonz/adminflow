@@ -1,0 +1,1 @@
+{"indexes":[{"v":{"$numberInt":"2"},"key":{"_id":{"$numberInt":"1"}},"name":"_id_"},{"v":{"$numberInt":"2"},"key":{"budgetId":{"$numberInt":"1"}},"name":"budgetId_1","sparse":false},{"v":{"$numberInt":"2"},"key":{"productId":{"$numberInt":"1"}},"name":"productId_1","sparse":false}],"uuid":"e25c4d5fd9c7435aa82c03e8cd981cbe","collectionName":"budget_items","type":"collection"}

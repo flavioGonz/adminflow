@@ -1,0 +1,57 @@
+
+> server@1.0.0 dev
+> nodemon .
+
+[33m[nodemon] 3.1.10[39m
+[33m[nodemon] to restart at any time, enter `rs`[39m
+[33m[nodemon] watching path(s): *.*[39m
+[33m[nodemon] watching extensions: js,mjs,cjs,json[39m
+[32m[nodemon] starting `node .`[39m
+
+🚀 Iniciando AdminFlow Server...
+
+╔════════════════════════════════════════════════════════╗
+║          ⚠️  SISTEMA NO INSTALADO                     ║
+╚════════════════════════════════════════════════════════╝
+
+📋 Por favor completa la instalación:
+   1. Abre tu navegador
+   2. Ve a: http://localhost:3000/install
+   3. Sigue el wizard de instalación
+
+⏭️  El servidor está listo, esperando instalación...
+
+╔════════════════════════════════════════════════════════╗
+║              🎉 SERVIDOR INICIADO                      ║
+╚════════════════════════════════════════════════════════╝
+
+🌐 Servidor corriendo en: http://localhost:5000
+📦 Estado: Esperando instalación
+🔧 Instalador: http://localhost:3000/install
+
+[31m[nodemon] app crashed - waiting for file changes before starting...[39m
+[32m[nodemon] restarting child process[39m
+[32m[nodemon] starting `node .`[39m
+
+🚀 Iniciando AdminFlow Server...
+
+╔════════════════════════════════════════════════════════╗
+║          ⚠️  SISTEMA NO INSTALADO                     ║
+╚════════════════════════════════════════════════════════╝
+
+📋 Por favor completa la instalación:
+   1. Abre tu navegador
+   2. Ve a: http://localhost:3000/install
+   3. Sigue el wizard de instalación
+
+⏭️  El servidor está listo, esperando instalación...
+
+╔════════════════════════════════════════════════════════╗
+║              🎉 SERVIDOR INICIADO                      ║
+╚════════════════════════════════════════════════════════╝
+
+🌐 Servidor corriendo en: http://localhost:5000
+📦 Estado: Esperando instalación
+🔧 Instalador: http://localhost:3000/install
+
+^C^C

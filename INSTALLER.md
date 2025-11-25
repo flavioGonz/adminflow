@@ -15,10 +15,10 @@ AdminFlow incluye un **instalador web interactivo** que guía paso a paso la con
 - Email *
 
 ### **Paso 2: Base de Datos**
-- Selección entre MongoDB o SQLite
-- Configuración de conexión MongoDB (URI, nombre de BD)
-- Prueba de conexión en tiempo real
-- Inicialización automática de esquemas
+- Seleccion entre MongoDB o SQLite (listos) y PostgreSQL/MySQL (planificados en el instalador)
+- Elegir crear base nueva o apuntar a una existente/respaldada
+- Configuracion y prueba de conexion por motor
+- Inicializacion automatica de esquemas (Mongo/SQLite); PostgreSQL/MySQL requeriran migraciones cuando se habiliten
 
 ### **Paso 3: Notificaciones**
 - Configuración de canales (opcional):
@@ -115,6 +115,13 @@ Luego ve a `http://localhost:3000/install` y completa el wizard nuevamente.
 
 ---
 
+## Seleccion de base de datos (wizard / API)
+
+Paso 2 permite elegir el motor y si usas base nueva, existente o un respaldo.
+- MongoDB: crea colecciones y admin automaticamente; para un respaldo usa `mongorestore --uri="<uri>" --db=<nombre> <ruta_dump>`.
+- SQLite: crea el archivo si no existe; para usar datos previos apunta `sqlitePath` al `.sqlite` o copia el respaldo al mismo nombre.
+- PostgreSQL y MySQL: se agregaran al selector al habilitar sus conectores. Debes crear la BD/usuario antes, restaurar con `pg_restore`/`psql` o `mysql < backup.sql` y pasar la URL en el payload.
+
 ## 📊 API Endpoints
 
 ### **GET /api/install/status**
@@ -133,11 +140,15 @@ Prueba la conexión a la base de datos.
 **Request:**
 ```json
 {
-  "type": "mongodb",
+  "type": "mongodb | sqlite | postgres | mysql",
   "mongoUri": "mongodb://localhost:27017",
-  "mongoDb": "adminflow"
+  "mongoDb": "adminflow",
+  "sqlitePath": "database/database.sqlite",
+  "postgresUrl": "postgres://user:pass@host:5432/adminflow",
+  "mysqlUrl": "mysql://user:pass@host:3306/adminflow"
 }
 ```
+MongoDB y SQLite ya estan soportados; PostgreSQL/MySQL se habilitaran cuando se incluyan sus conectores.
 
 **Response:**
 ```json
@@ -160,9 +171,12 @@ Completa la instalación.
     "email": "contacto@miempresa.com"
   },
   "database": {
-    "type": "mongodb",
+    "type": "mongodb | sqlite | postgres | mysql",
     "mongoUri": "mongodb://localhost:27017",
-    "mongoDb": "adminflow"
+    "mongoDb": "adminflow",
+    "sqlitePath": "database/database.sqlite",
+    "postgresUrl": "postgres://user:pass@host:5432/adminflow",
+    "mysqlUrl": "mysql://user:pass@host:3306/adminflow"
   },
   "notifications": [
     {
@@ -179,6 +193,7 @@ Completa la instalación.
   ]
 }
 ```
+MongoDB/SQLite se crean y prueban desde el wizard hoy; PostgreSQL/MySQL requeriran sus conectores y migraciones para quedar operativos.
 
 **Response:**
 ```json

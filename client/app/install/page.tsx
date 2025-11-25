@@ -18,7 +18,8 @@ import {
     Server,
     Cloud,
     TestTube,
-    AlertCircle
+    AlertCircle,
+    XCircle
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -26,7 +27,9 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Checkbox } from '@/components/ui/checkbox';
+
 import { apiFetch } from '@/lib/http';
+import DatabaseSummaryModal from '@/components/DatabaseSummaryModal';
 
 interface CompanyData {
     name: string;
@@ -60,8 +63,11 @@ export default function InstallPage() {
     const [currentStep, setCurrentStep] = useState(1);
     const [loading, setLoading] = useState(false);
     const [testing, setTesting] = useState(false);
-    const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+    const [testResult, setTestResult] = useState<{ success: boolean; message: string; stats?: any } | null>(null);
+    const [showSummaryModal, setShowSummaryModal] = useState(false);
     const [alreadyInstalled, setAlreadyInstalled] = useState(false);
+    const [showErrorModal, setShowErrorModal] = useState(false);
+    const [errorMessage, setErrorMessage] = useState('');
 
     // Form data
     const [companyData, setCompanyData] = useState<CompanyData>({
@@ -77,7 +83,8 @@ export default function InstallPage() {
         mongoDb: ''
     });
 
-    const [isNewDatabase, setIsNewDatabase] = useState(true); // true = nueva, false = usar existente
+    const [isNewDatabase, setIsNewDatabase] = useState(true); // true = nueva, false = usar existente (SQLite)
+    const [isNewMongoDatabase, setIsNewMongoDatabase] = useState(true); // true = nueva, false = usar existente (MongoDB)
 
     const [notifications, setNotifications] = useState<NotificationChannel[]>([
         { id: 'email', name: 'Email', enabled: false, config: { host: '', port: '587', user: '', pass: '' } },
@@ -93,7 +100,8 @@ export default function InstallPage() {
 
     const checkInstallation = async () => {
         try {
-            const response = await apiFetch('/api/install/status');
+            const res = await apiFetch('/install/status');
+            const response = await res.json();
             if (response.installed) {
                 setAlreadyInstalled(true);
             }
@@ -105,31 +113,39 @@ export default function InstallPage() {
     const testDatabaseConnection = async () => {
         setTesting(true);
         setTestResult(null);
-
         try {
-            const response = await apiFetch('/api/install/test-db', {
+            const res = await apiFetch('/install/test-db', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(databaseData)
+                body: JSON.stringify(databaseData),
+                headers: { 'Content-Type': 'application/json' }
             });
-
-            setTestResult({
-                success: response.success,
-                message: response.message
-            });
+            const response = await res.json();
+            setTestResult(response);
+            if (!response.success) {
+                setErrorMessage(response.message || 'Error desconocido al conectar con la base de datos');
+                setShowErrorModal(true);
+            }
         } catch (error: any) {
-            setTestResult({
-                success: false,
-                message: error.message || 'Error al probar la conexión'
-            });
+            const msg = error.message || 'Error al conectar con el servidor';
+            setTestResult({ success: false, message: msg });
+            setErrorMessage(msg);
+            setShowErrorModal(true);
         } finally {
             setTesting(false);
         }
     };
 
-    const handleNext = () => {
+    const handleNext = async () => {
+        if (currentStep === 2 && !testResult?.success && databaseData.type === 'mongodb') {
+            // Force test if not done
+            await testDatabaseConnection();
+            if (!testResult?.success) return;
+        }
+
         if (currentStep < steps.length) {
             setCurrentStep(currentStep + 1);
+        } else {
+            completeInstallation();
         }
     };
 
@@ -139,58 +155,51 @@ export default function InstallPage() {
         }
     };
 
-    const handleFinish = async () => {
+    const completeInstallation = async () => {
         setLoading(true);
-
         try {
-            const installData = {
+            const payload = {
                 company: companyData,
                 database: {
                     ...databaseData,
-                    isNew: isNewDatabase
+                    isNew: databaseData.type === 'sqlite' ? isNewDatabase : isNewMongoDatabase
                 },
                 notifications: notifications.filter(n => n.enabled)
             };
 
-            await apiFetch('/api/install/complete', {
+            const res = await apiFetch('/install/complete', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(installData)
+                body: JSON.stringify(payload),
+                headers: { 'Content-Type': 'application/json' }
             });
+            const response = await res.json();
 
-            // Redirect to login
-            router.push('/');
+            if (response.success) {
+                // Redirect to login after short delay
+                setTimeout(() => {
+                    router.push('/');
+                }, 2000);
+            } else {
+                setErrorMessage(response.message || response.error || 'Error al completar la instalación');
+                setShowErrorModal(true);
+                setLoading(false);
+            }
         } catch (error: any) {
-            alert('Error en la instalación: ' + error.message);
-        } finally {
+            setErrorMessage(error.message || 'Error fatal en la instalación');
+            setShowErrorModal(true);
             setLoading(false);
-        }
-    };
-
-    const isStepValid = () => {
-        switch (currentStep) {
-            case 1:
-                return companyData.name && companyData.email;
-            case 2:
-                return databaseData.type === 'sqlite' || (databaseData.mongoUri && databaseData.mongoDb);
-            case 3:
-                return true; // Notifications are optional
-            default:
-                return true;
         }
     };
 
     if (alreadyInstalled) {
         return (
-            <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center p-4">
-                <Card className="max-w-md w-full">
+            <div className="min-h-screen flex items-center justify-center bg-gray-50">
+                <Card className="w-full max-w-md">
                     <CardHeader className="text-center">
-                        <div className="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
-                            <CheckCircle2 className="w-8 h-8 text-green-600" />
-                        </div>
-                        <CardTitle className="text-2xl">Ya está instalado</CardTitle>
+                        <CheckCircle2 className="w-16 h-16 text-green-500 mx-auto mb-4" />
+                        <CardTitle>Sistema Instalado</CardTitle>
                         <CardDescription>
-                            AdminFlow ya ha sido configurado en este sistema
+                            AdminFlow ya está instalado y configurado.
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
@@ -204,7 +213,49 @@ export default function InstallPage() {
     }
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 p-4 md:p-8">
+        <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 p-4 md:p-8 relative">
+            {/* Error Modal */}
+            <AnimatePresence>
+                {showErrorModal && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm p-4"
+                        onClick={() => setShowErrorModal(false)}
+                    >
+                        <motion.div
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.9, opacity: 0 }}
+                            className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden border border-red-100"
+                            onClick={e => e.stopPropagation()}
+                        >
+                            <div className="bg-red-50 p-6 flex flex-col items-center text-center border-b border-red-100">
+                                <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mb-4">
+                                    <XCircle className="w-10 h-10 text-red-600" />
+                                </div>
+                                <h3 className="text-xl font-bold text-red-900">Error de Conexión</h3>
+                                <p className="text-red-600 mt-2">
+                                    No se pudo establecer conexión con la base de datos.
+                                </p>
+                            </div>
+                            <div className="p-6">
+                                <p className="text-gray-600 text-center mb-6">
+                                    {errorMessage}
+                                </p>
+                                <Button
+                                    onClick={() => setShowErrorModal(false)}
+                                    className="w-full bg-red-600 hover:bg-red-700 text-white"
+                                >
+                                    Entendido
+                                </Button>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
             <div className="max-w-4xl mx-auto">
                 {/* Header */}
                 <motion.div
@@ -384,6 +435,24 @@ export default function InstallPage() {
 
                                         {databaseData.type === 'mongodb' && (
                                             <div className="space-y-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                                                <div className="pt-2">
+                                                    <Label className="mb-2 block">Modo de Instalación</Label>
+                                                    <RadioGroup
+                                                        value={isNewMongoDatabase ? 'new' : 'existing'}
+                                                        onValueChange={(val) => setIsNewMongoDatabase(val === 'new')}
+                                                        className="flex flex-col space-y-2 mb-4"
+                                                    >
+                                                        <div className="flex items-center space-x-2">
+                                                            <RadioGroupItem value="new" id="mongo-new" />
+                                                            <Label htmlFor="mongo-new">Crear nueva base de datos (Sobrescribir si existe)</Label>
+                                                        </div>
+                                                        <div className="flex items-center space-x-2">
+                                                            <RadioGroupItem value="existing" id="mongo-existing" />
+                                                            <Label htmlFor="mongo-existing">Usar base de datos existente (Si ya tienes datos)</Label>
+                                                        </div>
+                                                    </RadioGroup>
+                                                </div>
+
                                                 <div>
                                                     <Label htmlFor="mongoUri">MongoDB URI *</Label>
                                                     <Input
@@ -394,6 +463,7 @@ export default function InstallPage() {
                                                         className="mt-1"
                                                     />
                                                     <p className="text-xs text-gray-500 mt-1">
+                                                        Formato sin auth: <code>mongodb://localhost:27017</code><br />
                                                         Formato con auth: <code>mongodb://usuario:password@host:puerto</code>
                                                     </p>
                                                 </div>
@@ -428,19 +498,33 @@ export default function InstallPage() {
                                                     )}
                                                 </Button>
 
-                                                {testResult && (
-                                                    <div className={`p-3 rounded-lg flex items-start gap-2 ${testResult.success ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'
-                                                        }`}>
-                                                        {testResult.success ? (
+                                                {testResult && testResult.success && (
+                                                    <div className="p-3 rounded-lg flex items-center justify-between gap-2 bg-green-50 border border-green-200">
+                                                        <div className="flex items-start gap-2">
                                                             <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                                                        ) : (
-                                                            <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                                                            <p className="text-sm text-green-700">
+                                                                {testResult.message}
+                                                            </p>
+                                                        </div>
+                                                        {testResult.stats && (
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                className="text-green-700 hover:text-green-800 hover:bg-green-100 h-8"
+                                                                onClick={() => setShowSummaryModal(true)}
+                                                            >
+                                                                Ver Detalles
+                                                            </Button>
                                                         )}
-                                                        <p className={`text-sm ${testResult.success ? 'text-green-700' : 'text-red-700'}`}>
-                                                            {testResult.message}
-                                                        </p>
                                                     </div>
                                                 )}
+
+                                                <DatabaseSummaryModal
+                                                    open={showSummaryModal}
+                                                    onOpenChange={setShowSummaryModal}
+                                                    stats={testResult?.stats}
+                                                    dbName={databaseData.mongoDb || 'Desconocida'}
+                                                />
                                             </div>
                                         )}
 
@@ -605,15 +689,17 @@ export default function InstallPage() {
                                                         )}
 
                                                         {channel.id === 'slack' && (
-                                                            <Input
-                                                                placeholder="Webhook URL"
-                                                                value={channel.config.webhook}
-                                                                onChange={(e) => {
-                                                                    const newNotifications = [...notifications];
-                                                                    newNotifications[index].config.webhook = e.target.value;
-                                                                    setNotifications(newNotifications);
-                                                                }}
-                                                            />
+                                                            <>
+                                                                <Input
+                                                                    placeholder="Webhook URL"
+                                                                    value={channel.config.webhook}
+                                                                    onChange={(e) => {
+                                                                        const newNotifications = [...notifications];
+                                                                        newNotifications[index].config.webhook = e.target.value;
+                                                                        setNotifications(newNotifications);
+                                                                    }}
+                                                                />
+                                                            </>
                                                         )}
                                                     </div>
                                                 )}
@@ -622,106 +708,77 @@ export default function InstallPage() {
                                     </div>
                                 )}
 
-                                {/* Step 4: Finish */}
+                                {/* Step 4: Completion */}
                                 {currentStep === 4 && (
-                                    <div className="text-center space-y-6 py-8">
-                                        <motion.div
-                                            initial={{ scale: 0 }}
-                                            animate={{ scale: 1 }}
-                                            transition={{ type: 'spring', stiffness: 200, damping: 15 }}
-                                            className="mx-auto w-24 h-24 bg-gradient-to-br from-green-400 to-blue-500 rounded-full flex items-center justify-center"
-                                        >
-                                            <Sparkles className="w-12 h-12 text-white" />
-                                        </motion.div>
-
+                                    <div className="text-center space-y-6">
+                                        <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto">
+                                            <CheckCircle2 className="w-10 h-10 text-green-600" />
+                                        </div>
                                         <div>
-                                            <h3 className="text-2xl font-bold text-gray-900 mb-2">
-                                                ¡Todo Listo!
-                                            </h3>
-                                            <p className="text-gray-600">
-                                                AdminFlow está configurado y listo para usar
+                                            <h3 className="text-2xl font-bold text-gray-900">¡Todo listo!</h3>
+                                            <p className="text-gray-600 mt-2">
+                                                Hemos recopilado toda la información necesaria para configurar tu sistema.
                                             </p>
                                         </div>
-
-                                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 text-left">
-                                            <h4 className="font-semibold text-blue-900 mb-3">Resumen de Configuración:</h4>
-                                            <div className="space-y-2 text-sm">
-                                                <div className="flex items-center gap-2">
-                                                    <Building2 className="w-4 h-4 text-blue-600" />
-                                                    <span className="text-gray-700">
-                                                        <strong>Empresa:</strong> {companyData.name}
-                                                    </span>
-                                                </div>
-                                                <div className="flex items-center gap-2">
-                                                    <Database className="w-4 h-4 text-blue-600" />
-                                                    <span className="text-gray-700">
-                                                        <strong>Base de Datos:</strong> {databaseData.type === 'mongodb' ? 'MongoDB' : 'SQLite'}
-                                                    </span>
-                                                </div>
-                                                <div className="flex items-center gap-2">
-                                                    <Bell className="w-4 h-4 text-blue-600" />
-                                                    <span className="text-gray-700">
-                                                        <strong>Notificaciones:</strong> {notifications.filter(n => n.enabled).length} canal(es) configurado(s)
-                                                    </span>
-                                                </div>
+                                        <div className="bg-gray-50 p-6 rounded-lg text-left max-w-md mx-auto space-y-3">
+                                            <div className="flex justify-between">
+                                                <span className="text-gray-600">Empresa:</span>
+                                                <span className="font-medium">{companyData.name}</span>
                                             </div>
-                                        </div>
-
-                                        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                                            <p className="text-sm text-yellow-800">
-                                                <strong>Credenciales por defecto:</strong><br />
-                                                Email: admin@adminflow.uy<br />
-                                                Contraseña: admin<br />
-                                                <span className="text-xs">(Cámbialas después del primer login)</span>
-                                            </p>
+                                            <div className="flex justify-between">
+                                                <span className="text-gray-600">Base de Datos:</span>
+                                                <span className="font-medium uppercase">{databaseData.type}</span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span className="text-gray-600">Notificaciones:</span>
+                                                <span className="font-medium">
+                                                    {notifications.filter(n => n.enabled).length} canales activos
+                                                </span>
+                                            </div>
                                         </div>
                                     </div>
                                 )}
+
+                                {/* Navigation Buttons */}
+                                <div className="flex justify-between pt-6 border-t">
+                                    <Button
+                                        variant="outline"
+                                        onClick={handleBack}
+                                        disabled={currentStep === 1 || loading}
+                                        className={currentStep === 1 ? 'invisible' : ''}
+                                    >
+                                        <ArrowLeft className="w-4 h-4 mr-2" />
+                                        Anterior
+                                    </Button>
+
+                                    <Button
+                                        onClick={handleNext}
+                                        disabled={loading || (currentStep === 1 && !companyData.name)}
+                                        className="bg-blue-600 hover:bg-blue-700"
+                                    >
+                                        {loading ? (
+                                            <>
+                                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                                Instalando...
+                                            </>
+                                        ) : currentStep === steps.length ? (
+                                            <>
+                                                Finalizar Instalación
+                                                <CheckCircle2 className="w-4 h-4 ml-2" />
+                                            </>
+                                        ) : (
+                                            <>
+                                                Siguiente
+                                                <ArrowRight className="w-4 h-4 ml-2" />
+                                            </>
+                                        )}
+                                    </Button>
+                                </div>
                             </CardContent>
                         </Card>
                     </motion.div>
                 </AnimatePresence>
-
-                {/* Navigation Buttons */}
-                <div className="flex items-center justify-between mt-6">
-                    <Button
-                        onClick={handleBack}
-                        disabled={currentStep === 1 || loading}
-                        variant="outline"
-                    >
-                        <ArrowLeft className="w-4 h-4 mr-2" />
-                        Anterior
-                    </Button>
-
-                    {currentStep < steps.length ? (
-                        <Button
-                            onClick={handleNext}
-                            disabled={!isStepValid() || loading}
-                        >
-                            Siguiente
-                            <ArrowRight className="w-4 h-4 ml-2" />
-                        </Button>
-                    ) : (
-                        <Button
-                            onClick={handleFinish}
-                            disabled={loading}
-                            className="bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600"
-                        >
-                            {loading ? (
-                                <>
-                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                    Instalando...
-                                </>
-                            ) : (
-                                <>
-                                    <CheckCircle2 className="w-4 h-4 mr-2" />
-                                    Finalizar Instalación
-                                </>
-                            )}
-                        </Button>
-                    )}
-                </div>
             </div>
-        </div >
+        </div>
     );
 }

@@ -5,8 +5,11 @@ const express = require('express');
 const router = express.Router();
 const fs = require('fs');
 const path = require('path');
-const { testMongoConnection, initializeMongoDB } = require('../lib/mongoInit');
+const sqlite3 = require('sqlite3').verbose();
+const { testMongoConnection, initializeMongoDB, getDatabaseStats } = require('../lib/mongoInit');
 const { upsertConfig } = require('../lib/configService');
+
+
 
 // Archivo que marca si la instalación está completa
 const INSTALL_LOCK_FILE = path.join(__dirname, '../.installed');
@@ -81,6 +84,12 @@ router.post('/test-db', async (req, res) => {
             try {
                 const result = await testMongoConnection(cleanUri, mongoDb);
                 console.log('✅ Connection test result:', result);
+
+                if (result.success) {
+                    const stats = await getDatabaseStats(cleanUri, mongoDb);
+                    result.stats = stats;
+                }
+
                 return res.json(result);
             } catch (testError) {
                 console.error('❌ Connection test error:', testError);
@@ -113,7 +122,8 @@ router.post('/complete', async (req, res) => {
         // Verificar que no esté ya instalado
         if (isInstalled()) {
             return res.status(400).json({
-                error: 'El sistema ya está instalado'
+                success: false,
+                message: 'El sistema ya está instalado'
             });
         }
 
@@ -122,13 +132,15 @@ router.post('/complete', async (req, res) => {
         // Validar datos requeridos
         if (!company || !company.name || !company.email) {
             return res.status(400).json({
-                error: 'Información de empresa incompleta'
+                success: false,
+                message: 'Información de empresa incompleta'
             });
         }
 
         if (!database || !database.type) {
             return res.status(400).json({
-                error: 'Configuración de base de datos incompleta'
+                success: false,
+                message: 'Configuración de base de datos incompleta'
             });
         }
 
@@ -142,7 +154,8 @@ router.post('/complete', async (req, res) => {
         if (database.type === 'mongodb') {
             if (!database.mongoUri || !database.mongoDb) {
                 return res.status(400).json({
-                    error: 'Configuración de MongoDB incompleta'
+                    success: false,
+                    message: 'Configuración de MongoDB incompleta'
                 });
             }
 
@@ -162,12 +175,13 @@ router.post('/complete', async (req, res) => {
 
             // Inicializar MongoDB
             try {
-                const initResult = await initializeMongoDB(cleanUri, database.mongoDb);
+                const initResult = await initializeMongoDB(cleanUri, database.mongoDb, database.isNew);
 
                 if (!initResult.success) {
                     console.error('❌ Error al inicializar MongoDB:', initResult.message);
                     return res.status(500).json({
-                        error: 'Error al inicializar MongoDB: ' + initResult.message
+                        success: false,
+                        message: 'Error al inicializar MongoDB: ' + initResult.message
                     });
                 }
 
@@ -175,129 +189,135 @@ router.post('/complete', async (req, res) => {
             } catch (initError) {
                 console.error('❌ Error fatal al inicializar MongoDB:', initError);
                 return res.status(500).json({
-                    error: 'Error fatal al inicializar MongoDB: ' + initError.message
+                    success: false,
+                    message: 'Error fatal al inicializar MongoDB: ' + initError.message
                 });
             }
         } else if (database.type === 'sqlite') {
             // Crear directorio de base de datos si no existe
             const dbDir = path.join(__dirname, '../database');
+            if (!fs.existsSync(dbDir)) {
+                fs.mkdirSync(dbDir, { recursive: true });
+            }
+            const dbPath = path.join(dbDir, 'database.sqlite');
+
+            // Crear conexión temporal para inicializar
+            const db = new sqlite3.Database(dbPath);
 
             // Crear tablas básicas
-            db.serialize(() => {
-                // Tabla de usuarios
-                db.run(`CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            email TEXT UNIQUE NOT NULL,
-            password TEXT NOT NULL,
-            name TEXT,
-            role TEXT DEFAULT 'user',
-            createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
-          )`);
+            await new Promise((resolve, reject) => {
+                db.serialize(() => {
+                    // Tabla de usuarios
+                    db.run(`CREATE TABLE IF NOT EXISTS users (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        email TEXT UNIQUE NOT NULL,
+                        password TEXT NOT NULL,
+                        name TEXT,
+                        role TEXT DEFAULT 'user',
+                        createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+                    )`);
 
-                // Tabla de clientes
-                db.run(`CREATE TABLE IF NOT EXISTS clients (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            email TEXT,
-            phone TEXT,
-            address TEXT,
-            createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
-          )`);
+                    // Tabla de clientes
+                    db.run(`CREATE TABLE IF NOT EXISTS clients (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        name TEXT NOT NULL,
+                        email TEXT,
+                        phone TEXT,
+                        address TEXT,
+                        createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+                    )`);
 
-                // Tabla de tickets
-                db.run(`CREATE TABLE IF NOT EXISTS tickets (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            clientId INTEGER,
-            title TEXT NOT NULL,
-            description TEXT,
-            status TEXT DEFAULT 'open',
-            priority TEXT DEFAULT 'medium',
-            createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (clientId) REFERENCES clients(id)
-          )`);
+                    // Tabla de tickets
+                    db.run(`CREATE TABLE IF NOT EXISTS tickets (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        clientId INTEGER,
+                        title TEXT NOT NULL,
+                        description TEXT,
+                        status TEXT DEFAULT 'open',
+                        priority TEXT DEFAULT 'medium',
+                        createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (clientId) REFERENCES clients(id)
+                    )`);
 
-                // Tabla de contratos
-                db.run(`CREATE TABLE IF NOT EXISTS contracts (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            clientId INTEGER,
-            name TEXT NOT NULL,
-            status TEXT DEFAULT 'draft',
-            createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (clientId) REFERENCES clients(id)
-          )`);
+                    // Tabla de contratos
+                    db.run(`CREATE TABLE IF NOT EXISTS contracts (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        clientId INTEGER,
+                        name TEXT NOT NULL,
+                        status TEXT DEFAULT 'draft',
+                        createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (clientId) REFERENCES clients(id)
+                    )`);
 
-                // Usuario admin por defecto
-                const bcrypt = require('bcrypt');
-                const adminPassword = bcrypt.hashSync('admin', 10);
+                    // Usuario admin por defecto
+                    const bcrypt = require('bcrypt');
+                    const adminPassword = bcrypt.hashSync('admin', 10);
 
-                db.run(`INSERT OR IGNORE INTO users (id, email, password, name, role) 
-                  VALUES (1, 'admin@adminflow.uy', ?, 'Administrador', 'admin')`,
-                    [adminPassword], (err) => {
-                        if (err) {
-                            console.error('❌ Error al crear usuario admin:', err);
-                        } else {
-                            console.log('✅ Usuario admin creado');
-                        }
-                    });
+                    db.run(`INSERT OR IGNORE INTO users (id, email, password, name, role) 
+                      VALUES (1, 'admin@adminflow.uy', ?, 'Administrador', 'admin')`,
+                        [adminPassword], (err) => {
+                            if (err) {
+                                console.error('❌ Error al crear usuario admin:', err);
+                            } else {
+                                console.log('✅ Usuario admin creado');
+                            }
+                        });
+                });
+
+                db.close((err) => {
+                    if (err) {
+                        console.error('❌ Error al cerrar SQLite:', err);
+                        reject(err);
+                    } else {
+                        console.log('✅ Base de datos SQLite creada correctamente');
+                        resolve();
+                    }
+                });
             });
-
-            db.close((err) => {
-                if (err) {
-                    console.error('❌ Error al cerrar SQLite:', err);
-                    reject(err);
-                } else {
-                    console.log('✅ Base de datos SQLite creada correctamente');
-                    resolve();
-                }
-            });
-        }).catch(err => {
-            return res.status(500).json({
-                error: 'Error al crear base de datos SQLite: ' + err.message
-            });
-        });
         }
 
-fs.writeFileSync(dbConfigPath, JSON.stringify(dbConfig, null, 2));
-console.log('✅ Configuración guardada en .selected-db.json');
+        fs.writeFileSync(dbConfigPath, JSON.stringify(dbConfig, null, 2));
+        console.log('✅ Configuración guardada en .selected-db.json');
 
-// 2. Guardar información de la empresa
-await upsertConfig('company', {
-    name: company.name,
-    address: company.address || '',
-    phone: company.phone || '',
-    email: company.email
-});
+        // 2. Guardar información de la empresa
+        await upsertConfig('company', {
+            name: company.name,
+            address: company.address || '',
+            phone: company.phone || '',
+            email: company.email
+        });
 
-// 3. Configurar notificaciones
-if (notifications && notifications.length > 0) {
-    const notifConfig = {
-        channels: {}
-    };
+        // 3. Configurar notificaciones
+        if (notifications && notifications.length > 0) {
+            const notifConfig = {
+                channels: {}
+            };
 
-    for (const channel of notifications) {
-        notifConfig.channels[channel.id] = {
-            enabled: true,
-            ...channel.config
-        };
-    }
+            for (const channel of notifications) {
+                notifConfig.channels[channel.id] = {
+                    enabled: true,
+                    ...channel.config
+                };
+            }
 
-    await upsertConfig('notifications', notifConfig);
-}
+            await upsertConfig('notifications', notifConfig);
+        }
 
-// 4. Marcar como instalado
-markAsInstalled();
+        // 4. Marcar como instalado
+        markAsInstalled();
 
-res.json({
-    success: true,
-    message: 'Instalación completada exitosamente'
-});
+        res.json({
+            success: true,
+            message: 'Instalación completada exitosamente'
+        });
 
     } catch (error) {
-    console.error('Error en instalación:', error);
-    res.status(500).json({
-        error: 'Error al completar la instalación: ' + error.message
-    });
-}
+        console.error('Error en instalación:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error al completar la instalación: ' + error.message
+        });
+    }
 });
 
 module.exports = router;

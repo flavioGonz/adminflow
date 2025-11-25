@@ -86,22 +86,32 @@ npm run dev
 
 #### **Paso 2/4: Base de Datos**
 
-**Opción A - MongoDB (Recomendado para producción):**
+**Opcion A - MongoDB (recomendado produccion):**
 - Selecciona "MongoDB"
-- **MongoDB URI**:
+- MongoDB URI:
   - Sin auth: `mongodb://crm.infratec.com.uy:29999`
   - Con auth: `mongodb://usuario:password@crm.infratec.com.uy:29999`
-  - ⚠️ **SIN** `/adminflow` al final (el nombre de la BD va en el otro campo)
-- **Nombre de BD**: `adminflow` (o el que prefieras)
-- Click en "Probar Conexión"
-- Espera el ✅ verde
+  - Sin `/adminflow` al final (el nombre va en el campo BD)
+- Nombre de BD: `adminflow` (o el que prefieras)
+- Para respaldo existente: `mongorestore --uri="<uri>" --db=<nombre> <ruta_dump>`
+- Click en "Probar Conexion" y espera el ok
 
-**Opción B - SQLite (Simple, local):**
+**Opcion B - SQLite (simple, local):**
 - Selecciona "SQLite"
-- Elige el modo:
-  - **Crear nueva base de datos**: Borra cualquier dato previo y empieza de cero.
-  - **Usar base de datos existente**: Mantiene los datos si ya existe el archivo.
-- Se configurará automáticamente
+- Elegir modo:
+  - Crear nueva base de datos: borra datos previos y arranca limpia
+  - Usar base de datos existente: apunta al archivo ya creado
+- Para respaldo: copia tu `.sqlite` al `server/database/database.sqlite` o al `sqlitePath` elegido
+
+**Opcion C - PostgreSQL (planificado en el instalador):**
+- Selecciona "PostgreSQL" cuando aparezca
+- Crea BD/usuario o restaura backup: `pg_restore -d adminflow <ruta.dump>` o `psql adminflow < backup.sql`
+- Pasa la URL `postgres://usuario:pass@host:5432/adminflow`
+
+**Opcion D - MySQL (planificado en el instalador):**
+- Selecciona "MySQL" cuando aparezca
+- Crea BD/usuario o importa respaldo: `mysql -u adminflow -p adminflow < backup.sql`
+- Pasa la URL `mysql://usuario:pass@host:3306/adminflow`
 
 #### **Paso 3/4: Notificaciones (Opcional)**
 - Configura canales si quieres
@@ -155,6 +165,24 @@ Si seleccionaste SQLite y ves este error:
 1. El instalador debería crear la BD automáticamente
 2. Si no funciona, verifica que existe `server/database/database.sqlite`
 3. Reinicia el servidor después de la instalación
+
+### **Error: "ENOTEMPTY" o "EPERM" al hacer npm install**
+
+Si ves errores como `npm error ENOTEMPTY` o `npm error EPERM` en Windows:
+1. **Detén todos los procesos de Node:**
+   ```cmd
+   taskkill /F /IM node.exe
+   ```
+2. **Borra la carpeta node_modules manualmente:**
+   ```cmd
+   cd server
+   rmdir /s /q node_modules
+   del package-lock.json
+   ```
+3. **Instala de nuevo:**
+   ```cmd
+   npm install
+   ```
 
 ---
 

@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
+import { apiFetch } from '@/lib/http';
 
 export default function Home() {
   const router = useRouter();
@@ -10,7 +11,7 @@ export default function Home() {
   useEffect(() => {
     async function checkInstallation() {
       try {
-        const response = await fetch('/api/install/status');
+        const response = await apiFetch('/install/status');
         const data = await response.json();
 
         if (data.installed) {
