@@ -304,33 +304,18 @@ export default function SystemPage() {
     document.body.removeChild(link);
   };
 
+
   const fetchPreview = async () => {
     setPreviewLoading(true);
     try {
-      const response = await fetch("/api/notifications/preview-template", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          event: previewEvent,
-          data: {
-            ticketId: "T-12345",
-            title: "Problema de conexión",
-            clientName: "Empresa Demo S.A.",
-            status: "Abierto",
-            priority: "Alta",
-            updatedBy: "Soporte Técnico",
-            contractTitle: "Mantenimiento 2024",
-            amount: 1500,
-            currency: "USD",
-            budgetId: "B-98765",
-            paymentId: "PAY-555",
-            invoice: "F-001",
-            method: "Transferencia"
-          }
-        }),
-      });
-      const html = await response.text();
-      setPreviewHtml(html);
+      // Use local template generation instead of API call
+      if (previewEvent.startsWith('email')) {
+        const template = getEmailTemplate(previewEvent);
+        setPreviewHtml(template);
+      } else {
+        const template = getTextTemplate(previewEvent);
+        setPreviewHtml(template);
+      }
     } catch (error) {
       console.error("Error fetching preview:", error);
       toast.error("Error al cargar la vista previa");
