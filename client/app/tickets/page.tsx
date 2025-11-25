@@ -13,8 +13,9 @@ import {
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { FileDown, FileSpreadsheet } from "lucide-react";
+import { FileDown, FileSpreadsheet, Ticket as TicketIcon } from "lucide-react";
 import { toast } from "sonner";
+import { ShinyText } from "@/components/ui/shiny-text";
 import {
   Ticket,
   TicketAttachment,
@@ -272,11 +273,18 @@ export default function TicketsPage() {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold">Gestión de Tickets</h1>
-          <p className="text-sm text-muted-foreground">
-            Visualiza el estado de los casos y actúa de forma rápida.
-          </p>
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-lg bg-gradient-to-br from-amber-500 to-orange-600">
+            <TicketIcon className="h-6 w-6 text-white" />
+          </div>
+          <div>
+            <h1 className="text-3xl font-bold">
+              <ShinyText size="3xl" weight="bold">Gestión de Tickets</ShinyText>
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              Visualiza el estado de los casos y actúa de forma rápida.
+            </p>
+          </div>
         </div>
       </div>
 

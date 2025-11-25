@@ -14,7 +14,8 @@ import { toast } from "sonner";
 import autoTable from "jspdf-autotable";
 import { jsPDF } from "jspdf";
 import * as XLSX from "xlsx";
-import { BarChart3, FileDown, FileSpreadsheet, PlusCircle } from "lucide-react";
+import { BarChart3, FileDown, FileSpreadsheet, PlusCircle, FileSignature } from "lucide-react";
+import { ShinyText } from "@/components/ui/shiny-text";
 
 const DEFAULT_ERROR = "No se pudieron cargar los contratos. Verifica que el backend este disponible.";
 
@@ -119,12 +120,19 @@ export default function ContractsPage() {
       <div className="space-y-6">
         <div className="flex flex-col gap-4 rounded-2xl bg-white p-5 shadow-sm">
           <div className="flex flex-wrap items-center gap-3 justify-between">
-            <div className="space-y-1">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Panel de contratos</p>
-              <h1 className="text-2xl font-semibold text-slate-900">Contratos</h1>
-              <p className="text-sm text-slate-600">
-                Administra acuerdos activos, vencidos y en revision con metricas y exportaciones rapidas.
-              </p>
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600">
+                <FileSignature className="h-6 w-6 text-white" />
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Panel de contratos</p>
+                <h1 className="text-3xl font-bold">
+                  <ShinyText size="3xl" weight="bold">Contratos</ShinyText>
+                </h1>
+                <p className="text-sm text-slate-600">
+                  Administra acuerdos activos, vencidos y en revisión con métricas y exportaciones rápidas.
+                </p>
+              </div>
             </div>
             <div className="flex flex-wrap gap-2">
               <Input
