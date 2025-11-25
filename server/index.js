@@ -437,22 +437,44 @@ app.post('/register', (req, res) => {
     });
 });
 
-app.post('/login', (req, res) => {
+app.post('/login', async (req, res) => {
     const { email, password } = req.body;
     if (!email || !password) {
         return res.status(400).json({ message: 'Email and password are required' });
     }
-    db.get('SELECT * FROM users WHERE email = ?', [email], (err, user) => {
-        if (err) return res.status(500).json({ message: 'Error retrieving user' });
-        if (!user) return res.status(401).json({ message: 'Invalid credentials' });
-        bcrypt.compare(password, user.password, (compareErr, result) => {
-            if (compareErr) return res.status(500).json({ message: 'Error comparing passwords' });
-            if (!result) return res.status(401).json({ message: 'Invalid credentials' });
-            const token = jwt.sign({ userId: user.id, email: user.email }, SECRET_KEY, { expiresIn: '1h' });
-            req.session.userId = user.id;
-            res.json({ message: 'Logged in successfully', token });
+
+    try {
+        // Try MongoDB first if available
+        const mongoDb = getMongoDb();
+        if (mongoDb) {
+            const user = await mongoDb.collection('users').findOne({ email });
+            if (user) {
+                const result = await bcrypt.compare(password, user.password);
+                if (!result) {
+                    return res.status(401).json({ message: 'Invalid credentials' });
+                }
+                const token = jwt.sign({ userId: user._id, email: user.email }, SECRET_KEY, { expiresIn: '1h' });
+                req.session.userId = user._id;
+                return res.json({ message: 'Logged in successfully', token });
+            }
+        }
+
+        // Fallback to SQLite
+        db.get('SELECT * FROM users WHERE email = ?', [email], (err, user) => {
+            if (err) return res.status(500).json({ message: 'Error retrieving user' });
+            if (!user) return res.status(401).json({ message: 'Invalid credentials' });
+            bcrypt.compare(password, user.password, (compareErr, result) => {
+                if (compareErr) return res.status(500).json({ message: 'Error comparing passwords' });
+                if (!result) return res.status(401).json({ message: 'Invalid credentials' });
+                const token = jwt.sign({ userId: user.id, email: user.email }, SECRET_KEY, { expiresIn: '1h' });
+                req.session.userId = user.id;
+                res.json({ message: 'Logged in successfully', token });
+            });
         });
-    });
+    } catch (error) {
+        console.error('Login error:', error);
+        res.status(500).json({ message: 'Error during login' });
+    }
 });
 
 app.post('/logout', (req, res) => {
