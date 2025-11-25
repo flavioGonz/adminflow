@@ -3,8 +3,10 @@
 import { useState, useEffect, useCallback } from "react";
 import { ClientTable } from "@/components/clients/client-table";
 import { CreateClientDialog } from "@/components/clients/create-client-dialog";
-import { ImportClientsDialog } from "@/components/clients/import-clients-dialog"; // Import the ImportClientsDialog
+import { ImportClientsDialog } from "@/components/clients/import-clients-dialog";
 import { API_URL } from "@/lib/http";
+import { ShinyText } from "@/components/ui/shiny-text";
+import { Users } from "lucide-react";
 
 interface Client {
   id: string;
@@ -73,8 +75,18 @@ export default function ClientsPage() {
 
   return (
     <div className="p-6">
-      <div className="flex justify-between items-center mb-4">
-        <h1 className="text-2xl font-semibold">Clientes</h1>
+      <div className="flex justify-between items-center mb-6">
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-lg bg-gradient-to-br from-emerald-500 to-green-600">
+            <Users className="h-6 w-6 text-white" />
+          </div>
+          <div>
+            <h1 className="text-3xl font-bold">
+              <ShinyText size="3xl" weight="bold">Clientes</ShinyText>
+            </h1>
+            <p className="text-sm text-muted-foreground">Gestiona tu cartera de clientes</p>
+          </div>
+        </div>
       </div>
       <ClientTable
         clients={clients}
