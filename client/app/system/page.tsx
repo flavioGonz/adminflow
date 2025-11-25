@@ -217,6 +217,37 @@ export default function SystemPage() {
   const fetchAuditLogs = async () => {
     try {
       const logs = await SystemApi.getAuditLogs(50, auditFilterType, auditFilterStatus, auditSearchTerm);
+
+      // Mapeo de acciones a español
+      const actionTranslations: Record<string, string> = {
+        'create': 'Crear',
+        'update': 'Actualizar',
+        'delete': 'Eliminar',
+        'login': 'Iniciar sesión',
+        'logout': 'Cerrar sesión',
+        'upload': 'Subir archivo',
+        'download': 'Descargar',
+        'export': 'Exportar',
+        'import': 'Importar',
+        'send': 'Enviar',
+        'receive': 'Recibir',
+        'approve': 'Aprobar',
+        'reject': 'Rechazar',
+        'cancel': 'Cancelar',
+        'complete': 'Completar',
+        'start': 'Iniciar',
+        'stop': 'Detener',
+        'pause': 'Pausar',
+        'resume': 'Reanudar',
+        'reset': 'Resetear',
+        'verify': 'Verificar',
+        'test': 'Probar',
+        'sync': 'Sincronizar',
+        'migrate': 'Migrar',
+        'backup': 'Respaldar',
+        'restore': 'Restaurar',
+      };
+
       const formattedLogs: AuditEvent[] = logs.map((log: any) => {
         let details = log.details;
         try {
@@ -226,8 +257,14 @@ export default function SystemPage() {
         } catch (e) {
           // ignore
         }
+
+        // Traducir acción
+        const translatedAction = actionTranslations[log.action?.toLowerCase()] || log.action;
+
         return {
           ...log,
+          timestamp: log.createdAt || log.timestamp, // Mapear createdAt a timestamp
+          action: translatedAction,
           details,
           status: log.status || (log.error ? 'error' : 'success')
         };
