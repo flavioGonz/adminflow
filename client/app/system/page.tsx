@@ -52,6 +52,7 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { SystemApi, SystemUser, NotificationConfig, NotificationLog } from "@/lib/api-system";
+import { ShinyText } from "@/components/ui/shiny-text";
 
 type ChannelId = "email" | "whatsapp" | "telegram" | "slack";
 
@@ -686,7 +687,9 @@ _Enviado automáticamente por AdminFlow_`,
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Sistema</h1>
+          <h1 className="text-3xl font-bold tracking-tight">
+            <ShinyText text="Sistema" speed={3} />
+          </h1>
           <p className="text-muted-foreground">
             Gestiona usuarios, canales de notificación y auditoría del sistema
           </p>
@@ -749,7 +752,9 @@ _Enviado automáticamente por AdminFlow_`,
           <div className="space-y-4 animate-in fade-in duration-300">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-semibold">Gestión de Usuarios</h2>
+                <h2 className="text-lg font-semibold">
+                  <ShinyText text="Gestión de Usuarios" speed={4} />
+                </h2>
                 <p className="text-sm text-muted-foreground">Administra los usuarios del sistema</p>
               </div>
               <div className="flex gap-2">
@@ -848,7 +853,9 @@ _Enviado automáticamente por AdminFlow_`,
           <div className="space-y-4 animate-in fade-in duration-300">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-semibold">Canales de Notificación</h2>
+                <h2 className="text-lg font-semibold">
+                  <ShinyText text="Canales de Notificación" speed={4} />
+                </h2>
                 <p className="text-sm text-muted-foreground">Configura los canales de comunicación</p>
               </div>
               <Button size="sm" onClick={handleSaveConfig}>
@@ -1020,7 +1027,9 @@ _Enviado automáticamente por AdminFlow_`,
           <div className="space-y-4 animate-in fade-in duration-300">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-semibold">Roles y Permisos</h2>
+                <h2 className="text-lg font-semibold">
+                  <ShinyText text="Roles y Permisos" speed={4} />
+                </h2>
                 <p className="text-sm text-muted-foreground">Define qué puede hacer cada rol en el sistema</p>
               </div>
               <Button size="sm" className="bg-indigo-500 hover:bg-indigo-600 text-white">
@@ -1234,7 +1243,9 @@ _Enviado automáticamente por AdminFlow_`,
           <div className="space-y-6 animate-in fade-in duration-300">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-semibold">Editor de Plantillas</h2>
+                <h2 className="text-lg font-semibold">
+                  <ShinyText text="Editor de Plantillas" speed={4} />
+                </h2>
                 <p className="text-sm text-muted-foreground">Diseña plantillas espectaculares para cada canal y evento</p>
               </div>
               <Button size="sm" onClick={handleSaveConfig}>
@@ -1475,7 +1486,9 @@ _Enviado automáticamente por AdminFlow_`,
           <div className="space-y-4 animate-in fade-in duration-300">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-semibold">Auditoría del Sistema</h2>
+                <h2 className="text-lg font-semibold">
+                  <ShinyText text="Auditoría del Sistema" speed={4} />
+                </h2>
                 <p className="text-sm text-muted-foreground">Registro completo de actividades</p>
               </div>
               <Button onClick={exportAudit} size="sm" className="bg-emerald-500 hover:bg-emerald-600 text-white">
