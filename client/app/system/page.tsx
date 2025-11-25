@@ -671,13 +671,18 @@ _Enviado automáticamente por AdminFlow_`,
     <div className="space-y-6 p-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">
-            <ShinyText speed={3} size="3xl" weight="bold">Sistema</ShinyText>
-          </h1>
-          <p className="text-muted-foreground">
-            Gestiona usuarios, canales de notificación y auditoría del sistema
-          </p>
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-lg bg-gradient-to-br from-slate-700 to-slate-900">
+            <Settings className="h-6 w-6 text-white" />
+          </div>
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">
+              <ShinyText speed={3} size="3xl" weight="bold">Sistema</ShinyText>
+            </h1>
+            <p className="text-muted-foreground">
+              Gestiona usuarios, canales de notificación y auditoría del sistema
+            </p>
+          </div>
         </div>
         <Badge variant="outline" className="gap-2">
           <Server className="h-4 w-4" />

@@ -49,7 +49,8 @@ import {
   Settings,
   Eye,
   EyeOff,
-  GripVertical
+  GripVertical,
+  LayoutDashboard
 } from "lucide-react";
 import { Client } from "@/types/client";
 import {
@@ -759,13 +760,18 @@ export default function DashboardPage() {
     <DashboardLayout>
       <div className="space-y-6 p-4 md:p-8">
         <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-3xl font-bold tracking-tight text-foreground">
-              <ShinyText size="3xl" weight="bold">Dashboard</ShinyText>
-            </h2>
-            <p className="text-muted-foreground mt-1">
-              Bienvenido de nuevo al panel de control
-            </p>
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600">
+              <LayoutDashboard className="h-6 w-6 text-white" />
+            </div>
+            <div>
+              <h2 className="text-3xl font-bold tracking-tight text-foreground">
+                <ShinyText size="3xl" weight="bold">Dashboard</ShinyText>
+              </h2>
+              <p className="text-muted-foreground mt-1">
+                Bienvenido de nuevo al panel de control
+              </p>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <Dialog>
