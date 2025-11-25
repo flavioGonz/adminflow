@@ -673,7 +673,7 @@ _Enviado automáticamente por AdminFlow_`,
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">
-            <ShinyText speed={3}>Sistema</ShinyText>
+            <ShinyText speed={3} size="3xl" weight="bold">Sistema</ShinyText>
           </h1>
           <p className="text-muted-foreground">
             Gestiona usuarios, canales de notificación y auditoría del sistema

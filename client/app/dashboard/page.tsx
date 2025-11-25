@@ -86,6 +86,7 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { ShinyText } from "@/components/ui/shiny-text";
 
 const ClientMap = dynamic(() => import("@/components/dashboard/client-map"), {
   ssr: false,
@@ -759,7 +760,9 @@ export default function DashboardPage() {
       <div className="space-y-6 p-4 md:p-8">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-3xl font-bold tracking-tight text-foreground">Dashboard</h2>
+            <h2 className="text-3xl font-bold tracking-tight text-foreground">
+              <ShinyText size="3xl" weight="bold">Dashboard</ShinyText>
+            </h2>
             <p className="text-muted-foreground mt-1">
               Bienvenido de nuevo al panel de control
             </p>
