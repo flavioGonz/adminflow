@@ -34,6 +34,9 @@ import {
   Server,
   AlertTriangle,
   LayoutTemplate,
+  Wand2,
+  Trash2,
+  Code,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -1057,72 +1060,217 @@ export default function SystemPage() {
           <div className="space-y-6 animate-in fade-in duration-300">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-semibold">Plantillas de Correo</h2>
-                <p className="text-sm text-muted-foreground">Previsualiza cómo se verán los correos enviados por el sistema.</p>
+                <h2 className="text-lg font-semibold">Editor de Plantillas</h2>
+                <p className="text-sm text-muted-foreground">Diseña las plantillas para correos y notificaciones de cada canal</p>
               </div>
+              <Button size="sm" onClick={handleSaveConfig}>
+                <Save className="mr-2 h-4 w-4" />
+                Guardar Plantillas
+              </Button>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Controles */}
-              <Card className="lg:col-span-1 h-fit">
-                <CardHeader>
-                  <CardTitle className="text-base">Configuración de Vista Previa</CardTitle>
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              {/* Sidebar - Selector de Canal y Evento */}
+              <Card className="lg:col-span-3">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm">Configuración</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
+                  {/* Selector de Canal */}
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">Tipo de Evento</label>
-                    <select
-                      className="w-full p-2 border rounded-md bg-background"
-                      value={previewEvent}
-                      onChange={(e) => setPreviewEvent(e.target.value)}
-                    >
-                      <option value="ticket_created">Nuevo Ticket</option>
-                      <option value="ticket_updated">Actualización de Ticket</option>
-                      <option value="payment_received">Pago Recibido</option>
-                      <option value="contract_signed">Contrato Firmado</option>
-                    </select>
+                    <Label className="text-xs font-semibold">Canal</Label>
+                    <Select value={previewEvent.split('_')[0] || 'email'} onValueChange={(val) => setPreviewEvent(val + '_created')}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="email">
+                          <div className="flex items-center gap-2">
+                            <Mail className="h-4 w-4 text-sky-500" />
+                            Email
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="whatsapp">
+                          <div className="flex items-center gap-2">
+                            <MessageCircle className="h-4 w-4 text-emerald-500" />
+                            WhatsApp
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="telegram">
+                          <div className="flex items-center gap-2">
+                            <Send className="h-4 w-4 text-blue-500" />
+                            Telegram
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="slack">
+                          <div className="flex items-center gap-2">
+                            <Slack className="h-4 w-4 text-amber-500" />
+                            Slack
+                          </div>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Selector de Evento */}
+                  <div className="space-y-2">
+                    <Label className="text-xs font-semibold">Tipo de Evento</Label>
+                    <Select value={previewEvent} onValueChange={setPreviewEvent}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ticket_created">Nuevo Ticket</SelectItem>
+                        <SelectItem value="ticket_updated">Actualización de Ticket</SelectItem>
+                        <SelectItem value="ticket_closed">Ticket Cerrado</SelectItem>
+                        <SelectItem value="payment_received">Pago Recibido</SelectItem>
+                        <SelectItem value="contract_signed">Contrato Firmado</SelectItem>
+                        <SelectItem value="budget_created">Presupuesto Creado</SelectItem>
+                        <SelectItem value="budget_approved">Presupuesto Aprobado</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
 
                   <div className="pt-4 border-t">
-                    <p className="text-xs text-muted-foreground mb-2">
-                      Estas plantillas utilizan un diseño responsive optimizado para la mayoría de los clientes de correo.
-                    </p>
-                    <Button
-                      variant="outline"
-                      className="w-full"
-                      onClick={() => fetchPreview()}
-                      disabled={previewLoading}
-                    >
-                      {previewLoading ? "Cargando..." : "Refrescar Vista"}
-                    </Button>
+                    <h4 className="text-xs font-semibold mb-2">Variables Disponibles</h4>
+                    <div className="space-y-1">
+                      <code className="block text-[10px] bg-slate-100 px-2 py-1 rounded">{'{{clientName}}'}</code>
+                      <code className="block text-[10px] bg-slate-100 px-2 py-1 rounded">{'{{ticketId}}'}</code>
+                      <code className="block text-[10px] bg-slate-100 px-2 py-1 rounded">{'{{amount}}'}</code>
+                      <code className="block text-[10px] bg-slate-100 px-2 py-1 rounded">{'{{date}}'}</code>
+                      <code className="block text-[10px] bg-slate-100 px-2 py-1 rounded">{'{{status}}'}</code>
+                    </div>
                   </div>
+
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => fetchPreview()}
+                    disabled={previewLoading}
+                  >
+                    {previewLoading ? "Cargando..." : "Refrescar Vista"}
+                  </Button>
                 </CardContent>
               </Card>
 
-              {/* Vista Previa */}
-              <Card className="lg:col-span-2 overflow-hidden border-2 border-slate-200">
-                <div className="bg-slate-100 border-b p-2 flex items-center gap-2">
-                  <div className="flex gap-1.5">
-                    <div className="w-3 h-3 rounded-full bg-red-400"></div>
-                    <div className="w-3 h-3 rounded-full bg-amber-400"></div>
-                    <div className="w-3 h-3 rounded-full bg-emerald-400"></div>
-                  </div>
-                  <div className="text-xs text-slate-500 font-medium ml-2">Vista Previa de Correo</div>
-                </div>
-                <div className="bg-white h-[600px] w-full overflow-hidden relative">
-                  {previewLoading ? (
-                    <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+              {/* Editor y Preview */}
+              <div className="lg:col-span-9 space-y-4">
+                {/* Editor */}
+                <Card>
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-sm">Editor de Plantilla</CardTitle>
+                      <Badge variant="outline" className="gap-1">
+                        <Code className="h-3 w-3" />
+                        {previewEvent.startsWith('email') ? 'HTML' : 'Markdown'}
+                      </Badge>
                     </div>
-                  ) : (
-                    <iframe
-                      srcDoc={previewHtml}
-                      className="w-full h-full border-0"
-                      title="Email Preview"
+                  </CardHeader>
+                  <CardContent>
+                    <textarea
+                      className="w-full h-64 p-4 font-mono text-sm border rounded-md bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary"
+                      placeholder={
+                        previewEvent.startsWith('email')
+                          ? '<!DOCTYPE html>\n<html>\n<head>\n  <title>{{eventName}}</title>\n</head>\n<body>\n  <h1>Hola {{clientName}}</h1>\n  <p>Tu ticket #{{ticketId}} ha sido creado.</p>\n</body>\n</html>'
+                          : '🎫 *Nuevo Ticket Creado*\n\nCliente: {{clientName}}\nTicket: #{{ticketId}}\nFecha: {{date}}\n\n_Enviado automáticamente por AdminFlow_'
+                      }
+                      value={config.templates?.[previewEvent] || ''}
+                      onChange={(e) => {
+                        setConfig({
+                          ...config,
+                          templates: {
+                            ...config.templates,
+                            [previewEvent]: e.target.value
+                          }
+                        });
+                      }}
                     />
-                  )}
-                </div>
-              </Card>
+                    <div className="flex items-center gap-2 mt-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          const template = previewEvent.startsWith('email')
+                            ? '<!DOCTYPE html>\n<html>\n<head>\n  <meta charset="UTF-8">\n  <title>{{eventName}}</title>\n</head>\n<body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">\n  <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 10px 10px 0 0;">\n    <h1 style="color: white; margin: 0;">{{eventName}}</h1>\n  </div>\n  <div style="background: white; padding: 30px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 10px 10px;">\n    <p>Hola <strong>{{clientName}}</strong>,</p>\n    <p>Tu ticket <strong>#{{ticketId}}</strong> ha sido creado exitosamente.</p>\n    <div style="background: #f3f4f6; padding: 15px; border-radius: 5px; margin: 20px 0;">\n      <p style="margin: 0;"><strong>Estado:</strong> {{status}}</p>\n      <p style="margin: 5px 0 0 0;"><strong>Fecha:</strong> {{date}}</p>\n    </div>\n    <p style="color: #6b7280; font-size: 12px; margin-top: 30px;">Enviado automáticamente por AdminFlow</p>\n  </div>\n</body>\n</html>'
+                            : '🎫 *{{eventName}}*\n\n👤 Cliente: {{clientName}}\n🔢 Ticket: #{{ticketId}}\n📅 Fecha: {{date}}\n📊 Estado: {{status}}\n\n_Enviado automáticamente por AdminFlow_';
+                          setConfig({
+                            ...config,
+                            templates: {
+                              ...config.templates,
+                              [previewEvent]: template
+                            }
+                          });
+                        }}
+                      >
+                        <Wand2 className="h-4 w-4 mr-2" />
+                        Usar Plantilla Base
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setConfig({
+                            ...config,
+                            templates: {
+                              ...config.templates,
+                              [previewEvent]: ''
+                            }
+                          });
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Limpiar
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Preview */}
+                <Card className="border-2 border-slate-200">
+                  <div className="bg-slate-100 border-b p-2 flex items-center gap-2">
+                    <div className="flex gap-1.5">
+                      <div className="w-3 h-3 rounded-full bg-red-400"></div>
+                      <div className="w-3 h-3 rounded-full bg-amber-400"></div>
+                      <div className="w-3 h-3 rounded-full bg-emerald-400"></div>
+                    </div>
+                    <div className="text-xs text-slate-500 font-medium ml-2">
+                      Vista Previa - {previewEvent.startsWith('email') ? 'Email' : previewEvent.startsWith('whatsapp') ? 'WhatsApp' : previewEvent.startsWith('telegram') ? 'Telegram' : 'Slack'}
+                    </div>
+                  </div>
+                  <div className="bg-white min-h-[400px] w-full overflow-auto relative">
+                    {previewLoading ? (
+                      <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                      </div>
+                    ) : previewEvent.startsWith('email') ? (
+                      <iframe
+                        srcDoc={config.templates?.[previewEvent] || previewHtml}
+                        className="w-full h-[400px] border-0"
+                        title="Email Preview"
+                      />
+                    ) : (
+                      <div className="p-6">
+                        <div className={cn(
+                          "max-w-md mx-auto rounded-lg p-4 shadow-sm",
+                          previewEvent.startsWith('whatsapp') && "bg-emerald-50 border border-emerald-200",
+                          previewEvent.startsWith('telegram') && "bg-blue-50 border border-blue-200",
+                          previewEvent.startsWith('slack') && "bg-amber-50 border border-amber-200"
+                        )}>
+                          <pre className="whitespace-pre-wrap font-sans text-sm">
+                            {(config.templates?.[previewEvent] || '')
+                              .replace(/{{clientName}}/g, 'Juan Pérez')
+                              .replace(/{{ticketId}}/g, '1234')
+                              .replace(/{{amount}}/g, '$1,500')
+                              .replace(/{{date}}/g, new Date().toLocaleDateString())
+                              .replace(/{{status}}/g, 'Pendiente')
+                              .replace(/{{eventName}}/g, 'Nuevo Ticket')}
+                          </pre>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </Card>
+              </div>
             </div>
           </div>
         )}
