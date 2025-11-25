@@ -61,8 +61,12 @@ temp_*
 # PowerShell scripts (temporary)
 *.ps1
 
-# Configuration files (keep .selected-db.json but ignore backups)
+# Installation and configuration files
+.installed
+.selected-db.json
 .selected-db.json.bak
+server/.installed
+server/.selected-db.json
 
 # Misplaced files (should be in proper directories)
 /create-ticket-dialog.tsx

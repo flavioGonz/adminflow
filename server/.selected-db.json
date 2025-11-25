@@ -1,6 +1,0 @@
-{
-  "engine": "mongodb",
-  "mongoUri": "mongodb://crm.infratec.com.uy:29999",
-  "mongoDb": "adminflow",
-  "sqlitePath": "database/database.sqlite"
-}
