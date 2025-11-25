@@ -114,6 +114,13 @@ async function autoInitMongo() {
 
         if (isInitialized) {
             console.log('✅ MongoDB ya está inicializado\n');
+
+            // Establecer conexión persistente
+            console.log('🔗 Estableciendo conexión persistente...');
+            const { initMongo } = require('./mongoClient');
+            await initMongo({ uri: config.mongoUri, dbName: config.mongoDb });
+            console.log('✅ Conexión persistente establecida\n');
+
             console.log('╔════════════════════════════════════════════════════════╗');
             console.log('║              ✅ MONGODB LISTO                          ║');
             console.log('╚════════════════════════════════════════════════════════╝\n');
@@ -136,6 +143,12 @@ async function autoInitMongo() {
             console.log('💡 Credenciales por defecto:');
             console.log('   Email: admin@adminflow.uy');
             console.log('   Password: admin\n');
+
+            // Establecer conexión persistente
+            console.log('🔗 Estableciendo conexión persistente...');
+            const { initMongo } = require('./mongoClient');
+            await initMongo({ uri: config.mongoUri, dbName: config.mongoDb });
+            console.log('✅ Conexión persistente establecida\n');
 
             return { success: true, initialized: true, wasAlreadyInitialized: false };
         } else {
