@@ -16,7 +16,10 @@ const validateObjectId = (req, res, next) => {
 router.get('/clients/:id/access', async (req, res) => {
     try {
         const db = getMongoDb();
-        if (!db) return res.status(503).json({ message: 'Base de datos no disponible' });
+        if (!db) {
+            console.warn('⚠️  MongoDB no disponible, retornando array vacío para accesos');
+            return res.json([]);
+        }
 
         const accesses = await db.collection('client_accesses')
             .find({ clientId: req.params.id })
