@@ -673,7 +673,7 @@ _Enviado automáticamente por AdminFlow_`,
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">
-            <ShinyText text="Sistema" speed={3} />
+            <ShinyText speed={3}>Sistema</ShinyText>
           </h1>
           <p className="text-muted-foreground">
             Gestiona usuarios, canales de notificación y auditoría del sistema
@@ -738,7 +738,7 @@ _Enviado automáticamente por AdminFlow_`,
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-semibold">
-                  <ShinyText text="Gestión de Usuarios" speed={4} />
+                  <ShinyText speed={4}>Gestión de Usuarios</ShinyText>
                 </h2>
                 <p className="text-sm text-muted-foreground">Administra los usuarios del sistema</p>
               </div>
@@ -839,7 +839,7 @@ _Enviado automáticamente por AdminFlow_`,
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-semibold">
-                  <ShinyText text="Canales de Notificación" speed={4} />
+                  <ShinyText speed={4}>Canales de Notificación</ShinyText>
                 </h2>
                 <p className="text-sm text-muted-foreground">Configura los canales de comunicación</p>
               </div>
@@ -1013,7 +1013,7 @@ _Enviado automáticamente por AdminFlow_`,
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-semibold">
-                  <ShinyText text="Roles y Permisos" speed={4} />
+                  <ShinyText speed={4}>Roles y Permisos</ShinyText>
                 </h2>
                 <p className="text-sm text-muted-foreground">Define qué puede hacer cada rol en el sistema</p>
               </div>
@@ -1229,7 +1229,7 @@ _Enviado automáticamente por AdminFlow_`,
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-semibold">
-                  <ShinyText text="Editor de Plantillas" speed={4} />
+                  <ShinyText speed={4}>Editor de Plantillas</ShinyText>
                 </h2>
                 <p className="text-sm text-muted-foreground">Diseña plantillas espectaculares para cada canal y evento</p>
               </div>
@@ -1472,7 +1472,7 @@ _Enviado automáticamente por AdminFlow_`,
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-semibold">
-                  <ShinyText text="Auditoría del Sistema" speed={4} />
+                  <ShinyText speed={4}>Auditoría del Sistema</ShinyText>
                 </h2>
                 <p className="text-sm text-muted-foreground">Registro completo de actividades</p>
               </div>
