@@ -410,31 +410,99 @@ app.get('/', (req, res) => {
     res.json({ message: 'Server is running!' });
 });
 
-app.post('/register', (req, res) => {
-    const { email, password } = req.body;
+app.post('/register', async (req, res) => {
+    const { email, password, name, role = 'user' } = req.body;
     if (!email || !password) {
         return res.status(400).json({ message: 'Email and password are required' });
     }
-    bcrypt.hash(password, 10, (err, hash) => {
-        if (err) return res.status(500).json({ message: 'Error hashing password' });
-        db.run('INSERT INTO users (email, password) VALUES (?, ?)', [email, hash], function (runErr) {
-            if (runErr) {
-                if (runErr.message.includes('UNIQUE constraint failed')) {
-                    return res.status(409).json({ message: 'User already exists' });
-                }
-                return res.status(500).json({ message: 'Error registering user' });
+
+    try {
+        const { getCurrentDbEngine } = require('./lib/dbChoice');
+        const dbEngine = getCurrentDbEngine();
+        const hash = await bcrypt.hash(password, 10);
+
+        if (dbEngine === 'mongodb') {
+            // Crear usuario en MongoDB
+            const mongoDb = getMongoDb();
+            if (!mongoDb) {
+                return res.status(503).json({ message: 'MongoDB no está conectado' });
             }
-            trackRegisteredUser({ sqliteId: this.lastID, email }).catch(() => { });
+
+            // Verificar si el usuario ya existe
+            const existingUser = await mongoDb.collection('users').findOne({ email });
+            if (existingUser) {
+                return res.status(409).json({ message: 'User already exists' });
+            }
+
+            // Obtener el siguiente ID
+            const lastUser = await mongoDb.collection('users')
+                .find()
+                .sort({ _id: -1 })
+                .limit(1)
+                .toArray();
+            const nextId = lastUser.length > 0 ? lastUser[0]._id + 1 : 1;
+
+            // Crear usuario
+            const newUser = {
+                _id: nextId,
+                email,
+                password: hash,
+                name: name || email.split('@')[0],
+                role,
+                createdAt: new Date(),
+                updatedAt: new Date()
+            };
+
+            await mongoDb.collection('users').insertOne(newUser);
 
             // Audit log
-            logEvent('user', 'create', 'user', {
-                userId: this.lastID,
-                email: email
-            }, req).catch(console.error);
+            await logEvent({
+                user: 'system',
+                action: 'create',
+                resource: 'user',
+                details: { userId: nextId, email },
+                ip: req.ip
+            });
 
-            res.status(201).json({ message: 'User registered successfully', userId: this.lastID });
-        });
-    });
+            return res.status(201).json({
+                message: 'User registered successfully',
+                userId: nextId
+            });
+
+        } else {
+            // Crear usuario en SQLite
+            db.run('INSERT INTO users (email, password, name, role) VALUES (?, ?, ?, ?)',
+                [email, hash, name || email.split('@')[0], role],
+                async function (runErr) {
+                    if (runErr) {
+                        if (runErr.message.includes('UNIQUE constraint failed')) {
+                            return res.status(409).json({ message: 'User already exists' });
+                        }
+                        return res.status(500).json({ message: 'Error registering user' });
+                    }
+
+                    trackRegisteredUser({ sqliteId: this.lastID, email }).catch(() => { });
+
+                    // Audit log
+                    await logEvent({
+                        user: 'system',
+                        action: 'create',
+                        resource: 'user',
+                        details: { userId: this.lastID, email },
+                        ip: req.ip
+                    });
+
+                    res.status(201).json({
+                        message: 'User registered successfully',
+                        userId: this.lastID
+                    });
+                }
+            );
+        }
+    } catch (error) {
+        console.error('Registration error:', error);
+        res.status(500).json({ message: 'Error during registration', detail: error.message });
+    }
 });
 
 app.post('/login', async (req, res) => {
