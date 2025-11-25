@@ -5,30 +5,40 @@ const logEvent = async ({ user, action, resource, details, status = 'success', i
     const timestamp = new Date();
     const detailsStr = typeof details === 'object' ? JSON.stringify(details) : String(details);
 
-    // 1. Guardar en SQLite (siempre disponible localmente)
-    db.run(
-        'INSERT INTO audit_logs (user, action, resource, details, status, ip, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        [user || 'system', action, resource, detailsStr, status, ip, timestamp.toISOString()],
-        (err) => {
-            if (err) console.error('Error logging to SQLite audit_logs:', err.message);
-        }
-    );
+    // Verificar motor de BD configurado
+    const { getCurrentDbEngine } = require('./dbChoice');
+    const dbEngine = getCurrentDbEngine();
 
-    // 2. Guardar en MongoDB (si está conectado)
-    const mongoDb = getMongoDb();
-    if (mongoDb) {
-        try {
-            await mongoDb.collection('audit_logs').insertOne({
-                user: user || 'system',
-                action,
-                resource,
-                details: typeof details === 'object' ? details : { info: details },
-                status,
-                ip,
-                createdAt: timestamp,
-            });
-        } catch (error) {
-            console.error('Error logging to MongoDB audit_logs:', error.message);
+    // 1. Guardar en SQLite solo si es el motor configurado
+    if (dbEngine === 'sqlite') {
+        db.run(
+            'INSERT INTO audit_logs (user, action, resource, details, status, ip, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            [user || 'system', action, resource, detailsStr, status, ip, timestamp.toISOString()],
+            (err) => {
+                if (err) console.error('Error logging to SQLite audit_logs:', err.message);
+            }
+        );
+    }
+
+    // 2. Guardar en MongoDB (si está conectado y es el motor configurado)
+    if (dbEngine === 'mongodb') {
+        const mongoDb = getMongoDb();
+        if (mongoDb) {
+            try {
+                await mongoDb.collection('audit_logs').insertOne({
+                    user: user || 'system',
+                    action,
+                    resource,
+                    details: typeof details === 'object' ? details : { info: details },
+                    status,
+                    ip,
+                    createdAt: timestamp,
+                });
+            } catch (error) {
+                console.error('Error logging to MongoDB audit_logs:', error.message);
+            }
+        } else {
+            console.warn('⚠️  MongoDB no disponible para audit log');
         }
     }
 };
