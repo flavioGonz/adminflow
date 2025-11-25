@@ -1,4 +1,4 @@
-import { CSSProperties, FC } from "react";
+import { FC } from "react";
 import { cn } from "@/lib/utils";
 
 interface ShinyTextProps {
@@ -17,7 +17,7 @@ export const ShinyText: FC<ShinyTextProps> = ({
     return (
         <span
             className={cn(
-                "inline-block bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 bg-clip-text text-transparent",
+                "inline-block bg-gradient-to-r from-slate-900 via-slate-700 to-slate-900 bg-clip-text text-transparent",
                 disabled && "opacity-50",
                 className
             )}
