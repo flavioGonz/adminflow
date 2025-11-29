@@ -43,6 +43,7 @@ import {
 } from "lucide-react";
 import { ShinyText } from "@/components/ui/shiny-text";
 import { cn } from "@/lib/utils";
+import { ImportBackupDialog } from "@/components/database/import-backup-dialog";
 
 type CollectionInfo = {
   name: string;
@@ -56,6 +57,7 @@ type MongoOverview = {
   dbName: string;
   connected: boolean;
   error?: string;
+  mongoUri?: string;
 };
 
 type ConnectionStatus = {
@@ -83,7 +85,6 @@ export default function DatabasePage() {
 
   // Backup states
   const [backups, setBackups] = useState<any[]>([]);
-  const [showBackupModal, setShowBackupModal] = useState(false);
   const [showRestoreModal, setShowRestoreModal] = useState(false);
   const [selectedBackup, setSelectedBackup] = useState<any>(null);
 
@@ -296,378 +297,308 @@ export default function DatabasePage() {
           </div>
           <div>
             <h1 className="text-3xl font-bold">
-              <ShinyText size="3xl" weight="bold">Base de Datos MongoDB</ShinyText>
+              <ShinyText size="3xl" weight="bold">Base de Datos</ShinyText>
             </h1>
             <p className="text-sm text-muted-foreground">
-              Administra conexiones, colecciones y respaldos de MongoDB
+              Panel de control y gestión de MongoDB
             </p>
           </div>
         </div>
-        <Button onClick={fetchOverview} variant="outline" size="sm">
-          <RefreshCw className={cn("mr-2 h-4 w-4", isLoading && "animate-spin")} />
-          Actualizar
-        </Button>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground bg-slate-100 px-3 py-1 rounded-full">
+            <Clock className="h-3 w-3" />
+            <span>Actualizado: {lastUpdate.toLocaleTimeString("es-UY")}</span>
+          </div>
+          <Button onClick={fetchOverview} variant="outline" size="sm">
+            <RefreshCw className={cn("mr-2 h-4 w-4", isLoading && "animate-spin")} />
+            Refrescar
+          </Button>
+        </div>
       </div>
 
-      {/* Connection Status Card */}
-      <Card className={cn(
-        "border-l-4",
-        isConnected ? "border-l-emerald-500 bg-emerald-50/50" : "border-l-slate-300"
-      )}>
-        <CardContent className="flex items-center justify-between py-4">
-          <div className="flex items-center gap-3">
-            <div className={cn(
-              "rounded-lg p-2",
-              isConnected ? "bg-emerald-100" : "bg-slate-100"
-            )}>
-              {isConnected ? (
-                <Wifi className="h-5 w-5 text-emerald-600" />
-              ) : (
-                <WifiOff className="h-5 w-5 text-slate-400" />
-              )}
-            </div>
-            <div>
-              <p className="text-sm font-medium">Estado de Conexión</p>
-              <p className="text-xs text-muted-foreground">
-                {connectionStatus.message || "No conectado"}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-4">
-            {connectionStatus.latency && (
-              <div className="flex items-center gap-1 text-sm">
-                <Zap className="h-3 w-3 text-amber-500" />
-                <span className="font-medium">{connectionStatus.latency}ms</span>
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 items-start">
+
+        {/* Column 1: Connection & Config */}
+        <div className="space-y-6">
+          <Card className={cn(
+            "border-l-4 shadow-sm",
+            isConnected ? "border-l-emerald-500 bg-emerald-50/30" : "border-l-slate-300"
+          )}>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <Wifi className="h-4 w-4" /> Estado
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between mb-2">
+                <span className={cn(
+                  "text-2xl font-bold",
+                  isConnected ? "text-emerald-700" : "text-slate-500"
+                )}>
+                  {isConnected ? "Conectado" : "Desconectado"}
+                </span>
+                {connectionStatus.state === "pending" && <Loader2 className="h-5 w-5 animate-spin text-emerald-600" />}
               </div>
-            )}
-            <Badge className={cn(
-              "gap-2",
-              isConnected ? "bg-emerald-500 hover:bg-emerald-600" : "bg-slate-500"
-            )}>
-              {connectionStatus.state === "pending" ? (
-                <>
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                  Verificando
-                </>
-              ) : isConnected ? (
-                <>
-                  <CheckCircle className="h-3 w-3" />
-                  Conectado
-                </>
-              ) : (
-                "Desconectado"
+              <p className="text-xs text-muted-foreground mb-3">
+                {connectionStatus.message || "Esperando verificación..."}
+              </p>
+              {connectionStatus.latency && (
+                <div className="flex items-center gap-1 text-xs font-medium text-emerald-600 bg-emerald-100 px-2 py-1 rounded-md w-fit">
+                  <Zap className="h-3 w-3" />
+                  {connectionStatus.latency}ms latencia
+                </div>
               )}
-            </Badge>
-          </div>
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
 
-      {/* Statistics Cards */}
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Colecciones</CardTitle>
-            <Database className="h-4 w-4 text-muted-foreground" />
+          <Card className="shadow-sm">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Server className="h-4 w-4 text-slate-500" />
+                Configuración
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="mongoUri" className="text-xs">URI de Conexión</Label>
+                <Input
+                  id="mongoUri"
+                  value={mongoUri}
+                  onChange={(e) => setMongoUri(e.target.value)}
+                  placeholder="mongodb://..."
+                  className="h-8 text-xs font-mono"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="mongoDb" className="text-xs">Base de Datos</Label>
+                <Input
+                  id="mongoDb"
+                  value={mongoDb}
+                  onChange={(e) => setMongoDb(e.target.value)}
+                  placeholder="adminflow"
+                  className="h-8 text-xs font-mono"
+                />
+              </div>
+              <Button
+                onClick={handleVerifyConnection}
+                disabled={connectionStatus.state === "pending"}
+                variant="outline"
+                size="sm"
+                className="w-full"
+              >
+                {connectionStatus.state === "pending" ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <>Probar Conexión</>
+                )}
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Column 2: Stats */}
+        <div className="space-y-4">
+          <Card className="shadow-sm hover:shadow-md transition-shadow">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Colecciones</CardTitle>
+              <Database className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{overview?.collections?.length ?? 0}</div>
+              <p className="text-xs text-muted-foreground">Estructuras de datos</p>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-sm hover:shadow-md transition-shadow">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Documentos</CardTitle>
+              <FileJson className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{totalDocuments.toLocaleString("es-UY")}</div>
+              <p className="text-xs text-muted-foreground">Registros totales</p>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-sm hover:shadow-md transition-shadow">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Almacenamiento</CardTitle>
+              <HardDrive className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{formatBytes(overview?.totalSize ?? 0)}</div>
+              <p className="text-xs text-muted-foreground">Espacio en disco</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Column 3: Collections List */}
+        <Card className="shadow-sm h-full flex flex-col">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Database className="h-4 w-4 text-emerald-600" />
+              Colecciones
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Gestión de datos
+            </CardDescription>
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{overview?.collections?.length ?? 0}</div>
-            <p className="text-xs text-muted-foreground">
-              Total de colecciones
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Documentos</CardTitle>
-            <FileJson className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalDocuments.toLocaleString("es-UY")}</div>
-            <p className="text-xs text-muted-foreground">
-              Total de documentos
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Tamaño</CardTitle>
-            <HardDrive className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatBytes(overview?.totalSize ?? 0)}</div>
-            <p className="text-xs text-muted-foreground">
-              Espacio utilizado
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Connection Configuration */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Server className="h-5 w-5" />
-            Configuración de Conexión
-          </CardTitle>
-          <CardDescription>
-            Configura la URI y base de datos de MongoDB
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="mongoUri">URI de Conexión</Label>
-              <Input
-                id="mongoUri"
-                value={mongoUri}
-                onChange={(e) => setMongoUri(e.target.value)}
-                placeholder="mongodb://usuario:pass@host:puerto"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="mongoDb">Nombre de Base de Datos</Label>
-              <Input
-                id="mongoDb"
-                value={mongoDb}
-                onChange={(e) => setMongoDb(e.target.value)}
-                placeholder="adminflow"
-              />
-            </div>
-          </div>
-          <Button
-            onClick={handleVerifyConnection}
-            disabled={connectionStatus.state === "pending"}
-            variant="outline"
-            size="sm"
-          >
-            {connectionStatus.state === "pending" ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Verificando...
-              </>
-            ) : (
-              <>
-                <CheckCircle className="mr-2 h-4 w-4" />
-                Probar Conexión
-              </>
-            )}
-          </Button>
-        </CardContent>
-      </Card>
-
-      {/* Actions */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Acciones Rápidas</CardTitle>
-          <CardDescription>
-            Operaciones de mantenimiento y respaldo
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-wrap gap-2">
-          <Button
-            onClick={handleCreateBackup}
-            disabled={actionLoading === "backup"}
-            variant="outline"
-          >
-            {actionLoading === "backup" ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Creando...
-              </>
-            ) : (
-              <>
-                <Download className="mr-2 h-4 w-4" />
-                Crear Respaldo
-              </>
-            )}
-          </Button>
-        </CardContent>
-      </Card>
-
-      {/* Collections List */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Database className="h-5 w-5 text-emerald-600" />
-            Colecciones MongoDB
-          </CardTitle>
-          <CardDescription>
-            {overview?.collections?.length ?? 0} colecciones con {totalDocuments.toLocaleString("es-UY")} documentos
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {overview?.error ? (
-            <p className="text-center text-sm text-rose-600 py-4">
-              Error: {overview.error}
-            </p>
-          ) : (
-            <>
-              {overview?.collections
-                ?.sort((a, b) => b.count - a.count)
-                .map((collection) => (
-                  <div
-                    key={collection.name}
-                    className="flex items-center justify-between rounded-lg border bg-emerald-50/50 px-4 py-3 hover:bg-emerald-100/50 transition-colors"
-                  >
-                    <div className="flex items-center gap-3">
-                      <Database className="h-4 w-4 text-emerald-600" />
-                      <div>
-                        <span className="font-medium">{collection.name}</span>
-                        <p className="text-xs text-muted-foreground">
-                          {formatBytes(collection.size)}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="secondary">
-                        {collection.count.toLocaleString("es-UY")} docs
-                      </Badge>
+          <CardContent className="flex-1 overflow-auto max-h-[500px] pr-2 space-y-2">
+            {overview?.collections
+              ?.sort((a, b) => b.count - a.count)
+              .map((collection) => (
+                <div
+                  key={collection.name}
+                  className="group flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50/50 px-3 py-2 hover:bg-white hover:border-emerald-200 hover:shadow-sm transition-all"
+                >
+                  <div className="min-w-0">
+                    <p className="font-medium text-sm truncate" title={collection.name}>{collection.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {formatBytes(collection.size)}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Badge variant="secondary" className="text-[10px] px-1 h-5">
+                      {collection.count}
+                    </Badge>
+                    <div className="opacity-0 group-hover:opacity-100 transition-opacity flex">
                       <Button
-                        size="sm"
+                        size="icon"
                         variant="ghost"
+                        className="h-6 w-6"
                         onClick={() => handleExportCollection(collection.name)}
                         disabled={actionLoading === `export-${collection.name}`}
-                        title="Exportar colección"
+                        title="Exportar"
                       >
-                        {actionLoading === `export-${collection.name}` ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Download className="h-4 w-4" />
-                        )}
+                        <Download className="h-3 w-3" />
                       </Button>
                       <Button
-                        size="sm"
+                        size="icon"
                         variant="ghost"
+                        className="h-6 w-6 text-rose-500 hover:text-rose-600 hover:bg-rose-50"
                         onClick={() => handleDropCollection(collection.name)}
                         disabled={actionLoading === `drop-${collection.name}`}
-                        title="Eliminar colección"
-                        className="text-destructive hover:text-destructive"
+                        title="Eliminar"
                       >
-                        {actionLoading === `drop-${collection.name}` ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Trash2 className="h-4 w-4" />
-                        )}
+                        <Trash2 className="h-3 w-3" />
                       </Button>
                     </div>
                   </div>
-                ))}
-              {!overview?.collections?.length && !overview?.error && (
-                <p className="text-center text-sm text-muted-foreground py-4">
-                  No hay colecciones disponibles
-                </p>
-              )}
-            </>
-          )}
-        </CardContent>
-      </Card>
+                </div>
+              ))}
+          </CardContent>
+        </Card>
 
-      {/* Backups Section */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <HardDrive className="h-5 w-5 text-blue-600" />
-                Respaldos de MongoDB
-              </CardTitle>
-              <CardDescription>
-                Gestiona los respaldos completos de tu base de datos
-              </CardDescription>
-            </div>
-            <div className="flex gap-2">
+        {/* Column 4: Backups */}
+        <Card className="shadow-sm h-full flex flex-col border-t-4 border-t-sky-500">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <HardDrive className="h-4 w-4 text-sky-600" />
+              Respaldos
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Copias de seguridad y restauración
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4 flex-1">
+            <div className="grid grid-cols-2 gap-2">
               <Button
                 onClick={handleCreateBackup}
                 disabled={actionLoading === "backup"}
-                variant="outline"
+                className="w-full bg-sky-600 hover:bg-sky-700 text-white"
+                size="sm"
               >
                 {actionLoading === "backup" ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Creando...
-                  </>
+                  <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
                   <>
                     <Download className="mr-2 h-4 w-4" />
-                    Crear Respaldo
+                    Crear
                   </>
                 )}
               </Button>
+
+              <ImportBackupDialog
+                onImportComplete={() => {
+                  fetchOverview();
+                  loadBackups();
+                }}
+                currentStats={{
+                  collections: overview?.collections || [],
+                  totalSize: overview?.totalSize || 0
+                }}
+              >
+                <Button
+                  variant="outline"
+                  className="w-full border-sky-200 text-sky-700 hover:bg-sky-50"
+                  size="sm"
+                >
+                  <Upload className="mr-2 h-4 w-4" />
+                  Importar
+                </Button>
+              </ImportBackupDialog>
             </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {backups.length > 0 ? (
-            <div className="space-y-2">
+
+            <Separator />
+
+            <div className="space-y-2 overflow-auto max-h-[400px] pr-1">
               {backups.map((backup) => (
                 <div
                   key={backup.name}
-                  className="flex items-center justify-between rounded-lg border bg-blue-50/50 px-4 py-3 hover:bg-blue-100/50 transition-colors"
+                  className="rounded-lg border bg-slate-50 p-3 hover:bg-white hover:shadow-sm transition-all"
                 >
-                  <div className="flex items-center gap-3">
-                    <Database className="h-4 w-4 text-blue-600" />
-                    <div>
-                      <span className="font-medium">{backup.name}</span>
-                      <p className="text-xs text-muted-foreground">
-                        {new Date(backup.createdAt).toLocaleString("es-UY")}
-                      </p>
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 rounded bg-sky-100 text-sky-600">
+                        <Database className="h-3 w-3" />
+                      </div>
+                      <div className="overflow-hidden">
+                        <p className="text-xs font-medium truncate w-[120px]" title={backup.name}>
+                          {backup.name.replace('adminflow_', '').split('_')[0]}...
+                        </p>
+                        <p className="text-[10px] text-muted-foreground">
+                          {new Date(backup.createdAt).toLocaleDateString()}
+                        </p>
+                      </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1 justify-end">
                     <Button
                       size="sm"
                       variant="ghost"
+                      className="h-7 text-xs"
                       onClick={() => handleDownloadBackup(backup.name)}
-                      disabled={actionLoading === `download-${backup.name}`}
-                      title="Descargar respaldo"
                     >
-                      {actionLoading === `download-${backup.name}` ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Download className="h-4 w-4" />
-                      )}
+                      <Download className="h-3 w-3 mr-1" />
+                      Bajar
                     </Button>
                     <Button
                       size="sm"
                       variant="ghost"
+                      className="h-7 text-xs text-amber-600 hover:text-amber-700 hover:bg-amber-50"
                       onClick={() => {
                         setSelectedBackup(backup);
                         setShowRestoreModal(true);
                       }}
-                      title="Restaurar respaldo"
-                      className="text-amber-600 hover:text-amber-700"
                     >
-                      <RotateCcw className="h-4 w-4" />
+                      <RotateCcw className="h-3 w-3 mr-1" />
+                      Restaurar
                     </Button>
                   </div>
                 </div>
               ))}
+              {backups.length === 0 && (
+                <div className="text-center py-8 text-muted-foreground text-xs">
+                  <HardDrive className="h-8 w-8 mx-auto mb-2 opacity-20" />
+                  No hay respaldos
+                </div>
+              )}
             </div>
-          ) : (
-            <p className="text-center text-sm text-muted-foreground py-4">
-              No hay respaldos disponibles
-            </p>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </div>
 
-      {/* Last Update */}
-      <Card className="bg-slate-50/50">
-        <CardContent className="flex items-center justify-between py-3">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Clock className="h-4 w-4" />
-            <span>Última actualización: {lastUpdate.toLocaleString("es-UY")}</span>
-          </div>
-          <Badge variant="outline" className="gap-1">
-            <Activity className="h-3 w-3" />
-            MongoDB
-          </Badge>
-        </CardContent>
-      </Card>
-
-      {/* Restore Backup Modal */}
+      {/* Restore Backup Modal (Local) */}
       <Dialog open={showRestoreModal} onOpenChange={setShowRestoreModal}>
         <DialogContent className="sm:max-w-md">
           <div className="absolute inset-0 bg-background/80 backdrop-blur-sm" />
@@ -677,7 +608,7 @@ export default function DatabasePage() {
                 <div className="p-2 rounded-lg bg-amber-100">
                   <AlertTriangle className="h-5 w-5 text-amber-600" />
                 </div>
-                Restaurar Respaldo
+                Restaurar Respaldo Local
               </DialogTitle>
               <DialogDescription>
                 Esta acción reemplazará todos los datos actuales
@@ -687,34 +618,20 @@ export default function DatabasePage() {
               <div className="space-y-4">
                 <div className="p-4 rounded-lg bg-amber-50 border border-amber-200">
                   <p className="text-sm font-medium text-amber-900 mb-2">
-                    ⚠️ Advertencia: Esta acción no se puede deshacer
+                    ⚠️ Advertencia: Irreversible
                   </p>
                   {selectedBackup && (
                     <div className="space-y-1">
                       <p className="text-sm text-muted-foreground">
-                        <span className="font-medium">Respaldo:</span> {selectedBackup.name}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        <span className="font-medium">Fecha:</span>{" "}
-                        {new Date(selectedBackup.createdAt).toLocaleString("es-UY")}
+                        <span className="font-medium">Archivo:</span> {selectedBackup.name}
                       </p>
                     </div>
                   )}
                 </div>
-                <p className="text-sm text-muted-foreground">
-                  Se restaurarán todas las colecciones y documentos del respaldo seleccionado.
-                  Los datos actuales serán reemplazados.
-                </p>
               </div>
             </div>
             <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setShowRestoreModal(false);
-                  setSelectedBackup(null);
-                }}
-              >
+              <Button variant="outline" onClick={() => setShowRestoreModal(false)}>
                 Cancelar
               </Button>
               <Button
@@ -724,16 +641,11 @@ export default function DatabasePage() {
                 className="bg-amber-600 hover:bg-amber-700"
               >
                 {actionLoading === "restore" ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Restaurando...
-                  </>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 ) : (
-                  <>
-                    <RotateCcw className="mr-2 h-4 w-4" />
-                    Restaurar
-                  </>
+                  <RotateCcw className="mr-2 h-4 w-4" />
                 )}
+                Restaurar
               </Button>
             </DialogFooter>
           </div>
