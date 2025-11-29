@@ -1,7 +1,7 @@
 import NextAuth, { type NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 
-const EXPRESS_BASE_URL = process.env.EXPRESS_BASE_URL || "http://localhost:5000";
+const EXPRESS_BASE_URL = process.env.EXPRESS_BASE_URL || "http://127.0.0.1:5000";
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -15,23 +15,33 @@ export const authOptions: NextAuthOptions = {
         if (!credentials?.email || !credentials?.password) {
           return null;
         }
-        const response = await fetch(`${EXPRESS_BASE_URL}/login`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
+        try {
+          const response = await fetch(`${EXPRESS_BASE_URL}/login`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              email: credentials.email,
+              password: credentials.password,
+            }),
+          });
+
+          if (!response.ok) {
+            console.error(`Login failed: ${response.status} ${response.statusText}`);
+            const text = await response.text();
+            console.error("Response body:", text);
+            return null;
+          }
+
+          const data = await response.json();
+          return {
+            id: data.userId || "guest",
             email: credentials.email,
-            password: credentials.password,
-          }),
-        });
-        if (!response.ok) {
+            token: data.token,
+          };
+        } catch (error) {
+          console.error("Auth fetch error:", error);
           return null;
         }
-        const data = await response.json();
-        return {
-          id: data.userId || "guest",
-          email: credentials.email,
-          token: data.token,
-        };
       },
     }),
   ],

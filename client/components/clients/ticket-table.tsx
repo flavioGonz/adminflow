@@ -22,6 +22,19 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
   Edit,
   Trash2,
   Hash,
@@ -44,12 +57,14 @@ import {
   Receipt,
   DollarSign,
   Timer,
+  Check,
 } from "lucide-react";
 import { DeleteTicketDialog } from "./delete-ticket-dialog";
 import { Ticket } from "@/types/ticket";
 import { Contract } from "@/types/contract";
 import { API_URL } from "@/lib/http";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 interface TicketTableProps {
   tickets: Ticket[];
@@ -108,7 +123,35 @@ export function TicketTable({
   >({});
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [unlockedTickets, setUnlockedTickets] = useState<Set<string>>(new Set());
+  const [users, setUsers] = useState<{ id: string; name: string; email: string; avatar?: string }[]>([]);
+  const [clients, setClients] = useState<Record<string, { name: string; avatarUrl?: string }>>({});
+  const [assignPopoverOpen, setAssignPopoverOpen] = useState<string | null>(null);
   const ticketsPerPage = 15;
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const loadClients = async () => {
+      try {
+        const response = await fetch(`${API_URL}/clients`, {
+          signal: controller.signal,
+        });
+        if (!response.ok) {
+          throw new Error("No se pudieron cargar los clientes.");
+        }
+        const data = await response.json();
+        const clientMap: Record<string, { name: string; avatarUrl?: string }> = {};
+        data.forEach((client: any) => {
+          clientMap[client.id] = { name: client.name, avatarUrl: client.avatarUrl };
+        });
+        setClients(clientMap);
+      } catch (err) {
+        if ((err as DOMException)?.name === "AbortError") return;
+        console.error("Error fetching clients:", err);
+      }
+    };
+    loadClients();
+    return () => controller.abort();
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -145,6 +188,29 @@ export function TicketTable({
     return () => controller.abort();
   }, []);
 
+  useEffect(() => {
+    const controller = new AbortController();
+    const loadUsers = async () => {
+      try {
+        const response = await fetch(`${API_URL}/users`, {
+          signal: controller.signal,
+        });
+        if (!response.ok) {
+          throw new Error("No se pudieron cargar los usuarios.");
+        }
+        const data = await response.json();
+        setUsers(data);
+      } catch (err) {
+        if ((err as DOMException)?.name === "AbortError") {
+          return;
+        }
+        console.error("Error fetching users:", err);
+      }
+    };
+    loadUsers();
+    return () => controller.abort();
+  }, []);
+
   const sortedTickets = useMemo(() => {
     const sortableItems = [...tickets];
     if (sortConfig !== null) {
@@ -153,8 +219,8 @@ export function TicketTable({
         const aValue = a[key];
         const bValue = b[key];
         if (aValue === undefined && bValue === undefined) return 0;
-        if (aValue === undefined) return direction === "ascending" ? 1 : -1;
-        if (bValue === undefined) return direction === "ascending" ? -1 : 1;
+        if (aValue === undefined || aValue === null) return direction === "ascending" ? 1 : -1;
+        if (bValue === undefined || bValue === null) return direction === "ascending" ? -1 : 1;
         if (aValue < bValue) {
           return direction === "ascending" ? -1 : 1;
         }
@@ -269,6 +335,28 @@ export function TicketTable({
     }
   };
 
+  const handleAssignedToChange = async (ticket: Ticket, userEmail: string | null) => {
+    setUpdatingId(ticket.id);
+    try {
+      const response = await fetch(`${API_URL}/tickets/${ticket.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...ticket, assignedTo: userEmail }),
+      });
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || `Error al actualizar asignación (${response.status})`);
+      }
+      window.dispatchEvent(new Event("tickets:refresh"));
+      toast.success(userEmail ? `Asignado a ${userEmail}` : "Asignación eliminada");
+      setAssignPopoverOpen(null);
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo actualizar la asignación");
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
   const toggleLock = (ticket: Ticket) => {
     setUnlockedTickets((prev) => {
       const next = new Set(prev);
@@ -360,6 +448,13 @@ export function TicketTable({
                   <ArrowUpDown className="h-4 w-4" />
                 </div>
               </TableHead>
+              <TableHead onClick={() => requestSort("assignedTo")}>
+                <div className="flex items-center gap-2 cursor-pointer">
+                  <User className="h-4 w-4" />
+                  Asignado
+                  <ArrowUpDown className="h-4 w-4" />
+                </div>
+              </TableHead>
               <TableHead onClick={() => requestSort("title")}>
                 <div className="flex items-center gap-2 cursor-pointer">
                   <CaseSensitive className="h-4 w-4" />
@@ -404,7 +499,39 @@ export function TicketTable({
                       <TimeAgo timestamp={ticket.createdAt} />
                     </div>
                   </TableCell>
-                  <TableCell>{ticket.clientName || "Cliente sin nombre"}</TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      {(() => {
+                        const client = ticket.clientId ? clients[ticket.clientId] : null;
+                        const avatarUrl = client?.avatarUrl;
+                        const clientName = ticket.clientName || "Cliente sin nombre";
+                        const initial = clientName.charAt(0).toUpperCase();
+
+                        return (
+                          <>
+                            {avatarUrl ? (
+                              <img
+                                src={
+                                  avatarUrl.startsWith("http")
+                                    ? avatarUrl
+                                    : `${API_URL.replace('/api', '')}${avatarUrl}`
+                                }
+                                alt={clientName}
+                                className="h-6 w-6 rounded-full object-cover"
+                              />
+                            ) : (
+                              <div className="h-6 w-6 rounded-full bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center text-white text-xs font-semibold shrink-0">
+                                {initial}
+                              </div>
+                            )}
+                            <span className="truncate max-w-[150px]" title={clientName}>
+                              {clientName}
+                            </span>
+                          </>
+                        );
+                      })()}
+                    </div>
+                  </TableCell>
                   <TableCell>
                     {(() => {
                       const contract = ticket.clientId
@@ -443,6 +570,105 @@ export function TicketTable({
                         </div>
                       );
                     })()}
+                  </TableCell>
+                  <TableCell onClick={(e) => e.stopPropagation()}>
+                    <Popover open={assignPopoverOpen === ticket.id} onOpenChange={(open) => setAssignPopoverOpen(open ? ticket.id : null)}>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-full justify-start font-normal px-2"
+                          disabled={updatingId === ticket.id || isRowLocked(ticket)}
+                        >
+                          {ticket.assignedTo ? (
+                            <div className="flex items-center gap-2">
+                              {(() => {
+                                const assignedUser = users.find(u => u.email === ticket.assignedTo);
+                                const avatarUrl = assignedUser?.avatar;
+                                const initial = ticket.assignedTo.charAt(0).toUpperCase();
+
+                                return avatarUrl ? (
+                                  <img
+                                    src={
+                                      avatarUrl.startsWith("http")
+                                        ? avatarUrl
+                                        : `${API_URL.replace('/api', '')}${avatarUrl}`
+                                    }
+                                    alt={ticket.assignedTo}
+                                    className="h-6 w-6 rounded-full object-cover"
+                                  />
+                                ) : (
+                                  <div className="h-6 w-6 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-xs font-semibold">
+                                    {initial}
+                                  </div>
+                                );
+                              })()}
+                              <span className="truncate max-w-[120px]" title={ticket.assignedTo}>
+                                {ticket.assignedTo.split('@')[0]}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-slate-400 italic">Sin asignar</span>
+                          )}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-[280px] p-0" align="start">
+                        <Command>
+                          <CommandInput placeholder="Buscar usuario..." />
+                          <CommandList>
+                            <CommandEmpty>No se encontró el usuario.</CommandEmpty>
+                            <CommandGroup>
+                              <CommandItem
+                                onSelect={() => handleAssignedToChange(ticket, null)}
+                              >
+                                <Check
+                                  className={cn(
+                                    "mr-2 h-4 w-4",
+                                    !ticket.assignedTo ? "opacity-100" : "opacity-0"
+                                  )}
+                                />
+                                <span className="text-slate-400 italic">Sin asignar</span>
+                              </CommandItem>
+                              {users.map((user) => (
+                                <CommandItem
+                                  key={user.id}
+                                  value={user.email}
+                                  onSelect={() => handleAssignedToChange(ticket, user.email)}
+                                >
+                                  <Check
+                                    className={cn(
+                                      "mr-2 h-4 w-4",
+                                      ticket.assignedTo === user.email ? "opacity-100" : "opacity-0"
+                                    )}
+                                  />
+                                  <div className="flex items-center gap-2">
+                                    {user.avatar ? (
+                                      <img
+                                        src={
+                                          user.avatar.startsWith("http")
+                                            ? user.avatar
+                                            : `${API_URL.replace('/api', '')}${user.avatar}`
+                                        }
+                                        alt={user.email}
+                                        className="h-6 w-6 rounded-full object-cover"
+                                      />
+                                    ) : (
+                                      <div className="h-6 w-6 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-xs font-semibold">
+                                        {user.email.charAt(0).toUpperCase()}
+                                      </div>
+                                    )}
+                                    <div className="flex flex-col">
+                                      <span className="text-sm">{user.name}</span>
+                                      <span className="text-xs text-muted-foreground">{user.email}</span>
+                                    </div>
+                                  </div>
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
                   </TableCell>
                   <TableCell>{ticket.title}</TableCell>
                   <TableCell onClick={(e) => e.stopPropagation()}>

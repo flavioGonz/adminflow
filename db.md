@@ -22,6 +22,7 @@ La aplicación utiliza **MongoDB como base de datos principal** para toda la ope
 | `products` | Catálogo de servicios/productos. | `_id`, `name`, `description`, `manufacturer`, `category`, `priceUYU`, `priceUSD`, `badge`, `imageUrl`. |
 | `payments` | Registro de pagos/cobros. | `_id`, `invoice`, `ticketId`, `clientId`, `amount`, `status`, `method`, `concept`, `currency`. |
 | `client_accesses` | Credenciales y accesos por cliente. | `_id`, `clientId`, `equipo`, `tipo_equipo`, `ip`, `user`, `pass`, `serieMac`, `comentarios`. |
+| `client_diagrams` | Diagramas de red (Excalidraw). | `_id`, `clientId`, `elements`, `appState`, `files`. |
 | `calendar_events` | Eventos de calendario. | `_id`, `title`, `location`, `start`, `end`, `sourceType`, `sourceId`, `locked`. |
 | `notifications` | Historial de notificaciones. | `_id`, `event`, `message`, `channels`, `recipients`, `metadata`, `results`. |
 | `configurations` | Configuraciones del sistema. | `_id`, `module`, `data`, `createdAt`, `updatedAt`. |

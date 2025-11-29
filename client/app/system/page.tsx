@@ -51,8 +51,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { SystemApi, SystemUser, NotificationConfig, NotificationLog } from "@/lib/api-system";
+import * as SystemApi from "@/lib/api-system";
+import { SystemUser, NotificationConfig, NotificationLog } from "@/lib/api-system";
 import { ShinyText } from "@/components/ui/shiny-text";
+import { API_URL } from "@/lib/http";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Upload } from "lucide-react";
+import { BackupManager } from "@/components/system/backup-manager";
 
 type ChannelId = "email" | "whatsapp" | "telegram" | "slack";
 
@@ -151,7 +156,9 @@ export default function SystemPage() {
   // UI States
   const [userModalOpen, setUserModalOpen] = useState(false);
   const [resetPasswordModalOpen, setResetPasswordModalOpen] = useState(false);
+  const [deleteUserModalOpen, setDeleteUserModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<SystemUser | null>(null);
+  const [deletingUser, setDeletingUser] = useState<SystemUser | null>(null);
 
   // Template Preview States
   const [previewEvent, setPreviewEvent] = useState("ticket_created");
@@ -162,6 +169,8 @@ export default function SystemPage() {
   const [resetPasswordForm, setResetPasswordForm] = useState({ email: "", newPassword: "" });
   const [showPassword, setShowPassword] = useState(false);
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
 
   // SMTP States
   const [smtpUser, setSmtpUser] = useState("");
@@ -191,7 +200,7 @@ export default function SystemPage() {
     setLoading(true);
     try {
       const [usersData, configData] = await Promise.all([
-        SystemApi.getUsers(),
+        SystemApi.getRegisteredUsers(),
         SystemApi.getNotificationConfig(),
       ]);
       setUsers(usersData);
@@ -552,13 +561,45 @@ _Enviado automáticamente por AdminFlow_`,
         return;
       }
 
+      let userId = "";
+
       if (editingUser) {
-        await SystemApi.updateUser(editingUser._id || editingUser.sqliteId?.toString() || "", {
+        console.log("Editing user:", editingUser);
+        // Editing existing user
+        // Prefer _id (MongoDB) over sqliteId. Ensure it's a string.
+        userId = editingUser._id?.toString() || (editingUser.sqliteId ? editingUser.sqliteId.toString() : "");
+        console.log("Derived userId for update:", userId);
+
+        if (!userId) {
+          toast.error("Error interno: No se pudo identificar el ID del usuario.");
+          return;
+        }
+
+        // 1. Upload avatar first if selected
+        if (avatarFile) {
+          const formData = new FormData();
+          formData.append('avatar', avatarFile);
+
+          const uploadResponse = await fetch(`${API_URL}/users/${userId}/avatar`, {
+            method: 'POST',
+            body: formData,
+          });
+
+          if (uploadResponse.ok) {
+            toast.success("Avatar actualizado correctamente");
+          } else {
+            toast.error("Error al subir el avatar");
+          }
+        }
+
+        // 2. Update user roles and metadata
+        await SystemApi.updateUser(userId, {
           roles: selectedRoles,
           metadata: parsedMetadata,
         });
         toast.success("Usuario actualizado correctamente");
       } else {
+        // Creating new user
         if (!userForm.email || !userForm.password) {
           toast.error("Email y contraseña son requeridos");
           return;
@@ -571,31 +612,147 @@ _Enviado automáticamente por AdminFlow_`,
           toast.error("Selecciona al menos un rol");
           return;
         }
-        await SystemApi.createUser(userForm.email, userForm.password);
+
+        // 1. Create user first
+        const newUser = await SystemApi.createUser(userForm.email, userForm.password);
+        userId = newUser._id?.toString() || (newUser.sqliteId ? newUser.sqliteId.toString() : "");
+
+        // 2. Upload avatar if selected
+        if (avatarFile && userId) {
+          const formData = new FormData();
+          formData.append('avatar', avatarFile);
+
+          const uploadResponse = await fetch(`${API_URL}/users/${userId}/avatar`, {
+            method: 'POST',
+            body: formData,
+          });
+
+          if (!uploadResponse.ok) {
+            toast.error("Usuario creado, pero hubo un error al subir el avatar");
+          }
+        }
+
+        // 3. Update roles and metadata for new user
+        if (userId) {
+          await SystemApi.updateUser(userId, {
+            roles: selectedRoles,
+            metadata: parsedMetadata,
+          });
+        }
         toast.success("Usuario creado exitosamente");
       }
 
       setUserModalOpen(false);
       loadData();
     } catch (error: any) {
+      console.error("Error saving user:", error);
       toast.error(error.message || "Error al guardar usuario");
+    }
+  };
+
+  const handleAvatarUpload = async (user: SystemUser, event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Validate file size (5MB max)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("La imagen no debe superar 5MB");
+      return;
+    }
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      toast.error("Solo se permiten archivos de imagen");
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('avatar', file);
+
+    try {
+      const userId = user._id?.toString() || user.sqliteId?.toString() || '';
+      const response = await fetch(`${API_URL}/users/${userId}/avatar`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error('Error al subir el avatar');
+      }
+
+      const data = await response.json();
+      toast.success("Avatar actualizado correctamente");
+
+      // Reload users to show the new avatar
+      loadData();
+    } catch (error: any) {
+      toast.error(error.message || "Error al subir el avatar");
+    }
+  };
+
+  const handleModalAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error("La imagen no debe superar los 5MB");
+        return;
+      }
+      setAvatarFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setAvatarPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleDeleteUser = (user: SystemUser) => {
+    setDeletingUser(user);
+    setDeleteUserModalOpen(true);
+  };
+
+  const confirmDeleteUser = async () => {
+    if (!deletingUser) return;
+
+    try {
+      const userId = deletingUser._id || deletingUser.sqliteId;
+      if (!userId) {
+        toast.error("Usuario no encontrado");
+        return;
+      }
+
+      await SystemApi.deleteUser(String(userId));
+      toast.success("Usuario eliminado correctamente");
+      setDeleteUserModalOpen(false);
+      setDeletingUser(null);
+      loadData();
+    } catch (error: any) {
+      toast.error(error.message || "Error al eliminar usuario");
     }
   };
 
   const handleResetPassword = async () => {
     try {
-      if (!resetPasswordForm.email || !resetPasswordForm.newPassword) {
-        toast.error("Email y nueva contraseña son requeridos");
+      if (!resetPasswordForm.newPassword) {
+        toast.error("Nueva contraseña es requerida");
         return;
       }
       if (resetPasswordForm.newPassword.length < 8) {
         toast.error("La contraseña debe tener al menos 8 caracteres");
         return;
       }
-      await SystemApi.resetUserPassword(resetPasswordForm.email, resetPasswordForm.newPassword);
-      toast.success("Solicitud de reset de contraseña registrada");
+
+      const userId = resetingUser?._id || resetingUser?.sqliteId;
+      if (!userId) {
+        toast.error("Usuario no encontrado");
+        return;
+      }
+
+      await SystemApi.resetUserPassword(String(userId), resetPasswordForm.newPassword);
+      toast.success("Contraseña actualizada correctamente");
       setResetPasswordModalOpen(false);
       setResetPasswordForm({ email: "", newPassword: "" });
+      setResetingUser(null);
       loadData();
     } catch (error: any) {
       toast.error(error.message || "Error al resetear contraseña");
@@ -725,21 +882,18 @@ _Enviado automáticamente por AdminFlow_`,
           Plantillas
         </Button>
         <Button
-          variant={activeTab === "audit" ? "default" : "outline"}
-          onClick={() => setActiveTab("audit")}
+          variant={activeTab === "backups" ? "default" : "outline"}
+          onClick={() => setActiveTab("backups")}
           className="gap-2"
         >
-          <Activity className="h-4 w-4" />
-          Auditoría
+          <Database className="h-4 w-4" />
+          Respaldos
         </Button>
       </div>
 
-      {/* Content Sections */}
       <div className="space-y-6">
-
-        {/* Section: Usuarios */}
         {activeTab === "users" && (
-          <div className="space-y-4 animate-in fade-in duration-300">
+          <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-semibold">
@@ -826,6 +980,15 @@ _Enviado automáticamente por AdminFlow_`,
                               title="Editar usuario"
                             >
                               <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDeleteUser(user)}
+                              title="Eliminar usuario"
+                              className="text-destructive hover:text-destructive"
+                            >
+                              <Trash2 className="h-4 w-4" />
                             </Button>
                           </div>
                         </TableCell>
@@ -1617,159 +1780,267 @@ _Enviado automáticamente por AdminFlow_`,
           </div>
         )}
 
-        {/* Modal: Crear/Editar Usuario */}
-        <Dialog open={userModalOpen} onOpenChange={setUserModalOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <User className="h-5 w-5" />
-                {editingUser ? "Editar Usuario" : "Crear Usuario"}
-              </DialogTitle>
-              <DialogDescription>
-                {editingUser
-                  ? "Actualiza los roles y metadata del usuario"
-                  : "Crea un nuevo usuario en el sistema"}
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label className="flex items-center gap-2">
-                  <Mail className="h-4 w-4 text-muted-foreground" />
-                  Email
-                </Label>
-                <Input
-                  type="email"
-                  value={userForm.email}
-                  onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
-                  placeholder="usuario@example.com"
-                  disabled={!!editingUser}
-                />
-              </div>
-              {!editingUser && (
-                <div className="space-y-2">
-                  <Label className="flex items-center gap-2">
-                    <Lock className="h-4 w-4 text-muted-foreground" />
-                    Contraseña
-                  </Label>
-                  <div className="relative">
-                    <Input
-                      type={showPassword ? "text" : "password"}
-                      value={userForm.password}
-                      onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
-                      placeholder="Mínimo 8 caracteres"
+        {activeTab === "backups" && (
+          <BackupManager />
+        )}
+      </div>
+
+      {/* Modal: Crear/Editar Usuario */}
+
+      <Dialog open={userModalOpen} onOpenChange={setUserModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <User className="h-5 w-5" />
+              {editingUser ? "Editar Usuario" : "Crear Usuario"}
+            </DialogTitle>
+            <DialogDescription>
+              {editingUser
+                ? "Actualiza los roles y metadata del usuario"
+                : "Crea un nuevo usuario en el sistema"}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <Mail className="h-4 w-4 text-muted-foreground" />
+                Email
+              </Label>
+              <Input
+                type="email"
+                value={userForm.email}
+                onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
+                placeholder="usuario@example.com"
+                disabled={!!editingUser}
+              />
+            </div>
+
+            {/* Avatar Upload */}
+            <div className="space-y-2">
+              <Label>Avatar</Label>
+              <div className="flex items-center gap-4">
+                <div className="relative">
+                  {avatarPreview ? (
+                    <img
+                      src={avatarPreview}
+                      alt="Avatar preview"
+                      className="h-20 w-20 rounded-full object-cover ring-2 ring-sky-100"
                     />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="absolute right-0 top-0 h-full px-3"
-                      onClick={() => setShowPassword(!showPassword)}
-                    >
-                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </Button>
-                  </div>
+                  ) : (
+                    <div className="h-20 w-20 rounded-full bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center text-white text-2xl font-semibold ring-2 ring-sky-100">
+                      {userForm.email ? userForm.email.charAt(0).toUpperCase() : '?'}
+                    </div>
+                  )}
                 </div>
-              )}
-              <div className="space-y-2">
-                <Label className="flex items-center gap-2">
-                  <Shield className="h-4 w-4 text-muted-foreground" />
-                  Roles
-                </Label>
-                <div className="flex flex-wrap gap-2 p-3 border rounded-lg bg-slate-50">
-                  {availableRoles.map((role) => (
-                    <Button
-                      key={role}
-                      type="button"
-                      variant={selectedRoles.includes(role) ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => toggleRole(role)}
-                      className="gap-2"
-                    >
-                      {selectedRoles.includes(role) && <CheckCircle className="h-3 w-3" />}
-                      {role}
-                    </Button>
-                  ))}
+                <div className="flex-1">
+                  <label htmlFor="modal-avatar-upload" className="cursor-pointer">
+                    <div className="flex items-center gap-2 px-4 py-2 border border-input rounded-md hover:bg-accent hover:text-accent-foreground transition-colors">
+                      <Upload className="h-4 w-4" />
+                      <span className="text-sm">Cambiar Avatar</span>
+                    </div>
+                  </label>
+                  <input
+                    id="modal-avatar-upload"
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleModalAvatarChange}
+                  />
+                  <p className="text-xs text-muted-foreground mt-2">
+                    PNG, JPG hasta 5MB
+                  </p>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Seleccionados: {selectedRoles.length > 0 ? selectedRoles.join(", ") : "Ninguno"}
-                </p>
-              </div>
-              <div className="space-y-2">
-                <Label className="flex items-center gap-2">
-                  <FileText className="h-4 w-4 text-muted-foreground" />
-                  Metadata (JSON)
-                </Label>
-                <Textarea
-                  value={userForm.metadata}
-                  onChange={(e) => setUserForm({ ...userForm, metadata: e.target.value })}
-                  placeholder='{"key": "value"}'
-                  className="font-mono text-xs"
-                  rows={4}
-                />
               </div>
             </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setUserModalOpen(false)}>
-                Cancelar
-              </Button>
-              <Button onClick={handleSaveUser}>{editingUser ? "Actualizar" : "Crear"}</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
 
-        {/* Modal: Resetear Contraseña */}
-        <Dialog open={resetPasswordModalOpen} onOpenChange={setResetPasswordModalOpen}>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <div className="p-2 rounded-lg bg-amber-50">
-                  <Key className="h-5 w-5 text-amber-600" />
-                </div>
-                Resetear Contraseña
-              </DialogTitle>
-              <DialogDescription>
-                {resetingUser ? `Establece una nueva contraseña para ${resetingUser.email}` : "Establece una nueva contraseña para el usuario"}
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label className="flex items-center gap-2">
-                  <Mail className="h-4 w-4 text-muted-foreground" />
-                  Email del Usuario
-                </Label>
-                <Input
-                  type="email"
-                  value={resetPasswordForm.email}
-                  onChange={(e) => setResetPasswordForm({ ...resetPasswordForm, email: e.target.value })}
-                  placeholder="usuario@example.com"
-                  disabled={!!resetingUser}
-                  className="bg-slate-50"
-                />
-              </div>
+            {!editingUser && (
               <div className="space-y-2">
                 <Label className="flex items-center gap-2">
                   <Lock className="h-4 w-4 text-muted-foreground" />
-                  Nueva Contraseña
+                  Contraseña
                 </Label>
-                <Input
-                  type="password"
-                  value={resetPasswordForm.newPassword}
-                  onChange={(e) => setResetPasswordForm({ ...resetPasswordForm, newPassword: e.target.value })}
-                  placeholder="Mínimo 8 caracteres"
-                  autoFocus
-                />
-                <p className="text-xs text-muted-foreground">La contraseña debe tener al menos 8 caracteres</p>
+                <div className="relative">
+                  <Input
+                    type={showPassword ? "text" : "password"}
+                    value={userForm.password}
+                    onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
+                    placeholder="Mínimo 8 caracteres"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="absolute right-0 top-0 h-full px-3"
+                    onClick={() => setShowPassword(!showPassword)}
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
               </div>
+            )}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <Shield className="h-4 w-4 text-muted-foreground" />
+                Roles
+              </Label>
+              <div className="flex flex-wrap gap-2 p-3 border rounded-lg bg-slate-50">
+                {availableRoles.map((role) => (
+                  <Button
+                    key={role}
+                    type="button"
+                    variant={selectedRoles.includes(role) ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => toggleRole(role)}
+                    className="gap-2"
+                  >
+                    {selectedRoles.includes(role) && <CheckCircle className="h-3 w-3" />}
+                    {role}
+                  </Button>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Seleccionados: {selectedRoles.length > 0 ? selectedRoles.join(", ") : "Ninguno"}
+              </p>
             </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setResetPasswordModalOpen(false)}>
-                Cancelar
-              </Button>
-              <Button onClick={handleResetPassword}>Resetear</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </div>
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <FileText className="h-4 w-4 text-muted-foreground" />
+                Metadata (JSON)
+              </Label>
+              <Textarea
+                value={userForm.metadata}
+                onChange={(e) => setUserForm({ ...userForm, metadata: e.target.value })}
+                placeholder='{"key": "value"}'
+                className="font-mono text-xs"
+                rows={4}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setUserModalOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleSaveUser}>{editingUser ? "Actualizar" : "Crear"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal: Resetear Contraseña */}
+      <Dialog open={resetPasswordModalOpen} onOpenChange={setResetPasswordModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <div className="p-2 rounded-lg bg-amber-50">
+                <Key className="h-5 w-5 text-amber-600" />
+              </div>
+              Resetear Contraseña
+            </DialogTitle>
+            <DialogDescription>
+              {resetingUser ? `Establece una nueva contraseña para ${resetingUser.email}` : "Establece una nueva contraseña para el usuario"}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <Mail className="h-4 w-4 text-muted-foreground" />
+                Email del Usuario
+              </Label>
+              <Input
+                type="email"
+                value={resetPasswordForm.email}
+                onChange={(e) => setResetPasswordForm({ ...resetPasswordForm, email: e.target.value })}
+                placeholder="usuario@example.com"
+                disabled={!!resetingUser}
+                className="bg-slate-50"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <Lock className="h-4 w-4 text-muted-foreground" />
+                Nueva Contraseña
+              </Label>
+              <Input
+                type="password"
+                value={resetPasswordForm.newPassword}
+                onChange={(e) => setResetPasswordForm({ ...resetPasswordForm, newPassword: e.target.value })}
+                placeholder="Mínimo 8 caracteres"
+                autoFocus
+              />
+              <p className="text-xs text-muted-foreground">La contraseña debe tener al menos 8 caracteres</p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setResetPasswordModalOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleResetPassword}>Resetear</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal: Confirmar Eliminación de Usuario */}
+      <Dialog open={deleteUserModalOpen} onOpenChange={setDeleteUserModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <div className="p-2 rounded-lg bg-destructive/10">
+                <AlertTriangle className="h-5 w-5 text-destructive" />
+              </div>
+              Confirmar Eliminación
+            </DialogTitle>
+            <DialogDescription>
+              Esta acción no se puede deshacer.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <div className="space-y-4">
+              <div className="p-4 rounded-lg bg-destructive/5 border border-destructive/20">
+                <p className="text-sm font-medium text-destructive mb-2">
+                  ¿Estás seguro de que deseas eliminar este usuario?
+                </p>
+                {deletingUser && (
+                  <div className="space-y-1">
+                    <p className="text-sm text-muted-foreground">
+                      <span className="font-medium">Email:</span> {deletingUser.email}
+                    </p>
+                    {deletingUser.name && (
+                      <p className="text-sm text-muted-foreground">
+                        <span className="font-medium">Nombre:</span> {deletingUser.name}
+                      </p>
+                    )}
+                    {deletingUser.roles && deletingUser.roles.length > 0 && (
+                      <p className="text-sm text-muted-foreground">
+                        <span className="font-medium">Roles:</span> {deletingUser.roles.join(", ")}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Se eliminarán todos los datos asociados a este usuario del sistema.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDeleteUserModalOpen(false);
+                setDeletingUser(null);
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmDeleteUser}
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Eliminar Usuario
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div >
   );
 }

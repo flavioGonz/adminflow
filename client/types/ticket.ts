@@ -54,4 +54,5 @@ export interface Ticket {
   attachments?: TicketAttachment[];
   audioNotes?: TicketAudioNote[];
   paid?: boolean;
+  assignedTo?: string | null;
 }

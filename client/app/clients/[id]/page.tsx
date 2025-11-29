@@ -55,10 +55,17 @@ import {
   Network,
   Save,
   Trash2,
+  Building2,
+  Tag,
+  Phone,
+  MapPin,
+  FolderArchive,
+  Rocket,
 } from "lucide-react";
 import { updateClient } from "@/lib/api-clients";
 import { API_URL } from "@/lib/http";
 import "leaflet/dist/leaflet.css";
+import { ShinyText } from "@/components/ui/shiny-text";
 
 const DEFAULT_POSITION: [number, number] = [-34.9, -56.1];
 
@@ -279,6 +286,7 @@ interface EditableClientCardProps {
   fields: CardField[];
   onSave: (updates: Partial<Client>) => Promise<void>;
   isSaving: boolean;
+  avatarUrl?: string;
 }
 
 const formatDate = (value?: string) =>
@@ -632,7 +640,6 @@ export default function ClientDetailPage() {
     return <div className="p-6 text-red-500">Error: {error}</div>;
   }
 
-
   if (!client) {
     return <div className="p-6">Cliente no encontrado.</div>;
   }
@@ -646,35 +653,39 @@ export default function ClientDetailPage() {
       accent: "from-blue-50 to-indigo-50",
     },
     {
-      title: "Repositorio",
+      title: "Bóbeda de Archivos",
       description: "Documentos y archivos del cliente",
-      icon: Folder,
-      href: "/repository",
-      accent: "from-violet-50 to-purple-50",
-    },
-    {
-      title: "Racks",
-      description: "Inventario de racks y posiciones (próximamente)",
-      icon: Server,
-      onClick: () => toast.info("Racks en construcción."),
+      icon: FolderArchive,
+      href: `/repository?search=${encodeURIComponent(client.name)}`,
       accent: "from-slate-50 to-slate-100",
     },
     {
       title: "Diagramas",
       description: "Diagramas de red en Excalidraw",
       icon: Network,
-      onClick: () => window.open("https://excalidraw.com", "_blank", "noopener,noreferrer"),
+      href: `/clients/${client.id}/diagram`,
       accent: "from-emerald-50 to-teal-50",
+    },
+    {
+      title: "Implementaciones",
+      description: "Proyectos e implementaciones del cliente",
+      icon: Rocket,
+      onClick: () => toast.info("Implementaciones - Próximamente"),
+      accent: "from-purple-50 to-pink-50",
     },
   ];
 
   return (
     <div className="space-y-6 p-6">
       <PageHeader
-        title={client.name}
+        title={<ShinyText size="3xl" weight="bold">{client.name}</ShinyText>}
         subtitle="Ficha completa del cliente con contratos, tickets y pagos vinculados."
         backHref="/clients"
-        leadingIcon={<User className="h-6 w-6 text-slate-800" />}
+        leadingIcon={
+          <div className="p-2 rounded-lg bg-gradient-to-br from-emerald-500 to-green-600">
+            <User className="h-6 w-6 text-white" />
+          </div>
+        }
         breadcrumbs={[
           { label: "Clientes", href: "/clients", icon: <Users className="h-3 w-3 text-slate-500" /> },
           { label: client.name, icon: <User className="h-3 w-3 text-slate-500" /> },
@@ -711,15 +722,16 @@ export default function ClientDetailPage() {
           icon={User}
           client={client}
           fields={[
-            { key: "name", label: "Razón Social", type: "text", icon: User },
-            { key: "alias", label: "Alias Comercial", type: "text", icon: Award },
-            { key: "rut", label: "RUT / CUIT", type: "text", icon: FileDown },
+            { key: "name", label: "Razón Social", type: "text", icon: Building2 },
+            { key: "alias", label: "Alias Comercial", type: "text", icon: Tag },
+            { key: "rut", label: "RUT / CUIT", type: "text", icon: FileText },
             { key: "email", label: "Correo electrónico", type: "email", icon: Mail },
-            { key: "phone", label: "Teléfono", type: "tel", icon: Mail },
-            { key: "address", label: "Dirección", type: "textarea", icon: Mail },
+            { key: "phone", label: "Teléfono", type: "tel", icon: Phone },
+            { key: "address", label: "Dirección", type: "textarea", icon: MapPin },
           ]}
           onSave={(updates) => handleCardSave("contact", updates)}
           isSaving={savingSection === "contact"}
+          avatarUrl={client.avatarUrl}
         />
         <ContractSelectionCard
           contracts={contracts}
@@ -1061,6 +1073,7 @@ function EditableClientCard({
   fields,
   onSave,
   isSaving,
+  avatarUrl,
 }: EditableClientCardProps) {
   const [open, setOpen] = useState(false);
   const [formValues, setFormValues] = useState<Record<string, string>>({});
@@ -1109,39 +1122,93 @@ function EditableClientCard({
   };
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 shadow-sm backdrop-blur-sm">
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <span className="grid h-11 w-11 place-items-center rounded-2xl bg-slate-100 text-slate-700">
-            <Icon className="h-5 w-5" />
-          </span>
-          <div>
-            <p className="text-base font-semibold text-slate-800">{title}</p>
-            <p className="text-xs text-slate-500">{description}</p>
+    <section className="relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-50/80 p-4 shadow-sm backdrop-blur-sm">
+      {avatarUrl && (
+        <div
+          className="absolute inset-0 z-0 opacity-10 bg-center bg-no-repeat bg-contain pointer-events-none"
+          style={{
+            backgroundImage: `url(${avatarUrl.startsWith("http") ? avatarUrl : `${API_URL}${avatarUrl}`
+              })`,
+            backgroundPosition: "center right",
+            transform: "scale(0.8) translateX(20%)",
+          }}
+        />
+      )}
+      <div className="relative z-10">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <span className="grid h-11 w-11 place-items-center rounded-2xl bg-slate-100 text-slate-700">
+              <Icon className="h-5 w-5" />
+            </span>
+            <div>
+              <p className="text-base font-semibold text-slate-800">{title}</p>
+              <p className="text-xs text-slate-500">{description}</p>
+            </div>
           </div>
-        </div>
-        <Dialog open={open} onOpenChange={handleOpenChange}>
-          <DialogTrigger asChild>
-            <Button variant="outline" size="sm">
-              Editar
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-lg">
-            <DialogHeader>
-              <DialogTitle>Editar {title.toLowerCase()}</DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              {fields.map((field) => {
-                const key = String(field.key);
-                const value = formValues[key] ?? "";
+          <Dialog open={open} onOpenChange={handleOpenChange}>
+            <DialogTrigger asChild>
+              <Button variant="outline" size="sm">
+                Editar
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-lg">
+              <DialogHeader>
+                <DialogTitle>Editar {title.toLowerCase()}</DialogTitle>
+              </DialogHeader>
+              <form onSubmit={handleSubmit} className="space-y-4">
+                {fields.map((field) => {
+                  const key = String(field.key);
+                  const value = formValues[key] ?? "";
 
-                if (field.type === "textarea") {
+                  if (field.type === "textarea") {
+                    return (
+                      <div key={key} className="space-y-2">
+                        <Label className="text-sm text-slate-500">
+                          {field.label}
+                        </Label>
+                        <Textarea
+                          value={value}
+                          onChange={(event) =>
+                            handleChange(key, event.target.value)
+                          }
+                          placeholder={field.placeholder}
+                        />
+                      </div>
+                    );
+                  }
+
+                  if (field.type === "select" && field.options) {
+                    return (
+                      <div key={key} className="space-y-2">
+                        <Label className="text-sm text-slate-500">
+                          {field.label}
+                        </Label>
+                        <Select
+                          value={value}
+                          onValueChange={(newValue) => handleChange(key, newValue)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Selecciona una opción" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {field.options.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    );
+                  }
+
                   return (
                     <div key={key} className="space-y-2">
                       <Label className="text-sm text-slate-500">
                         {field.label}
                       </Label>
-                      <Textarea
+                      <Input
+                        type={field.type ?? "text"}
                         value={value}
                         onChange={(event) =>
                           handleChange(key, event.target.value)
@@ -1150,77 +1217,36 @@ function EditableClientCard({
                       />
                     </div>
                   );
-                }
+                })}
+                <DialogFooter>
+                  <Button type="submit" disabled={isSaving}>
+                    {isSaving ? "Guardando..." : "Guardar cambios"}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
+        </div>
+        <div className="mt-4 space-y-2 text-sm text-slate-600">
+          {fields.map((field) => {
+            const rawValue = client[field.key];
+            const displayValue =
+              field.format?.(rawValue) ??
+              (rawValue === null || rawValue === undefined || rawValue === ""
+                ? "—"
+                : String(rawValue));
 
-                if (field.type === "select" && field.options) {
-                  return (
-                    <div key={key} className="space-y-2">
-                      <Label className="text-sm text-slate-500">
-                        {field.label}
-                      </Label>
-                      <Select
-                        value={value}
-                        onValueChange={(newValue) => handleChange(key, newValue)}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Selecciona una opción" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {field.options.map((option) => (
-                            <SelectItem key={option.value} value={option.value}>
-                              {option.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  );
-                }
-
-                return (
-                  <div key={key} className="space-y-2">
-                    <Label className="text-sm text-slate-500">
-                      {field.label}
-                    </Label>
-                    <Input
-                      type={field.type ?? "text"}
-                      value={value}
-                      onChange={(event) =>
-                        handleChange(key, event.target.value)
-                      }
-                      placeholder={field.placeholder}
-                    />
-                  </div>
-                );
-              })}
-              <DialogFooter>
-                <Button type="submit" disabled={isSaving}>
-                  {isSaving ? "Guardando..." : "Guardar cambios"}
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
-      </div>
-      <div className="mt-4 space-y-2 text-sm text-slate-600">
-        {fields.map((field) => {
-          const rawValue = client[field.key];
-          const displayValue =
-            field.format?.(rawValue) ??
-            (rawValue === null || rawValue === undefined || rawValue === ""
-              ? "—"
-              : String(rawValue));
-
-          return (
-            <div
-              key={String(field.key)}
-              className="flex items-center justify-between text-sm"
-            >
-              <span className="text-slate-500">{field.label}</span>
-              <span className="font-medium text-slate-800">{displayValue}</span>
-            </div>
-          );
-        })}
+            return (
+              <div
+                key={String(field.key)}
+                className="flex items-center justify-between text-sm"
+              >
+                <span className="text-slate-500">{field.label}</span>
+                <span className="font-medium text-slate-800">{displayValue}</span>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </section>
   );
@@ -1328,12 +1354,3 @@ function ContractSelectionCard({
     </section>
   );
 }
-
-
-
-
-
-
-
-
-

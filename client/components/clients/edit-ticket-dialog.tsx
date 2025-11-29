@@ -118,6 +118,15 @@ export function EditTicketDialog({
   const [clientsLoaded, setClientsLoaded] = useState(false);
   const [clientTickets, setClientTickets] = useState<Ticket[]>([]);
   const [clientTicketsLoading, setClientTicketsLoading] = useState(false);
+  const [users, setUsers] = useState<{ id: string; name: string; email: string }[]>([]);
+  const [assignedTo, setAssignedTo] = useState<string | null>(ticket?.assignedTo ?? null);
+
+  useEffect(() => {
+    fetch(`${API_URL}/users`)
+      .then((res) => res.json())
+      .then((data) => setUsers(data))
+      .catch((err) => console.error("Error fetching users:", err));
+  }, []);
 
 
 
@@ -142,9 +151,11 @@ export function EditTicketDialog({
       attachments: Array.isArray(ticket?.attachments)
         ? (ticket.attachments as TicketAttachment[])
         : [],
+
       audioNotes: Array.isArray(ticket?.audioNotes)
         ? (ticket.audioNotes as TicketAudioNote[])
         : [],
+      assignedTo: ticket?.assignedTo ?? null,
     };
   }, [ticket]);
 
@@ -352,7 +363,9 @@ export function EditTicketDialog({
       setAnnotations(initialState.annotations);
       setDescription(initialState.description);
       setAttachments(initialState.attachments);
+      setAttachments(initialState.attachments);
       setAudioNotes(initialState.audioNotes);
+      setAssignedTo(initialState.assignedTo);
       setNotes("");
     }
   }, [isEditMode, initialState]);
@@ -370,7 +383,9 @@ export function EditTicketDialog({
     setAnnotations(initialState.annotations);
     setDescription(initialState.description);
     setAttachments(initialState.attachments);
+    setAttachments(initialState.attachments);
     setAudioNotes(initialState.audioNotes);
+    setAssignedTo(initialState.assignedTo);
     setNotes("");
   };
 
@@ -429,6 +444,7 @@ export function EditTicketDialog({
       description,
       attachments: sanitizeAttachments(),
       audioNotes: sanitizeAudioNotes(),
+      assignedTo,
     };
 
     if (isEditMode) {
@@ -685,7 +701,7 @@ export function EditTicketDialog({
                 </div>
               </div>
             )}
-            <div className="grid gap-2 lg:grid-cols-2">
+            <div className="grid gap-2 lg:grid-cols-3">
               <div className="space-y-0.5">
                 <Label className="text-sm font-semibold">Estado</Label>
                 <Select value={status} onValueChange={(value) => setStatus(value as Ticket["status"])}>
@@ -727,6 +743,71 @@ export function EditTicketDialog({
                         </SelectItem>
                       );
                     })}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-0.5">
+                <Label className="text-sm font-semibold">Asignado a</Label>
+                <Select value={assignedTo || "unassigned"} onValueChange={(value) => setAssignedTo(value === "unassigned" ? null : value)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Sin asignar">
+                      {assignedTo ? (
+                        <div className="flex items-center gap-2">
+                          {(() => {
+                            const user = users.find((u) => u.email === assignedTo);
+                            if (!user) return assignedTo;
+                            const avatarUrl = (user as any).avatar;
+                            return (
+                              <>
+                                {avatarUrl ? (
+                                  <img
+                                    src={
+                                      avatarUrl.startsWith("http")
+                                        ? avatarUrl
+                                        : `${API_URL.replace('/api', '')}${avatarUrl}`
+                                    }
+                                    alt={user.name}
+                                    className="h-5 w-5 rounded-full object-cover"
+                                  />
+                                ) : (
+                                  <div className="h-5 w-5 rounded-full bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center text-white text-xs font-semibold">
+                                    {user.name.charAt(0).toUpperCase()}
+                                  </div>
+                                )}
+                                <span className="truncate">{user.name}</span>
+                              </>
+                            );
+                          })()}
+                        </div>
+                      ) : (
+                        "Sin asignar"
+                      )}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="unassigned">Sin asignar</SelectItem>
+                    {users.map((user: any) => (
+                      <SelectItem key={user.id} value={user.email}>
+                        <div className="flex items-center gap-2">
+                          {user.avatar ? (
+                            <img
+                              src={
+                                user.avatar.startsWith("http")
+                                  ? user.avatar
+                                  : `${API_URL.replace('/api', '')}${user.avatar}`
+                              }
+                              alt={user.name}
+                              className="h-5 w-5 rounded-full object-cover"
+                            />
+                          ) : (
+                            <div className="h-5 w-5 rounded-full bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center text-white text-xs font-semibold">
+                              {user.name.charAt(0).toUpperCase()}
+                            </div>
+                          )}
+                          <span>{user.name} ({user.email})</span>
+                        </div>
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>

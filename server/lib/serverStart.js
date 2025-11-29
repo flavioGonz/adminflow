@@ -40,16 +40,7 @@ async function startServer(app, PORT) {
     // Sistema instalado, proceder con inicialización normal
     console.log('✅ Sistema instalado, inicializando...\n');
 
-    try {
-        // Inicializar SQLite
-        await initDB();
-        console.log('✅ SQLite inicializado');
-    } catch (dbError) {
-        console.error('❌ Error inicializando SQLite:', dbError);
-        process.exit(1);
-    }
-
-    // Auto-inicializar MongoDB
+    // Auto-inicializar MongoDB PRIMERO
     const { autoInitMongo } = require('./autoInitMongo');
     const { determineDbEngine } = require('./dbChoice');
 
@@ -63,6 +54,14 @@ async function startServer(app, PORT) {
         console.warn('⚠️  ADVERTENCIA: MongoDB no está disponible');
         console.warn('   Las operaciones de base de datos fallarán');
         console.warn('   Verifica la configuración y reinicia el servidor\n');
+    }
+
+    try {
+        // Inicializar DB (ahora solo verifica admin en MongoDB)
+        await initDB();
+        console.log('✅ Base de datos inicializada');
+    } catch (dbError) {
+        console.error('❌ Error inicializando base de datos:', dbError);
     }
 
     // Determinar motor de BD

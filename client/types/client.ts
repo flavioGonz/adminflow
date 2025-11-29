@@ -10,6 +10,11 @@ export interface Client {
   longitude?: number;
   contract?: boolean;
   notificationsEnabled?: boolean;
+  avatarUrl?: string;
+  hasDiagram?: boolean;
+  hasAccess?: boolean;
+  hasFiles?: boolean;
   createdAt?: string;
   updatedAt?: string;
 }
+

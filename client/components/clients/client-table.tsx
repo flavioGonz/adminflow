@@ -37,7 +37,11 @@ import {
   Bell,
   BellOff,
   ShieldCheck,
+  Network,
+  FolderArchive,
+  Lock,
 } from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { EditClientDialog } from "./edit-client-dialog";
 import { DeleteClientDialog } from "./delete-client-dialog";
@@ -48,6 +52,7 @@ import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import { CreateClientDialog } from "./create-client-dialog";
 import { Client } from "@/types/client";
+import { API_URL } from "@/lib/http";
 
 interface ClientTableProps {
   clients: Client[];
@@ -291,21 +296,97 @@ export function ClientTable({
                   onClick={() => router.push(`/clients/${client.id}`)}
                   className="cursor-pointer"
                 >
-                  <TableCell className="font-medium">#{client.id}</TableCell>
+                  <TableCell className="font-medium">
+                    <div className="flex items-center gap-3">
+                      <Avatar className="h-10 w-10">
+                        <AvatarImage
+                          src={
+                            client.avatarUrl
+                              ? client.avatarUrl.startsWith("http")
+                                ? client.avatarUrl
+                                : `${API_URL.replace('/api', '')}${client.avatarUrl}`
+                              : undefined
+                          }
+                          alt={client.name}
+                        />
+                        <AvatarFallback className="bg-gradient-to-br from-emerald-500 to-green-600 text-white font-semibold">
+                          {client.name.substring(0, 2).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span>#{client.id}</span>
+                    </div>
+                  </TableCell>
                   <TableCell className="font-medium">
                     <div className="space-y-1">
                       <div>{client.name}</div>
                       {client.contract && (
                         <div className="flex items-center gap-2 text-xs text-emerald-700">
                           <ShieldCheck className="h-3.5 w-3.5" />
-                          <span>{typeof client.contract === "string" ? client.contract : "Contrato activo"}</span>
+                          <span>Contrato Vigente</span>
                         </div>
                       )}
                     </div>
                   </TableCell>
-                  <TableCell>{client.alias}</TableCell>
+                  <TableCell>
+                    <div className="space-y-1.5">
+                      <div>{client.alias || "—"}</div>
+                      <div className="flex items-center gap-1.5">
+                        {client.hasAccess && (
+                          <div className="group relative">
+                            <Lock
+                              className="h-3.5 w-3.5 text-blue-600 cursor-pointer hover:text-blue-700 transition-colors"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                router.push(`/clients/${client.id}/repository/access`);
+                              }}
+                            />
+                            <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 text-xs bg-slate-900 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10">
+                              Datos/Acceso
+                            </span>
+                          </div>
+                        )}
+                        {client.hasDiagram && (
+                          <div className="group relative">
+                            <Network
+                              className="h-3.5 w-3.5 text-emerald-600 cursor-pointer hover:text-emerald-700 transition-colors"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                router.push(`/clients/${client.id}/diagram`);
+                              }}
+                            />
+                            <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 text-xs bg-slate-900 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10">
+                              Ver diagrama
+                            </span>
+                          </div>
+                        )}
+                        {client.hasFiles && (
+                          <div className="group relative">
+                            <FolderArchive
+                              className="h-3.5 w-3.5 text-slate-600 cursor-pointer hover:text-slate-700 transition-colors"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                router.push(`/repository?search=${encodeURIComponent(client.name)}`);
+                              }}
+                            />
+                            <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 text-xs bg-slate-900 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10">
+                              Ver archivos
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </TableCell>
                   <TableCell>{client.rut}</TableCell>
-                  <TableCell>{client.email}</TableCell>
+                  <TableCell>
+                    <a
+                      href={`mailto:${client.email}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1"
+                    >
+                      <Mail className="h-3.5 w-3.5" />
+                      {client.email}
+                    </a>
+                  </TableCell>
                   <TableCell>
                     {client.phone ? (
                       <a
@@ -372,30 +453,72 @@ export function ClientTable({
           </TableBody>
         </Table>
       </div>
-      <Pagination>
-        <PaginationContent>
-          <PaginationItem>
-            <PaginationPrevious
-              onClick={currentPage === 1 ? undefined : handlePreviousPage}
-              aria-disabled={currentPage === 1}
-              className={currentPage === 1 ? "opacity-40 pointer-events-none" : undefined}
-            >
-              Anterior
-            </PaginationPrevious>
-          </PaginationItem>
-          <PaginationItem>
-            <PaginationNext
-              onClick={currentPage === totalPages ? undefined : handleNextPage}
-              aria-disabled={currentPage === totalPages}
-              className={
-                currentPage === totalPages ? "opacity-40 pointer-events-none" : undefined
+      <div className="flex items-center justify-between px-2 py-4">
+        <div className="text-sm text-muted-foreground">
+          Mostrando {currentClients.length} de {sortedClients.length} clientes
+        </div>
+        <Pagination>
+          <PaginationContent>
+            <PaginationItem>
+              <PaginationPrevious
+                onClick={currentPage === 1 ? undefined : handlePreviousPage}
+                aria-disabled={currentPage === 1}
+                className={currentPage === 1 ? "opacity-40 pointer-events-none cursor-not-allowed" : "cursor-pointer"}
+              >
+                Anterior
+              </PaginationPrevious>
+            </PaginationItem>
+
+            {/* Page numbers */}
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
+              // Show first page, last page, current page, and pages around current
+              const showPage =
+                page === 1 ||
+                page === totalPages ||
+                (page >= currentPage - 1 && page <= currentPage + 1);
+
+              // Show ellipsis
+              const showEllipsisBefore = page === currentPage - 2 && currentPage > 3;
+              const showEllipsisAfter = page === currentPage + 2 && currentPage < totalPages - 2;
+
+              if (showEllipsisBefore || showEllipsisAfter) {
+                return (
+                  <PaginationItem key={`ellipsis-${page}`}>
+                    <span className="px-4">...</span>
+                  </PaginationItem>
+                );
               }
-            >
-              Siguiente
-            </PaginationNext>
-          </PaginationItem>
-        </PaginationContent>
-      </Pagination>
+
+              if (!showPage) return null;
+
+              return (
+                <PaginationItem key={page}>
+                  <Button
+                    variant={currentPage === page ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setCurrentPage(page)}
+                    className="cursor-pointer"
+                  >
+                    {page}
+                  </Button>
+                </PaginationItem>
+              );
+            })}
+
+            <PaginationItem>
+              <PaginationNext
+                onClick={currentPage === totalPages ? undefined : handleNextPage}
+                aria-disabled={currentPage === totalPages}
+                className={
+                  currentPage === totalPages ? "opacity-40 pointer-events-none cursor-not-allowed" : "cursor-pointer"
+                }
+              >
+                Siguiente
+              </PaginationNext>
+            </PaginationItem>
+          </PaginationContent>
+        </Pagination>
+      </div>
     </div>
   );
 }

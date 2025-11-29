@@ -25,8 +25,9 @@ import {
 import { Combobox } from "@/components/ui/combobox";
 import { useToast } from "@/hooks/use-toast";
 import { User2 } from "lucide-react";
-import { CalendarPlus, CircleDollarSign, Clock4, Edit3, FileBadge2, Lock, MapPin, Save, Ticket, Trash2, X, Calendar } from "lucide-react";
+import { CalendarPlus, CircleDollarSign, Clock4, Edit3, FileBadge2, Lock, MapPin, Save, Ticket, Trash2, X, Calendar, ArrowRight } from "lucide-react";
 import { ShinyText } from "@/components/ui/shiny-text";
+import { useRouter } from "next/navigation";
 
 type CalendarEvent = {
   id: string;
@@ -36,6 +37,7 @@ type CalendarEvent = {
   location?: string;
   sourceType?: "ticket" | "payment" | "contract" | "manual" | string;
   sourceId?: string | null;
+  clientId?: string | null;
   locked?: boolean;
   createdAt?: string;
   updatedAt?: string;
@@ -56,6 +58,7 @@ const mapEventRow = (row: any): CalendarEvent => ({
   location: row.location ?? undefined,
   sourceType: row.sourceType ?? row.source_type ?? "manual",
   sourceId: row.sourceId ?? row.source_id ?? null,
+  clientId: row.clientId ?? row.client_id ?? null,
   locked: Boolean(row.locked),
   createdAt: row.createdAt,
   updatedAt: row.updatedAt,
@@ -79,7 +82,7 @@ const formatDateTimeLocal = (value?: string) => {
 export default function CalendarPage() {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
-  const [modalMode, setModalMode] = useState<"create" | "edit">("create");
+  const [modalMode, setModalMode] = useState<"create" | "edit" | "view">("create");
   const [draft, setDraft] = useState<DraftEvent>(emptyDraft);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingLocked, setEditingLocked] = useState(false);
@@ -87,12 +90,13 @@ export default function CalendarPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const { toast } = useToast();
+  const router = useRouter();
 
   const getOriginLabel = (sourceType?: CalendarEvent["sourceType"]) => {
-    if (sourceType === "ticket") return "Tickets";
-    if (sourceType === "payment") return "Pagos";
-    if (sourceType === "contract") return "Contratos";
-    return "su módulo de origen";
+    if (sourceType === "ticket") return "Ticket";
+    if (sourceType === "payment") return "Pago";
+    if (sourceType === "contract") return "Contrato";
+    return "Origen";
   };
 
   const loadEvents = async (signal?: AbortSignal) => {
@@ -128,10 +132,10 @@ export default function CalendarPage() {
     fetchClients();
   }, []);
 
-  const openModal = (mode: "create" | "edit", values: Partial<DraftEvent> & { id?: string }) => {
+  const openModal = (mode: "create" | "edit" | "view", values: Partial<DraftEvent> & { id?: string }) => {
     setModalMode(mode);
     setEditingId(values.id ?? null);
-    const locked = mode === "edit" ? Boolean((events.find((ev) => ev.id === values.id) as CalendarEvent | undefined)?.locked) : false;
+    const locked = mode === "edit" || mode === "view" ? Boolean((events.find((ev) => ev.id === values.id) as CalendarEvent | undefined)?.locked) : false;
     setEditingLocked(locked);
     setDraft({
       title: values.title ?? "",
@@ -152,10 +156,12 @@ export default function CalendarPage() {
 
   const handleEventClick = (info: EventClickArg) => {
     if (info.event.extendedProps?.locked) {
-      const sourceType = info.event.extendedProps?.sourceType as CalendarEvent["sourceType"];
-      toast({
-        title: "Evento protegido",
-        description: `Editalo desde ${getOriginLabel(sourceType)}.`,
+      openModal("view", {
+        id: info.event.id,
+        title: info.event.title,
+        location: info.event.extendedProps?.location ?? "",
+        start: info.event.startStr,
+        end: info.event.endStr || info.event.startStr,
       });
       return;
     }
@@ -193,6 +199,10 @@ export default function CalendarPage() {
   };
 
   const handleModalSubmit = async () => {
+    if (modalMode === "view") {
+      setModalOpen(false);
+      return;
+    }
     if (!draft.title.trim()) return;
     if (!draft.start || !draft.end) {
       toast({ title: "Falta horario", description: "Selecciona inicio y fin del evento", variant: "destructive" });
@@ -259,6 +269,34 @@ export default function CalendarPage() {
     }
   };
 
+  const handleNavigateToSource = () => {
+    const event = events.find((e) => e.id === editingId);
+    if (!event) return;
+
+    if (event.sourceType === "ticket") {
+      if (event.sourceId) {
+        router.push(`/tickets/${event.sourceId}`);
+      } else {
+        router.push("/tickets");
+      }
+    } else if (event.sourceType === "payment") {
+      if (event.clientId) {
+        router.push(`/clients/${event.clientId}`);
+      } else {
+        router.push("/payments");
+      }
+    } else if (event.sourceType === "contract") {
+      if (event.clientId) {
+        router.push(`/clients/${event.clientId}`);
+      } else {
+        router.push("/clients");
+      }
+    } else {
+      toast({ title: "Navegación no disponible", description: "Este evento no tiene un módulo asociado directo." });
+    }
+    setModalOpen(false);
+  };
+
   const [formattedStart, setFormattedStart] = useState("--");
   const [formattedEnd, setFormattedEnd] = useState("--");
 
@@ -296,24 +334,26 @@ export default function CalendarPage() {
     const locked = Boolean(arg.event.extendedProps?.locked);
     const locationText = arg.event.extendedProps?.location;
     const sourceId = arg.event.extendedProps?.sourceId;
-    const tone =
-      sourceType === "ticket"
-        ? "bg-amber-700 border-amber-900 text-white"
-        : sourceType === "payment"
-          ? "bg-emerald-700 border-emerald-900 text-white"
-          : sourceType === "contract"
-            ? "bg-indigo-700 border-indigo-900 text-white"
-            : "bg-slate-900 border-slate-800 text-white";
+
+    const isAuto = sourceType !== "manual";
+
+    const tone = isAuto
+      ? "bg-slate-100 border-slate-200 text-slate-500 hover:bg-slate-200/80 transition-colors"
+      : "bg-slate-900 border-slate-800 text-white";
+
+    const iconClass = isAuto ? "text-slate-500" : "text-white";
+
     const icon =
       sourceType === "ticket" ? (
-        <Ticket className="h-4 w-4 text-white" />
+        <Ticket className={`h-4 w-4 ${iconClass}`} />
       ) : sourceType === "payment" ? (
-        <CircleDollarSign className="h-4 w-4 text-white" />
+        <CircleDollarSign className={`h-4 w-4 ${iconClass}`} />
       ) : sourceType === "contract" ? (
-        <FileBadge2 className="h-4 w-4 text-white" />
+        <FileBadge2 className={`h-4 w-4 ${iconClass}`} />
       ) : (
-        <CalendarPlus className="h-4 w-4 text-white" />
+        <CalendarPlus className={`h-4 w-4 ${iconClass}`} />
       );
+
     return (
       <div
         className={`flex h-full w-full min-h-full flex-col gap-0 rounded-md border px-2 py-1.5 text-sm font-semibold leading-tight shadow-sm ${tone}`}
@@ -322,17 +362,17 @@ export default function CalendarPage() {
         <div className="flex items-center gap-1">
           {icon}
           <span className="truncate">{arg.event.title}</span>
-          {locked ? <Lock className="h-3.5 w-3.5 text-white/80" /> : null}
+          {locked ? <Lock className={`h-3.5 w-3.5 ${isAuto ? "text-slate-400" : "text-white/80"}`} /> : null}
         </div>
         {sourceType === "ticket" && sourceId ? (
-          <span className="mt-1 inline-flex w-fit items-center gap-1 rounded-full bg-amber-500 px-2 py-[2px] text-[0.65rem] font-semibold text-white shadow-sm ring-1 ring-amber-300">
+          <span className={`mt-1 inline-flex w-fit items-center gap-1 rounded-full px-2 py-[2px] text-[0.65rem] font-semibold shadow-sm ring-1 ${isAuto ? "bg-slate-200 text-slate-600 ring-slate-300" : "bg-amber-500 text-white ring-amber-300"}`}>
             <Ticket className="h-3 w-3" />
             Ticket #{sourceId}
           </span>
         ) : null}
         {locationText ? (
-          <span className="flex items-center gap-1 text-[0.65rem] font-medium text-white/80">
-            <MapPin className="h-3 w-3 text-white/80" />
+          <span className={`flex items-center gap-1 text-[0.65rem] font-medium ${isAuto ? "text-slate-400" : "text-white/80"}`}>
+            <MapPin className={`h-3 w-3 ${isAuto ? "text-slate-400" : "text-white/80"}`} />
             <span className="truncate">{locationText}</span>
           </span>
         ) : null}
@@ -413,115 +453,153 @@ export default function CalendarPage() {
             <div className="flex items-center gap-2">
               {modalMode === "create" ? (
                 <CalendarPlus className="h-5 w-5 text-slate-600" />
+              ) : modalMode === "view" ? (
+                <FileBadge2 className="h-5 w-5 text-slate-600" />
               ) : (
                 <Edit3 className="h-5 w-5 text-slate-600" />
               )}
               <DialogTitle className="text-lg font-semibold">
-                {modalMode === "create" ? "Crear evento" : "Editar evento"}
+                {modalMode === "create" ? "Crear evento" : modalMode === "view" ? "Detalles del evento" : "Editar evento"}
               </DialogTitle>
             </div>
             <DialogDescription className="text-sm text-slate-500">
-              Arrastra sobre el calendario para seleccionar un horario o toca un evento existente.
+              {modalMode === "view"
+                ? "Este evento es automático y está vinculado a un módulo del sistema."
+                : "Arrastra sobre el calendario para seleccionar un horario o toca un evento existente."}
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4">
-            <div className="space-y-1">
-              <Label htmlFor="event-title">Título</Label>
-              <Input
-                id="event-title"
-                value={draft.title}
-                onChange={(event) => setDraft((prev) => ({ ...prev, title: event.target.value }))}
-                placeholder="Seguimiento cliente"
-                type="text"
-              />
-            </div>
-            <div className="space-y-1 pt-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <Label htmlFor="start-time">Inicio</Label>
-                  <Input
-                    id="start-time"
-                    type="datetime-local"
-                    value={draft.start}
-                    onChange={(event) => setDraft((prev) => ({ ...prev, start: event.target.value }))}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label htmlFor="end-time">Fin</Label>
-                  <Input
-                    id="end-time"
-                    type="datetime-local"
-                    value={draft.end}
-                    min={draft.start || undefined}
-                    onChange={(event) => setDraft((prev) => ({ ...prev, end: event.target.value }))}
-                  />
+          {modalMode === "view" ? (
+            <div className="space-y-4">
+              <div className="rounded-lg border border-slate-100 bg-slate-50 p-4">
+                <h3 className="font-semibold text-slate-900">{draft.title}</h3>
+                {draft.location && (
+                  <div className="mt-2 flex items-center gap-2 text-sm text-slate-600">
+                    <MapPin className="h-4 w-4" />
+                    {draft.location}
+                  </div>
+                )}
+                <div className="mt-4 grid grid-cols-2 gap-4">
+                  <div>
+                    <span className="text-xs font-medium text-slate-500">Inicio</span>
+                    <p className="text-sm font-medium text-slate-900">{formattedStart}</p>
+                  </div>
+                  <div>
+                    <span className="text-xs font-medium text-slate-500">Fin</span>
+                    <p className="text-sm font-medium text-slate-900">{formattedEnd}</p>
+                  </div>
                 </div>
               </div>
-              <Label className="flex items-center gap-2 pt-3" htmlFor="event-location">
-                <MapPin className="h-4 w-4" />
-                Ubicación
-              </Label>
-              <Input
-                id="event-location"
-                value={draft.location}
-                onChange={(event) => setDraft((prev) => ({ ...prev, location: event.target.value }))}
-                placeholder="Montevideo, oficina central"
-                type="text"
-              />
-              {/* Cliente selector */}
-              <Combobox
-                options={clients.map((c) => ({ value: c.id, label: c.name }))}
-                placeholder="Seleccionar cliente (opcional)"
-                value={selectedClientId ?? undefined}
-                onValueChange={(value) => setSelectedClientId(value ?? null)}
-                className="bg-white/80 backdrop-blur-lg text-slate-900 hover:bg-white/80 border border-gray-200 mt-2"
-                contentClassName="bg-white/90 backdrop-blur-lg text-slate-900"
-              >
-                <User2 className="h-4 w-4 mr-2" />
-              </Combobox>
-            </div>
-            <div className="flex flex-wrap items-center justify-between gap-2 text-sm font-semibold text-slate-800">
-              <div className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-3 py-1 text-white shadow-sm ring-1 ring-slate-700">
-                <Clock4 className="h-4 w-4" />
-                <span className="whitespace-nowrap">{formattedStart}</span>
-              </div>
-              <div className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-3 py-1 text-white shadow-sm ring-1 ring-slate-700">
-                <Clock4 className="h-4 w-4" />
-                <span className="whitespace-nowrap">{formattedEnd}</span>
-              </div>
-            </div>
-          </div>
 
-          <DialogFooter className="mt-6 flex items-center justify-end gap-3">
-            {modalMode === "edit" && !editingLocked ? (
-              <Button variant="outline" className="text-red-600 hover:text-red-700" onClick={handleDelete} disabled={saving}>
-                <Trash2 className="mr-2 h-4 w-4" />
-                Eliminar
-              </Button>
-            ) : null}
-            <Button
-              variant="link"
-              className="text-slate-500 hover:text-slate-700"
-              onClick={() => setModalOpen(false)}
-            >
-              <X className="mr-2 h-4 w-4" />
-              Cancelar
-            </Button>
-            <Button disabled={saving} onClick={handleModalSubmit}>
-              {modalMode === "create" ? (
-                <>
-                  <Save className="mr-2 h-4 w-4" />
-                  Guardar evento
-                </>
-              ) : (
-                <>
-                  <Edit3 className="mr-2 h-4 w-4" />
-                  Actualizar evento
-                </>
-              )}
-            </Button>
-          </DialogFooter>
+              <div className="flex justify-end gap-3">
+                <Button variant="outline" onClick={() => setModalOpen(false)}>
+                  Cerrar
+                </Button>
+                <Button onClick={handleNavigateToSource} className="gap-2">
+                  Ir a {getOriginLabel(events.find(e => e.id === editingId)?.sourceType)}
+                  <ArrowRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="space-y-1">
+                <Label htmlFor="event-title">Título</Label>
+                <Input
+                  id="event-title"
+                  value={draft.title}
+                  onChange={(event) => setDraft((prev) => ({ ...prev, title: event.target.value }))}
+                  placeholder="Seguimiento cliente"
+                  type="text"
+                />
+              </div>
+              <div className="space-y-1 pt-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="start-time">Inicio</Label>
+                    <Input
+                      id="start-time"
+                      type="datetime-local"
+                      value={draft.start}
+                      onChange={(event) => setDraft((prev) => ({ ...prev, start: event.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="end-time">Fin</Label>
+                    <Input
+                      id="end-time"
+                      type="datetime-local"
+                      value={draft.end}
+                      min={draft.start || undefined}
+                      onChange={(event) => setDraft((prev) => ({ ...prev, end: event.target.value }))}
+                    />
+                  </div>
+                </div>
+                <Label className="flex items-center gap-2 pt-3" htmlFor="event-location">
+                  <MapPin className="h-4 w-4" />
+                  Ubicación
+                </Label>
+                <Input
+                  id="event-location"
+                  value={draft.location}
+                  onChange={(event) => setDraft((prev) => ({ ...prev, location: event.target.value }))}
+                  placeholder="Montevideo, oficina central"
+                  type="text"
+                />
+                {/* Cliente selector */}
+                <Combobox
+                  options={clients.map((c) => ({ value: c.id, label: c.name }))}
+                  placeholder="Seleccionar cliente (opcional)"
+                  value={selectedClientId ?? undefined}
+                  onValueChange={(value) => setSelectedClientId(value ?? null)}
+                  className="bg-white/80 backdrop-blur-lg text-slate-900 hover:bg-white/80 border border-gray-200 mt-2"
+                  contentClassName="bg-white/90 backdrop-blur-lg text-slate-900"
+                >
+                  <User2 className="h-4 w-4 mr-2" />
+                </Combobox>
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-2 text-sm font-semibold text-slate-800">
+                <div className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-3 py-1 text-white shadow-sm ring-1 ring-slate-700">
+                  <Clock4 className="h-4 w-4" />
+                  <span className="whitespace-nowrap">{formattedStart}</span>
+                </div>
+                <div className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-3 py-1 text-white shadow-sm ring-1 ring-slate-700">
+                  <Clock4 className="h-4 w-4" />
+                  <span className="whitespace-nowrap">{formattedEnd}</span>
+                </div>
+              </div>
+
+              <DialogFooter className="mt-6 flex items-center justify-end gap-3">
+                {modalMode === "edit" && !editingLocked ? (
+                  <Button variant="outline" className="text-red-600 hover:text-red-700" onClick={handleDelete} disabled={saving}>
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Eliminar
+                  </Button>
+                ) : null}
+                <Button
+                  variant="link"
+                  className="text-slate-500 hover:text-slate-700"
+                  onClick={() => setModalOpen(false)}
+                >
+                  <X className="mr-2 h-4 w-4" />
+                  Cancelar
+                </Button>
+                <Button disabled={saving} onClick={handleModalSubmit}>
+                  {modalMode === "create" ? (
+                    <>
+                      <Save className="mr-2 h-4 w-4" />
+                      Guardar evento
+                    </>
+                  ) : (
+                    <>
+                      <Edit3 className="mr-2 h-4 w-4" />
+                      Actualizar evento
+                    </>
+                  )}
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </DashboardLayout>

@@ -37,6 +37,7 @@ import {
   Ticket,
   Users,
 } from "lucide-react";
+import { CommandPaletteButton } from "@/components/command-palette-button";
 
 const SidebarContext = createContext<{ collapsed: boolean; toggle: () => void }>({
   collapsed: false,
@@ -161,6 +162,11 @@ function SidebarLayout() {
         </div>
       </div>
       <div className="px-4 pb-3">
+        {!collapsed && (
+          <div className="mb-3">
+            <CommandPaletteButton />
+          </div>
+        )}
         <div className="mb-3 rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white to-slate-100 p-3 shadow-sm">
           <div className="flex items-start gap-3">
             <div className="flex-1">

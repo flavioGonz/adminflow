@@ -10,6 +10,7 @@ import { CreateAccessDialog } from "@/components/repository/access/create-access
 import { getClientAccesses, AccessItem } from "@/lib/api-access";
 import { fetchClientById } from "@/lib/api-clients";
 import { Client } from "@/types/client";
+import { ShinyText } from "@/components/ui/shiny-text";
 
 export default function ClientAccessPage() {
   const params = useParams();
@@ -55,7 +56,7 @@ export default function ClientAccessPage() {
   return (
     <div className="space-y-6 p-6">
       <PageHeader
-        title="Accesos y Credenciales"
+        title={<ShinyText size="3xl" weight="bold">Accesos y Credenciales</ShinyText>}
         subtitle="Gestión de dispositivos, IPs, contraseñas y serie/MAC del cliente."
         backHref={`/clients/${clientId}`}
         breadcrumbs={[
@@ -63,7 +64,11 @@ export default function ClientAccessPage() {
           { label: clientLabel, href: `/clients/${clientId}`, icon: <User className="h-3 w-3 text-slate-500" /> },
           { label: "Accesos", icon: <KeyRound className="h-3 w-3 text-slate-500" /> },
         ]}
-        leadingIcon={<ShieldCheck className="h-6 w-6 text-blue-600" />}
+        leadingIcon={
+          <div className="p-2 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600">
+            <ShieldCheck className="h-6 w-6 text-white" />
+          </div>
+        }
       />
 
       {loading ? (

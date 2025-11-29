@@ -39,8 +39,10 @@ import {
   Edit,
   Upload,
   FolderArchive,
+  Home,
 } from "lucide-react";
 import { ShinyText } from "@/components/ui/shiny-text";
+import { PageHeader } from "@/components/layout/page-header";
 import { toast } from "sonner";
 import { Client } from "@/types/client";
 import {
@@ -217,9 +219,14 @@ function EntryModal({
   );
 }
 
+import { useSearchParams } from "next/navigation";
+
 export default function RepositoryPage() {
+  const searchParams = useSearchParams();
+  const initialQuery = searchParams?.get("search") || "";
+
   const [clients, setClients] = useState<Client[]>([]);
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialQuery);
   const [entries, setEntries] = useState<Record<string, RepositoryEntry[]>>({});
   const [modalState, setModalState] = useState<{
     open: boolean;
@@ -367,39 +374,37 @@ export default function RepositoryPage() {
         </AlertDialogContent>
       </AlertDialog>
       <div className="space-y-6">
-        <div className="space-y-2">
-          <div className="flex items-center gap-3">
+        <PageHeader
+          title={<ShinyText size="3xl" weight="bold">Bóveda de archivos</ShinyText>}
+          subtitle="Esta sección es la bóveda del cliente: aquí se respaldan imágenes, documentos, copias de configuración y credenciales seguras."
+          leadingIcon={
             <div className="p-2 rounded-lg bg-gradient-to-br from-slate-500 to-gray-600">
               <FolderArchive className="h-6 w-6 text-white" />
             </div>
-            <div>
-              <h1 className="text-3xl font-bold">
-                <ShinyText size="3xl" weight="bold">Bóveda de archivos</ShinyText>
-              </h1>
-              <div className="flex items-center gap-2 mt-1">
-                <Badge variant="secondary">Fotos · Backups · Credenciales</Badge>
-              </div>
+          }
+          breadcrumbs={[
+            { label: "Inicio", href: "/dashboard", icon: <Home className="h-3 w-3 text-slate-500" /> },
+            { label: "Repositorio", icon: <FolderArchive className="h-3 w-3 text-slate-500" /> },
+          ]}
+          breadcrumbAction={
+            <div className="flex items-center gap-2">
+              <Badge variant="secondary">Fotos · Backups · Credenciales</Badge>
             </div>
-          </div>
-          <p className="text-sm text-muted-foreground max-w-2xl">
-            Esta sección es la bóveda del cliente: aquí se respaldan imágenes, documentos,
-            copias de configuración y credenciales seguras. Todo queda listo para restaurar
-            dispositivos o compartir accesos desde el panel sin salir del flujo.
-          </p>
-          <div className="flex flex-wrap items-center gap-3 text-xs font-medium text-slate-500">
-            <span className="flex items-center gap-1">
-              <Cloud className="h-3.5 w-3.5" />
-              {totalEntries} archivos disponibles
-            </span>
-            <span className="flex items-center gap-1">
-              <FileArchive className="h-3.5 w-3.5" />
-              Actualizados continuamente
-            </span>
-            <span className="flex items-center gap-1">
-              <Eye className="h-3.5 w-3.5" />
-              Control de accesos y notas descriptivas
-            </span>
-          </div>
+          }
+        />
+        <div className="flex flex-wrap items-center gap-3 text-xs font-medium text-slate-500 px-1">
+          <span className="flex items-center gap-1">
+            <Cloud className="h-3.5 w-3.5" />
+            {totalEntries} archivos disponibles
+          </span>
+          <span className="flex items-center gap-1">
+            <FileArchive className="h-3.5 w-3.5" />
+            Actualizados continuamente
+          </span>
+          <span className="flex items-center gap-1">
+            <Eye className="h-3.5 w-3.5" />
+            Control de accesos y notas descriptivas
+          </span>
         </div>
         <div className="relative max-w-md">
           <Input

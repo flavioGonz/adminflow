@@ -222,11 +222,8 @@ export function ContractTable({
             {currentContracts.length > 0 ? (
               currentContracts.map((contract) => (
                 <TableRow key={contract.id} className="hover:bg-slate-50">
-                  <TableCell>
-                    <Badge variant="secondary" className="bg-slate-800 text-white">
-                      <CheckCircle className="mr-1 h-3 w-3" />
-                      #{contract.id}
-                    </Badge>
+                  <TableCell className="font-mono text-sm text-slate-700">
+                    #{contract.id}
                   </TableCell>
                   <TableCell className="font-medium">
                     {contract.clientId ? (
@@ -259,15 +256,11 @@ export function ContractTable({
                       </div>
                     </div>
                   </TableCell>
-                  <TableCell>
-                    <Badge variant="secondary" className="bg-slate-900 text-white">
-                      {contract.startDate || "Sin fecha"}
-                    </Badge>
+                  <TableCell className="text-sm text-slate-700">
+                    {contract.startDate || "Sin fecha"}
                   </TableCell>
-                  <TableCell>
-                    <Badge variant="secondary" className="bg-slate-800 text-white">
-                      {contract.endDate || "Sin fecha"}
-                    </Badge>
+                  <TableCell className="text-sm text-slate-700">
+                    {contract.endDate || "Sin fecha"}
                   </TableCell>
                   <TableCell>
                     {(() => {
@@ -289,8 +282,8 @@ export function ContractTable({
                             {info.flagCode && (
                               <ReactCountryFlag
                                 svg
-                              countryCode={info.flagCode}
-                              className="inline-block h-4 w-5"
+                                countryCode={info.flagCode}
+                                className="inline-block h-4 w-5"
                                 aria-label={info.label}
                               />
                             )}
@@ -301,11 +294,10 @@ export function ContractTable({
                       <span className="text-slate-900">
                         {contract.amount !== undefined
                           ? new Intl.NumberFormat("es-UY", {
-                              style: "currency",
-                              currency: contract.currency?.toUpperCase() === "USD" ? "USD" : "UYU",
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2,
-                            }).format(contract.amount)
+                            style: "decimal",
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          }).format(contract.amount)
                           : "Sin monto"}
                       </span>
                     </div>

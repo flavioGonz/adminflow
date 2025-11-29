@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import Sidebar from "./sidebar";
 import { cn } from "@/lib/utils";
+import { CommandPalette } from "@/components/command-palette";
+import { useKeyboardShortcuts, useShowKeyboardHelp } from "@/hooks/use-keyboard-shortcuts";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -21,6 +23,10 @@ export default function DashboardLayout({
   const { status } = useSession();
   const router = useRouter();
 
+  // Enable keyboard shortcuts
+  useKeyboardShortcuts();
+  useShowKeyboardHelp();
+
   useEffect(() => {
     if (status === "unauthenticated") {
       router.replace("/login");
@@ -31,6 +37,7 @@ export default function DashboardLayout({
 
   return (
     <div className="h-screen w-full lg:grid lg:grid-cols-[280px_1fr]">
+      <CommandPalette />
       <Sidebar />
       <div className="flex flex-col overflow-hidden">
         <main

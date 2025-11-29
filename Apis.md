@@ -213,6 +213,8 @@ Obtiene todos los accesos de un cliente ordenados por fecha de creacion (mas rec
 ]
 ```
 
+```
+
 #### `POST /api/clients/:id/access`
 
 
@@ -226,16 +228,16 @@ Crea un nuevo acceso para el cliente.
   "ip": "10.0.0.50",
   "user": "root",
   "pass": "s3cr3t",
-  "comentarios": "Servidor de producciÃ³n"
+  "comentarios": "Servidor de producción"
 }
 ```
 
 **Validaciones:**
 - `equipo` (requerido): Nombre del equipo/dispositivo
 - `tipo_equipo` (requerido): Tipo de equipo (router, switch, servidor, firewall, etc.)
-- `ip` (opcional): DirecciÃ³n IP o URL
+- `ip` (opcional): Dirección IP o URL
 - `user` (opcional): Usuario de acceso
-- `pass` (opcional): ContraseÃ±a (se guarda en texto plano por diseÃ±o del repositorio)
+- `pass` (opcional): Contraseña (se guarda en texto plano por diseño del repositorio)
 - `comentarios` (opcional): Notas adicionales
 
 **Respuesta:** El acceso creado con `_id` y timestamps.
@@ -264,9 +266,21 @@ Elimina un acceso permanentemente.
 ```
 
 **Errores comunes:**
-- `400`: ID invÃ¡lido
+- `400`: ID inválido
 - `404`: Acceso no encontrado
 - `503`: Base de datos no disponible
+
+### Diagramas de Red
+
+Gestión de diagramas de red (Excalidraw) asociados a clientes.
+
+#### `GET /api/clients/:id/diagram`
+Obtiene el diagrama guardado para un cliente. Retorna el objeto del diagrama o `null` si no existe.
+
+#### `POST /api/clients/:id/diagram`
+Guarda o actualiza el diagrama del cliente.
+- **Body**: `{ elements: [], appState: {}, files: {} }` (Estructura interna de Excalidraw).
+- **Respuesta**: `{ message: "Diagram saved successfully" }`.
 
 ---
 

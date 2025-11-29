@@ -11,7 +11,7 @@ type Crumb = {
 };
 
 interface PageHeaderProps {
-  title: string;
+  title: React.ReactNode;
   subtitle?: string;
   breadcrumbs?: Crumb[];
   backHref?: string;

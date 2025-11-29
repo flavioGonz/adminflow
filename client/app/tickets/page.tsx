@@ -90,6 +90,7 @@ const normalizeTicket = (raw: ApiTicket): Ticket => {
     audioNotes: Array.isArray(raw.audioNotes)
       ? (raw.audioNotes as TicketAudioNote[])
       : [],
+    assignedTo: raw.assignedTo || null,
   };
 };
 

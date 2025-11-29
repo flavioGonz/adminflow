@@ -26,6 +26,7 @@ import {
   Ticket as TicketIcon,
   Activity,
   AlertTriangle,
+  User,
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import ReactCountryFlag from "react-country-flag";
@@ -160,6 +161,8 @@ export default function TicketDetailPage() {
   const [deleteDialogNote, setDeleteDialogNote] = useState<TicketAnnotation | null>(null);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [isLocked, setIsLocked] = useState(true);
+  const [users, setUsers] = useState<{ id: string; name: string; email: string; avatar?: string }[]>([]);
+  const [formAssignedTo, setFormAssignedTo] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -231,6 +234,35 @@ export default function TicketDetailPage() {
     }
   }, [ticket]);
 
+  useEffect(() => {
+    const controller = new AbortController();
+    const loadUsers = async () => {
+      try {
+        const response = await fetch(`${API_URL}/users`, {
+          signal: controller.signal,
+        });
+        if (!response.ok) {
+          throw new Error("No se pudieron cargar los usuarios.");
+        }
+        const data = await response.json();
+        setUsers(data);
+      } catch (err) {
+        if ((err as DOMException)?.name === "AbortError") {
+          return;
+        }
+        console.error("Error fetching users:", err);
+      }
+    };
+    loadUsers();
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    if (ticket) {
+      setFormAssignedTo(ticket.assignedTo ?? null);
+    }
+  }, [ticket]);
+
   const metrics = useMemo(
     () => [
       {
@@ -296,6 +328,11 @@ export default function TicketDetailPage() {
           if ((ticket.description ?? "") !== (formDescription ?? "")) {
             changes.push("Descripción actualizada");
           }
+          if ((ticket.assignedTo ?? null) !== (formAssignedTo ?? null)) {
+            const oldUser = ticket.assignedTo || "Sin asignar";
+            const newUser = formAssignedTo || "Sin asignar";
+            changes.push(`Asignado: <strong>${oldUser}</strong> → <strong>${newUser}</strong>`);
+          }
 
           if (changes.length) {
             const changeNote = {
@@ -323,6 +360,7 @@ export default function TicketDetailPage() {
             amountCurrency: formCurrency,
             description: formDescription,
             annotations: annotationsToSend,
+            assignedTo: formAssignedTo,
             notifyClient,
           }),
         });
@@ -339,6 +377,7 @@ export default function TicketDetailPage() {
         setFormAmount(updated.amount);
         setFormCurrency(updated.amountCurrency ?? "UYU");
         setFormDescription(updated.description ?? "");
+        setFormAssignedTo(updated.assignedTo ?? null);
         toast.success("Ficha actualizada correctamente.");
       } catch (err) {
         const message =
@@ -360,6 +399,7 @@ export default function TicketDetailPage() {
       formCurrency,
       formDescription,
       formAnnotations,
+      formAssignedTo,
       notifyClient,
     ]
   );
@@ -711,11 +751,10 @@ export default function TicketDetailPage() {
                 aria-pressed={notifyClient}
                 aria-label="Notificar al cliente"
                 onClick={() => setNotifyClient((prev) => !prev)}
-                className={`flex h-9 w-9 items-center justify-center rounded-xl border bg-muted/10 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ${
-                  notifyClient
-                    ? "border-emerald-500 text-emerald-600"
-                    : "border-border/60 text-muted-foreground"
-                }`}
+                className={`flex h-9 w-9 items-center justify-center rounded-xl border bg-muted/10 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ${notifyClient
+                  ? "border-emerald-500 text-emerald-600"
+                  : "border-border/60 text-muted-foreground"
+                  }`}
               >
                 <Send className="h-4 w-4" />
               </button>
@@ -813,16 +852,16 @@ export default function TicketDetailPage() {
                   disabled={isLocked}
                 >
                   <SelectTrigger id="priority" className="w-full">
-                  <SelectValue>
-                    <div className="flex items-center gap-2">
-                      {(() => {
-                        const meta = priorityMeta[formPriority];
-                        const Icon = meta.Icon;
-                        return <Icon className={`h-4 w-4 ${meta.color}`} />;
-                      })()}
-                      <span className="leading-none">{formPriority}</span>
-                    </div>
-                  </SelectValue>
+                    <SelectValue>
+                      <div className="flex items-center gap-2">
+                        {(() => {
+                          const meta = priorityMeta[formPriority];
+                          const Icon = meta.Icon;
+                          return <Icon className={`h-4 w-4 ${meta.color}`} />;
+                        })()}
+                        <span className="leading-none">{formPriority}</span>
+                      </div>
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {priorityOptions.map((priority) => {
@@ -841,6 +880,83 @@ export default function TicketDetailPage() {
                 </Select>
               </div>
             </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="assigned-to">Asignado a</Label>
+              <Select
+                value={formAssignedTo || "unassigned"}
+                onValueChange={(value) => setFormAssignedTo(value === "unassigned" ? null : value)}
+                disabled={isLocked}
+              >
+                <SelectTrigger id="assigned-to" className="w-full">
+                  <SelectValue>
+                    {formAssignedTo ? (
+                      <div className="flex items-center gap-2">
+                        {(() => {
+                          const user = users.find((u) => u.email === formAssignedTo);
+                          if (!user) return formAssignedTo;
+                          return (
+                            <>
+                              {user.avatar ? (
+                                <img
+                                  src={
+                                    user.avatar.startsWith("http")
+                                      ? user.avatar
+                                      : `${API_URL.replace('/api', '')}${user.avatar}`
+                                  }
+                                  alt={user.name}
+                                  className="h-5 w-5 rounded-full object-cover"
+                                />
+                              ) : (
+                                <div className="h-5 w-5 rounded-full bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center text-white text-xs font-semibold">
+                                  {user.name.charAt(0).toUpperCase()}
+                                </div>
+                              )}
+                              <span className="leading-none">{user.name}</span>
+                            </>
+                          );
+                        })()}
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <User className="h-4 w-4 text-muted-foreground" />
+                        <span className="leading-none">Sin asignar</span>
+                      </div>
+                    )}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="unassigned">
+                    <div className="flex items-center gap-2">
+                      <User className="h-4 w-4 text-muted-foreground" />
+                      <span>Sin asignar</span>
+                    </div>
+                  </SelectItem>
+                  {users.map((user) => (
+                    <SelectItem key={user.id} value={user.email}>
+                      <div className="flex items-center gap-2">
+                        {user.avatar ? (
+                          <img
+                            src={
+                              user.avatar.startsWith("http")
+                                ? user.avatar
+                                : `${API_URL.replace('/api', '')}${user.avatar}`
+                            }
+                            alt={user.email}
+                            className="h-5 w-5 rounded-full object-cover"
+                          />
+                        ) : (
+                          <div className="h-5 w-5 rounded-full bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center text-white text-xs font-semibold">
+                            {user.email.charAt(0).toUpperCase()}
+                          </div>
+                        )}
+                        <span>{user.name} ({user.email})</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div >
 
             <div className="grid gap-3 md:grid-cols-2">
               <div className="space-y-2">
@@ -930,9 +1046,9 @@ export default function TicketDetailPage() {
               />
             </div>
 
-          </div>
-        </section>
-      </div>
+          </div >
+        </section >
+      </div >
 
       <section className="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm">
         <div className="flex items-center justify-between">
@@ -1069,7 +1185,7 @@ export default function TicketDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </div >
   );
 }
 

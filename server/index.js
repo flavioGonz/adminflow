@@ -1,7 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const session = require('express-session');
-const SQLiteStore = require('connect-sqlite3')(session);
+
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const multer = require('multer');
@@ -44,7 +44,7 @@ const corsOptions = {
         }
         return callback(null, true);
     },
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
     credentials: true,
 };
 app.use(cors(corsOptions));
@@ -54,7 +54,9 @@ app.use('/uploads', express.static(path.resolve(__dirname, 'uploads')));
 
 // Routes
 const accessRoutes = require('./routes/access');
+const diagramRoutes = require('./routes/diagrams');
 const installRoutes = require('./routes/install');
+const systemBackupRoutes = require('./routes/system-backup');
 const { checkInstallation } = require('./middleware/checkInstallation');
 
 // Installation routes (always accessible)
@@ -65,11 +67,21 @@ app.use('/api', checkInstallation);
 
 // Protected routes (require installation)
 app.use('/api', accessRoutes);
+app.use('/api', diagramRoutes);
+app.use('/api/system', systemBackupRoutes);
 
+
+const MongoStore = require('connect-mongo');
 
 app.use(
     session({
-        store: new SQLiteStore({ db: 'database/database.sqlite', table: 'sessions' }),
+        store: MongoStore.create({
+            mongoUrl: process.env.MONGODB_URI || DB_CONFIG_DEFAULTS.mongoUri,
+            dbName: process.env.MONGODB_DB || DB_CONFIG_DEFAULTS.mongoDb,
+            collectionName: 'sessions',
+            ttl: 24 * 60 * 60, // 1 day
+            autoRemove: 'native'
+        }),
         secret: process.env.SESSION_SECRET || 'dev_session_secret',
         resave: false,
         saveUninitialized: false,
@@ -103,6 +115,32 @@ const budgetShareStorage = multer.diskStorage({
 });
 const budgetShareUpload = multer({ storage: budgetShareStorage });
 
+// Avatar uploads
+const avatarUploadsRoot = path.join(__dirname, 'uploads', 'avatars');
+if (!fs.existsSync(avatarUploadsRoot)) {
+    fs.mkdirSync(avatarUploadsRoot, { recursive: true });
+}
+const avatarStorage = multer.diskStorage({
+    destination: avatarUploadsRoot,
+    filename: (req, file, cb) => {
+        const id = req.params.id || req.body.userId || req.user?.userId || 'user';
+        cb(null, `avatar-${id}-${Date.now()}${path.extname(file.originalname)}`);
+    },
+});
+const avatarUpload = multer({
+    storage: avatarStorage,
+    limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+    fileFilter: (req, file, cb) => {
+        const allowedTypes = /jpeg|jpg|png|gif|webp/;
+        const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+        const mimetype = allowedTypes.test(file.mimetype);
+        if (mimetype && extname) {
+            return cb(null, true);
+        }
+        cb(new Error('Solo se permiten imágenes (jpeg, jpg, png, gif, webp)'));
+    }
+});
+
 const parseJsonColumn = (value, fallback = []) => {
     if (!value) return Array.isArray(fallback) ? fallback : fallback ?? null;
     try {
@@ -119,6 +157,7 @@ const mapClientRow = (row) => ({
     notificationsEnabled: !!row.notifications_enabled,
     latitude: row.latitude ?? null,
     longitude: row.longitude ?? null,
+    avatarUrl: row.avatarUrl || null,
 });
 
 const mapTicketRow = (row) => ({
@@ -137,6 +176,7 @@ const mapTicketRow = (row) => ({
     description: row.description || '',
     attachments: parseJsonColumn(row.attachments, []),
     audioNotes: parseJsonColumn(row.audioNotes, []),
+    assignedTo: row.assignedTo || null,
     clientNotificationsEnabled: !!row.clientNotificationsEnabled,
     clientEmail: row.clientEmail || '',
 });
@@ -217,6 +257,7 @@ const mapCalendarEventRow = (row) => ({
     location: row.location || null,
     sourceType: row.source_type || 'manual',
     sourceId: row.source_id || null,
+    clientId: row.ticket_client_id || row.payment_client_id || row.contract_client_id || null,
     locked: !!row.locked,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -286,6 +327,7 @@ const TICKET_SELECT_BASE = `
     t.description,
     t.attachments,
     t.audioNotes,
+    t.assigned_to as assignedTo,
     t.createdAt,
     t.updatedAt,
     c.name as clientName,
@@ -417,88 +459,46 @@ app.post('/register', async (req, res) => {
     }
 
     try {
-        const { getCurrentDbEngine } = require('./lib/dbChoice');
-        const dbEngine = getCurrentDbEngine();
         const hash = await bcrypt.hash(password, 10);
 
-        if (dbEngine === 'mongodb') {
-            // Crear usuario en MongoDB
-            const mongoDb = getMongoDb();
-            if (!mongoDb) {
-                return res.status(503).json({ message: 'MongoDB no está conectado' });
-            }
-
-            // Verificar si el usuario ya existe
-            const existingUser = await mongoDb.collection('users').findOne({ email });
-            if (existingUser) {
-                return res.status(409).json({ message: 'User already exists' });
-            }
-
-            // Obtener el siguiente ID
-            const lastUser = await mongoDb.collection('users')
-                .find()
-                .sort({ _id: -1 })
-                .limit(1)
-                .toArray();
-            const nextId = lastUser.length > 0 ? lastUser[0]._id + 1 : 1;
-
-            // Crear usuario
-            const newUser = {
-                _id: nextId,
-                email,
-                password: hash,
-                name: name || email.split('@')[0],
-                role,
-                createdAt: new Date(),
-                updatedAt: new Date()
-            };
-
-            await mongoDb.collection('users').insertOne(newUser);
-
-            // Audit log
-            await logEvent({
-                user: 'system',
-                action: 'create',
-                resource: 'user',
-                details: { userId: nextId, email },
-                ip: req.ip
-            });
-
-            return res.status(201).json({
-                message: 'User registered successfully',
-                userId: nextId
-            });
-
-        } else {
-            // Crear usuario en SQLite
-            db.run('INSERT INTO users (email, password, name, role) VALUES (?, ?, ?, ?)',
-                [email, hash, name || email.split('@')[0], role],
-                async function (runErr) {
-                    if (runErr) {
-                        if (runErr.message.includes('UNIQUE constraint failed')) {
-                            return res.status(409).json({ message: 'User already exists' });
-                        }
-                        return res.status(500).json({ message: 'Error registering user' });
-                    }
-
-                    trackRegisteredUser({ sqliteId: this.lastID, email }).catch(() => { });
-
-                    // Audit log
-                    await logEvent({
-                        user: 'system',
-                        action: 'create',
-                        resource: 'user',
-                        details: { userId: this.lastID, email },
-                        ip: req.ip
-                    });
-
-                    res.status(201).json({
-                        message: 'User registered successfully',
-                        userId: this.lastID
-                    });
-                }
-            );
+        // Crear usuario en MongoDB
+        const mongoDb = getMongoDb();
+        if (!mongoDb) {
+            return res.status(503).json({ message: 'MongoDB no está conectado' });
         }
+
+        // Verificar si el usuario ya existe
+        const existingUser = await mongoDb.collection('users').findOne({ email });
+        if (existingUser) {
+            return res.status(409).json({ message: 'User already exists' });
+        }
+
+        // Crear usuario
+        const newUser = {
+            email,
+            password: hash,
+            name: name || email.split('@')[0],
+            role,
+            createdAt: new Date(),
+            updatedAt: new Date()
+        };
+
+        const result = await mongoDb.collection('users').insertOne(newUser);
+
+        // Audit log
+        await logEvent({
+            user: 'system',
+            action: 'create',
+            resource: 'user',
+            details: { userId: result.insertedId, email },
+            ip: req.ip
+        });
+
+        return res.status(201).json({
+            message: 'User registered successfully',
+            userId: result.insertedId
+        });
+
     } catch (error) {
         console.error('Registration error:', error);
         res.status(500).json({ message: 'Error during registration', detail: error.message });
@@ -512,33 +512,29 @@ app.post('/login', async (req, res) => {
     }
 
     try {
-        // Try MongoDB first if available
         const mongoDb = getMongoDb();
-        if (mongoDb) {
-            const user = await mongoDb.collection('users').findOne({ email });
-            if (user) {
-                const result = await bcrypt.compare(password, user.password);
-                if (!result) {
-                    return res.status(401).json({ message: 'Invalid credentials' });
-                }
-                const token = jwt.sign({ userId: user._id, email: user.email }, SECRET_KEY, { expiresIn: '1h' });
-                req.session.userId = user._id;
-                return res.json({ message: 'Logged in successfully', token });
-            }
+        if (!mongoDb) {
+            return res.status(503).json({ message: 'MongoDB no está conectado' });
         }
 
-        // Fallback to SQLite
-        db.get('SELECT * FROM users WHERE email = ?', [email], (err, user) => {
-            if (err) return res.status(500).json({ message: 'Error retrieving user' });
-            if (!user) return res.status(401).json({ message: 'Invalid credentials' });
-            bcrypt.compare(password, user.password, (compareErr, result) => {
-                if (compareErr) return res.status(500).json({ message: 'Error comparing passwords' });
-                if (!result) return res.status(401).json({ message: 'Invalid credentials' });
-                const token = jwt.sign({ userId: user.id, email: user.email }, SECRET_KEY, { expiresIn: '1h' });
-                req.session.userId = user.id;
-                res.json({ message: 'Logged in successfully', token });
-            });
-        });
+        const user = await mongoDb.collection('users').findOne({ email });
+        if (!user) {
+            return res.status(401).json({ message: 'Invalid credentials' });
+        }
+
+        // Validate password field exists
+        if (!user.password) {
+            return res.status(401).json({ message: 'Invalid credentials - password not set' });
+        }
+
+        const result = await bcrypt.compare(password, user.password);
+        if (!result) {
+            return res.status(401).json({ message: 'Invalid credentials' });
+        }
+
+        const token = jwt.sign({ userId: user._id, email: user.email }, SECRET_KEY, { expiresIn: '1h' });
+        req.session.userId = user._id;
+        return res.json({ message: 'Logged in successfully', token });
     } catch (error) {
         console.error('Login error:', error);
         res.status(500).json({ message: 'Error during login' });
@@ -570,6 +566,25 @@ app.get('/api/users/registered', async (req, res) => {
     }
 });
 
+app.get('/api/users', (req, res) => {
+    const mongoDb = getMongoDb();
+    if (!mongoDb) {
+        return res.status(503).json({ message: 'MongoDB no está conectado.' });
+    }
+
+    mongoDb.collection('users').find({}).toArray()
+        .then(users => {
+            res.json(users.map(u => ({
+                id: u._id,
+                email: u.email,
+                name: u.name || u.email.split('@')[0],
+                role: u.role || 'user',
+                avatar: u.avatar || null
+            })));
+        })
+        .catch(err => res.status(500).json({ message: err.message }));
+});
+
 app.patch('/api/users/registered/:id', async (req, res) => {
     if (!getMongoDb()) {
         return res.status(503).json({ message: 'MongoDB no está conectado.' });
@@ -595,6 +610,223 @@ app.patch('/api/users/registered/:id', async (req, res) => {
         res.status(500).json({ message: 'Error actualizando usuario', detail: error.message });
     }
 });
+
+// Register new user
+app.post('/api/users/register', async (req, res) => {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+        return res.status(400).json({ message: 'Email y contraseña son requeridos' });
+    }
+
+    if (password.length < 8) {
+        return res.status(400).json({ message: 'La contraseña debe tener al menos 8 caracteres' });
+    }
+
+    try {
+        const mongoDb = getMongoDb();
+        if (!mongoDb) {
+            return res.status(503).json({ message: 'MongoDB no está conectado' });
+        }
+
+        // Check if user already exists
+        const existingUser = await mongoDb.collection('users').findOne({ email });
+
+        if (existingUser) {
+            return res.status(409).json({ message: 'El usuario ya existe' });
+        }
+
+        // Hash password
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        // Create user
+        const newUser = {
+            email,
+            password: hashedPassword,
+            name: email.split('@')[0],
+            role: 'user',
+            createdAt: new Date(),
+            updatedAt: new Date()
+        };
+
+        const result = await mongoDb.collection('users').insertOne(newUser);
+
+        // Audit log
+        await logEvent({
+            user: req.user ? req.user.email : 'system',
+            action: 'create',
+            resource: 'user',
+            details: { userId: result.insertedId, email },
+            ip: req.ip
+        });
+
+        res.status(201).json({
+            message: 'User registered successfully',
+            userId: result.insertedId,
+            email
+        });
+    } catch (error) {
+        console.error('Error registering user:', error);
+        res.status(500).json({ message: 'Error al registrar usuario', detail: error.message });
+    }
+});
+
+// Upload avatar
+app.post('/api/users/:id/avatar', avatarUpload.single('avatar'), async (req, res) => {
+    const userId = req.params.id;
+
+    if (!req.file) {
+        return res.status(400).json({ message: 'No se proporcionó ninguna imagen' });
+    }
+
+    const avatarPath = `/uploads/avatars/${req.file.filename}`;
+
+    try {
+        const mongoDb = getMongoDb();
+        if (!mongoDb) {
+            return res.status(503).json({ message: 'MongoDB no está conectado' });
+        }
+
+        const { ObjectId } = require('mongodb');
+        const filter = ObjectId.isValid(userId) ? { _id: new ObjectId(userId) } : { _id: userId };
+
+        const result = await mongoDb.collection('users').updateOne(
+            filter,
+            { $set: { avatar: avatarPath, updatedAt: new Date() } }
+        );
+
+        if (result.matchedCount === 0) {
+            return res.status(404).json({ message: 'Usuario no encontrado' });
+        }
+
+        res.json({ avatarUrl: avatarPath, message: 'Avatar actualizado correctamente' });
+    } catch (error) {
+        res.status(500).json({ message: 'Error al actualizar avatar', detail: error.message });
+    }
+});
+
+// Update user profile (name, avatar, etc.)
+app.patch('/api/users/:id', async (req, res) => {
+    const userId = req.params.id;
+    const { name, avatar } = req.body;
+
+    if (!name && !avatar) {
+        return res.status(400).json({ message: 'Proporciona al menos un campo para actualizar' });
+    }
+
+    try {
+        const mongoDb = getMongoDb();
+        if (!mongoDb) {
+            return res.status(503).json({ message: 'MongoDB no está conectado' });
+        }
+
+        const updates = {};
+        if (name) updates.name = name;
+        if (avatar) updates.avatar = avatar;
+        updates.updatedAt = new Date();
+
+        const { ObjectId } = require('mongodb');
+        const filter = ObjectId.isValid(userId) ? { _id: new ObjectId(userId) } : { _id: userId };
+
+        const result = await mongoDb.collection('users').findOneAndUpdate(
+            filter,
+            { $set: updates },
+            { returnDocument: 'after' }
+        );
+
+        if (!result.value) {
+            return res.status(404).json({ message: 'Usuario no encontrado' });
+        }
+
+        res.json(result.value);
+    } catch (error) {
+        res.status(500).json({ message: 'Error al actualizar usuario', detail: error.message });
+    }
+});
+
+// Delete user
+app.delete('/api/users/:id', async (req, res) => {
+    const userId = req.params.id;
+
+    try {
+        const mongoDb = getMongoDb();
+        if (!mongoDb) {
+            return res.status(503).json({ message: 'MongoDB no está conectado' });
+        }
+
+        const { ObjectId } = require('mongodb');
+        const filter = ObjectId.isValid(userId) ? { _id: new ObjectId(userId) } : { _id: userId };
+
+        const result = await mongoDb.collection('users').deleteOne(filter);
+
+        if (result.deletedCount === 0) {
+            return res.status(404).json({ message: 'Usuario no encontrado' });
+        }
+
+        // Audit log
+        await logEvent({
+            user: req.user ? req.user.email : 'system',
+            action: 'delete',
+            resource: 'user',
+            details: { userId },
+            ip: req.ip
+        });
+
+        res.json({ message: 'Usuario eliminado correctamente' });
+    } catch (error) {
+        res.status(500).json({ message: 'Error al eliminar usuario', detail: error.message });
+    }
+});
+
+// Reset user password
+app.patch('/api/users/:id/password', async (req, res) => {
+    const userId = req.params.id;
+    const { newPassword } = req.body;
+
+    if (!newPassword) {
+        return res.status(400).json({ message: 'Nueva contraseña es requerida' });
+    }
+
+    if (newPassword.length < 8) {
+        return res.status(400).json({ message: 'La contraseña debe tener al menos 8 caracteres' });
+    }
+
+    try {
+        const mongoDb = getMongoDb();
+        if (!mongoDb) {
+            return res.status(503).json({ message: 'MongoDB no está conectado' });
+        }
+
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+        const { ObjectId } = require('mongodb');
+        const filter = ObjectId.isValid(userId) ? { _id: new ObjectId(userId) } : { _id: userId };
+
+        const result = await mongoDb.collection('users').updateOne(
+            filter,
+            { $set: { password: hashedPassword, updatedAt: new Date() } }
+        );
+
+        if (result.matchedCount === 0) {
+            return res.status(404).json({ message: 'Usuario no encontrado' });
+        }
+
+        // Audit log
+        await logEvent({
+            user: req.user ? req.user.email : 'system',
+            action: 'update',
+            resource: 'user',
+            details: { userId, action: 'password_reset' },
+            ip: req.ip
+        });
+
+        res.json({ message: 'Contraseña actualizada correctamente' });
+    } catch (error) {
+        res.status(500).json({ message: 'Error al actualizar contraseña', detail: error.message });
+    }
+});
+
+
 
 app.get('/api/config', async (req, res) => {
     try {
@@ -1041,20 +1273,103 @@ app.get('/api/notifications/config', async (req, res) => {
 });
 
 // Client routes
-app.get('/api/clients', (req, res) => {
-    db.all('SELECT * FROM clients', [], (err, rows) => {
-        if (err) return res.status(500).json({ message: err.message });
-        res.json(rows.map(mapClientRow));
-    });
+app.get('/api/clients', async (req, res) => {
+    try {
+        // Get all clients from SQLite
+        const clients = await new Promise((resolve, reject) => {
+            db.all('SELECT * FROM clients', [], (err, rows) => {
+                if (err) reject(err);
+                else resolve(rows);
+            });
+        });
+
+        // Get contract titles for ALL clients (check contracts table, not just contract flag)
+        const clientsWithContracts = await Promise.all(clients.map(async (client) => {
+            // Always check for contracts in the contracts table
+            const contractTitle = await new Promise((resolve) => {
+                db.get(
+                    'SELECT title FROM contracts WHERE client_id = ? ORDER BY createdAt DESC LIMIT 1',
+                    [client.id],
+                    (err, row) => {
+                        if (err) {
+                            console.log(`Error getting contract for client ${client.id}:`, err);
+                            resolve(null);
+                        } else if (!row) {
+                            // No contract found - this is normal, not all clients have contracts
+                            resolve(null);
+                        } else {
+                            console.log(`Found contract for client ${client.id}: ${row.title}`);
+                            resolve(row.title);
+                        }
+                    }
+                );
+            });
+            return { ...client, contract: contractTitle };
+        }));
+
+        // Try to add indicators from MongoDB if available
+        const mongoDb = getMongoDb();
+        if (mongoDb) {
+            try {
+                const clientsWithIndicators = await Promise.all(clientsWithContracts.map(async (client) => {
+                    let hasDiagram = false;
+                    let hasAccess = false;
+                    let hasFiles = false;
+
+                    try {
+                        // Check for diagram
+                        const diagram = await mongoDb.collection('client_diagrams').findOne({
+                            clientId: client.id.toString()
+                        });
+                        hasDiagram = !!diagram;
+                    } catch (e) {
+                        // Silently ignore
+                    }
+
+                    try {
+                        // Check for access records - FIXED: changed from 'client_access' to 'client_accesses'
+                        const access = await mongoDb.collection('client_accesses').findOne({
+                            clientId: client.id.toString()
+                        });
+                        hasAccess = !!access;
+                    } catch (e) {
+                        // Silently ignore
+                    }
+
+                    try {
+                        // Check for files in repository
+                        const files = await mongoDb.collection('repository_items').findOne({
+                            clientId: client.id.toString()
+                        });
+                        hasFiles = !!files;
+                    } catch (e) {
+                        // Silently ignore
+                    }
+
+                    return {
+                        ...client,
+                        hasDiagram,
+                        hasAccess,
+                        hasFiles
+                    };
+                }));
+
+                return res.json(clientsWithIndicators);
+            } catch (mongoError) {
+                console.warn('MongoDB query failed, returning clients without indicators:', mongoError.message);
+                // If MongoDB fails, return clients without indicators
+                return res.json(clientsWithContracts);
+            }
+        }
+
+        // No MongoDB, return clients with contracts
+        res.json(clientsWithContracts);
+    } catch (err) {
+        console.error('Error fetching clients:', err);
+        res.status(500).json({ message: err.message });
+    }
 });
 
-app.get('/api/clients/:id', (req, res) => {
-    db.get('SELECT * FROM clients WHERE id = ?', [req.params.id], (err, row) => {
-        if (err) return res.status(500).json({ message: err.message });
-        if (!row) return res.status(404).json({ message: 'Client not found' });
-        res.json(mapClientRow(row));
-    });
-});
 
 // GET /api/clients/:id/payments - Get payments for a specific client
 app.get('/api/clients/:id/payments', (req, res) => {
@@ -1106,6 +1421,87 @@ app.post('/api/clients', (req, res) => {
             });
         }
     );
+});
+
+// GET /api/clients/:id - Get a single client
+app.get('/api/clients/:id', (req, res) => {
+    db.get('SELECT * FROM clients WHERE id = ?', [req.params.id], (err, row) => {
+        if (err) return res.status(500).json({ message: err.message });
+        if (!row) return res.status(404).json({ message: 'Client not found' });
+        res.json(mapClientRow(row));
+    });
+});
+
+// POST /api/users/:id/avatar - Upload user avatar
+app.post('/api/users/:id/avatar', avatarUpload.single('avatar'), async (req, res) => {
+    if (!req.file) {
+        return res.status(400).json({ message: 'No file uploaded.' });
+    }
+
+    const avatarUrl = `/uploads/avatars/${req.file.filename}`;
+    const userId = req.params.id;
+
+    try {
+        const mongoDb = getMongoDb();
+        if (mongoDb) {
+            const { ObjectId } = require('mongodb');
+
+            // Try to update by _id (MongoDB ID)
+            let updateResult;
+            try {
+                updateResult = await mongoDb.collection('users').updateOne(
+                    { _id: new ObjectId(userId) },
+                    { $set: { avatar: avatarUrl } }
+                );
+            } catch (e) {
+                // Invalid ObjectId, ignore
+            }
+
+            // If not found by _id, try by sqliteId
+            if (!updateResult || updateResult.matchedCount === 0) {
+                const numericId = Number(userId);
+                if (!Number.isNaN(numericId)) {
+                    updateResult = await mongoDb.collection('users').updateOne(
+                        { sqliteId: numericId },
+                        { $set: { avatar: avatarUrl } }
+                    );
+                }
+            }
+
+            if (updateResult && updateResult.matchedCount > 0) {
+                return res.json({ avatarUrl });
+            }
+
+            return res.status(404).json({ message: 'User not found' });
+        } else {
+            res.status(503).json({ message: 'Database not available' });
+        }
+    } catch (error) {
+        console.error('Error uploading user avatar:', error);
+        res.status(500).json({ message: error.message });
+    }
+});
+
+// POST /api/clients/:id/avatar - Upload client avatar
+app.post('/api/clients/:id/avatar', avatarUpload.single('avatar'), (req, res) => {
+    if (!req.file) {
+        return res.status(400).json({ message: 'No file uploaded.' });
+    }
+
+    const avatarUrl = `/uploads/avatars/${req.file.filename}`;
+    const clientId = req.params.id;
+
+    // Ensure avatarUrl column exists (naive migration)
+    db.run('ALTER TABLE clients ADD COLUMN avatarUrl TEXT', [], (err) => {
+        // Ignore error if column already exists
+
+        db.run('UPDATE clients SET avatarUrl = ? WHERE id = ?', [avatarUrl, clientId], (updateErr) => {
+            if (updateErr) {
+                return res.status(500).json({ message: updateErr.message });
+            }
+            res.json({ avatarUrl });
+        });
+    });
 });
 
 app.put('/api/clients/:id', (req, res) => {
@@ -2234,6 +2630,7 @@ app.post('/api/tickets', (req, res) => {
         description = '',
         attachments = [],
         audioNotes = [],
+        assignedTo = null,
     } = req.body;
     if (!clientId || !title || !priority) {
         return res.status(400).json({ message: 'Client, title, and priority are required.' });
@@ -2246,8 +2643,8 @@ app.post('/api/tickets', (req, res) => {
     const attachmentsText = JSON.stringify(Array.isArray(attachments) ? attachments : []);
     const audioNotesText = JSON.stringify(Array.isArray(audioNotes) ? audioNotes : []);
     db.run(
-        'INSERT INTO tickets (client_id, title, priority, status, annotations, amount, visit, description, attachments, audioNotes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        [numericClientId, title, priority, status, annotationsText, amount, visit ? 1 : 0, description || null, attachmentsText, audioNotesText],
+        'INSERT INTO tickets (client_id, title, priority, status, annotations, amount, visit, description, attachments, audioNotes, assigned_to) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [numericClientId, title, priority, status, annotationsText, amount, visit ? 1 : 0, description || null, attachmentsText, audioNotesText, assignedTo || null],
         function (err) {
             if (err) return res.status(500).json({ message: err.message });
             const ticketId = this.lastID;
@@ -2323,10 +2720,11 @@ app.put('/api/tickets/:id', (req, res) => {
                     ? req.body.audioNotes
                     : parseJsonColumn(existing.audioNotes, [])
             ),
+            assignedTo: req.body.assignedTo !== undefined ? req.body.assignedTo : existing.assigned_to,
         };
         db.run(
             `UPDATE tickets
-       SET title = ?, status = ?, priority = ?, amount = ?, visit = ?, annotations = ?, description = ?, attachments = ?, audioNotes = ?, updatedAt = CURRENT_TIMESTAMP
+       SET title = ?, status = ?, priority = ?, amount = ?, visit = ?, annotations = ?, description = ?, attachments = ?, audioNotes = ?, assigned_to = ?, updatedAt = CURRENT_TIMESTAMP
        WHERE id = ?`,
             [
                 payload.title,
@@ -2338,6 +2736,7 @@ app.put('/api/tickets/:id', (req, res) => {
                 payload.description,
                 payload.attachments,
                 payload.audioNotes,
+                payload.assignedTo,
                 req.params.id,
             ],
             function (updateErr) {
@@ -2404,7 +2803,19 @@ app.get('/api/clients/:id/tickets', (req, res) => {
 });
 
 app.get('/api/calendar-events', (req, res) => {
-    db.all('SELECT * FROM calendar_events ORDER BY start ASC', (err, rows) => {
+    const query = `
+        SELECT 
+            ce.*, 
+            t.client_id as ticket_client_id, 
+            p.client_id as payment_client_id, 
+            c.client_id as contract_client_id 
+        FROM calendar_events ce 
+        LEFT JOIN tickets t ON ce.source_id = t.id AND ce.source_type = 'ticket' 
+        LEFT JOIN payments p ON ce.source_id = p.id AND ce.source_type = 'payment' 
+        LEFT JOIN contracts c ON ce.source_id = c.id AND ce.source_type = 'contract' 
+        ORDER BY ce.start ASC
+    `;
+    db.all(query, (err, rows) => {
         if (err) return res.status(500).json({ message: err.message });
         res.json(rows.map(mapCalendarEventRow));
     });

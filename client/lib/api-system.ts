@@ -4,6 +4,8 @@ export interface SystemUser {
   _id?: string;
   sqliteId?: number;
   email: string;
+  name?: string;
+  avatar?: string;
   roles?: string[];
   metadata?: Record<string, any>;
   createdAt?: string;
@@ -49,117 +51,136 @@ const apiCall = async (url: string, options?: RequestInit) => {
   return response.json();
 };
 
-export const SystemApi = {
-  // Usuarios
-  getUsers: async (): Promise<SystemUser[]> => {
-    return apiCall("/users/registered");
-  },
+export const getRegisteredUsers = async (): Promise<SystemUser[]> => {
+  return apiCall("/users/registered");
+};
 
-  createUser: async (email: string, password: string): Promise<any> => {
-    // El endpoint /register no está bajo /api, así que usamos apiFetch directamente con la URL completa
-    const response = await fetch("http://localhost:5000/register", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ email, password }),
-    });
-    if (!response.ok) {
-      throw new Error(`API Error: ${response.statusText}`);
-    }
-    return response.json();
-  },
+export const updateUser = async (id: string, data: Partial<SystemUser>): Promise<SystemUser> => {
+  return apiCall(`/users/registered/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+};
 
-  updateUser: async (id: string, data: Partial<SystemUser>): Promise<SystemUser> => {
-    return apiCall(`/users/registered/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify(data),
-    });
-  },
+export const createUser = async (email: string, password: string): Promise<SystemUser> => {
+  return apiCall("/users/register", {
+    method: "POST",
+    body: JSON.stringify({ email, password }),
+  });
+};
 
-  resetUserPassword: async (email: string, newPassword: string): Promise<any> => {
-    // Primero obtenemos el usuario para obtener su ID
-    const users = await apiCall("/users/registered");
-    const user = users.find((u: SystemUser) => u.email === email);
+export const uploadUserAvatar = async (userId: string, file: File): Promise<{ avatarUrl: string }> => {
+  const formData = new FormData();
+  formData.append('avatar', file);
 
-    if (!user) {
-      throw new Error("Usuario no encontrado");
-    }
+  const response = await apiFetch(`/users/${userId}/avatar`, {
+    method: 'POST',
+    body: formData,
+  });
 
-    // Actualizamos con la nueva contraseña en metadata
-    return apiCall(`/users/registered/${user._id || user.sqliteId}`, {
-      method: "PATCH",
-      body: JSON.stringify({
-        metadata: {
-          ...(user.metadata || {}),
-          passwordResetAt: new Date().toISOString(),
-          passwordResetRequested: true,
-        },
-      }),
-    });
-  },
+  if (!response.ok) {
+    throw new Error(`Error al subir avatar: ${response.statusText}`);
+  }
 
-  // Configuración de Notificaciones
-  getNotificationConfig: async (): Promise<NotificationConfig> => {
-    const response = await apiCall("/config/notifications");
-    // Retornar data o estructura default si está vacío
-    return response.data || { channels: {}, templates: {} };
-  },
+  return response.json();
+};
 
-  saveNotificationConfig: async (config: NotificationConfig): Promise<any> => {
-    return apiCall("/config/notifications", {
-      method: "POST",
-      body: JSON.stringify(config),
-    });
-  },
+export const resetUserPassword = async (userId: string, newPassword: string): Promise<any> => {
+  return apiCall(`/users/${userId}/password`, {
+    method: "PATCH",
+    body: JSON.stringify({ newPassword }),
+  });
+};
 
-  // Historial y Pruebas
-  getNotificationHistory: async (limit = 20): Promise<NotificationLog[]> => {
-    return apiCall(`/notifications/history?limit=${limit}`);
-  },
+export const deleteUser = async (userId: string): Promise<any> => {
+  return apiCall(`/users/${userId}`, {
+    method: "DELETE",
+  });
+};
 
-  sendTestNotification: async (channel: string, message: string, recipients?: string[]) => {
-    return apiCall("/notifications/send", {
-      method: "POST",
-      body: JSON.stringify({
-        event: "test_event",
-        message,
-        channels: [channel],
-        recipients: recipients || [],
-      }),
-    });
-  },
+// Configuración de Notificaciones
+export const getNotificationConfig = async (): Promise<NotificationConfig> => {
+  const response = await apiCall("/config/notifications");
+  // Retornar data o estructura default si está vacío
+  return response.data || { channels: {}, templates: {} };
+};
 
-  verifySmtpConnection: async (host: string, port: string, user: string, pass: string) => {
-    const response = await apiFetch("/notifications/verify-smtp", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        host,
-        port,
-        user,
-        pass,
-      }),
-    });
+export const saveNotificationConfig = async (config: NotificationConfig): Promise<any> => {
+  return apiCall("/config/notifications", {
+    method: "POST",
+    body: JSON.stringify(config),
+  });
+};
 
-    const data = await response.json();
+// Historial y Pruebas
+export const getNotificationHistory = async (limit = 20): Promise<NotificationLog[]> => {
+  return apiCall(`/notifications/history?limit=${limit}`);
+};
 
-    if (!response.ok) {
-      // Lanzar error con el mensaje detallado del servidor
-      throw new Error(data.detail || data.message || "Error al verificar SMTP");
-    }
+export const sendTestNotification = async (channel: string, message: string, recipients?: string[]) => {
+  return apiCall("/notifications/send", {
+    method: "POST",
+    body: JSON.stringify({
+      event: "test_event",
+      message,
+      channels: [channel],
+      recipients: recipients || [],
+    }),
+  });
+};
 
-    return data;
-  },
+export const verifySmtpConnection = async (host: string, port: string, user: string, pass: string) => {
+  const response = await apiFetch("/notifications/verify-smtp", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      host,
+      port,
+      user,
+      pass,
+    }),
+  });
 
-  getAuditLogs: async (limit = 50, type?: string, status?: string, search?: string): Promise<any[]> => {
-    const params = new URLSearchParams();
-    if (limit) params.append("limit", limit.toString());
-    if (type && type !== "all") params.append("type", type);
-    if (status && status !== "all") params.append("status", status);
-    if (search) params.append("search", search);
-    return apiCall(`/system/audit?${params.toString()}`);
-  },
+  const data = await response.json();
+
+  if (!response.ok) {
+    // Lanzar error con el mensaje detallado del servidor
+    throw new Error(data.detail || data.message || "Error al verificar SMTP");
+  }
+
+  return data;
+};
+
+export const getAuditLogs = async (limit = 50, type?: string, status?: string, search?: string): Promise<any[]> => {
+  const params = new URLSearchParams();
+  if (limit) params.append("limit", limit.toString());
+  if (type && type !== "all") params.append("type", type);
+  if (status && status !== "all") params.append("status", status);
+  if (search) params.append("search", search);
+  return apiCall(`/system/audit?${params.toString()}`);
+};
+
+export interface Backup {
+  name: string;
+  createdAt: string;
+  size: number;
+}
+
+export const getBackups = async (): Promise<Backup[]> => {
+  return apiCall("/system/backups");
+};
+
+export const createBackup = async (): Promise<{ success: boolean; backupName: string; path: string; timestamp: string }> => {
+  return apiCall("/system/backups", {
+    method: "POST",
+  });
+};
+
+export const restoreBackup = async (backupName: string): Promise<{ success: boolean; message: string }> => {
+  return apiCall("/system/backups/restore", {
+    method: "POST",
+    body: JSON.stringify({ backupName }),
+  });
 };
