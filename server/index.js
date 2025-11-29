@@ -57,6 +57,7 @@ const accessRoutes = require('./routes/access');
 const diagramRoutes = require('./routes/diagrams');
 const installRoutes = require('./routes/install');
 const systemBackupRoutes = require('./routes/system-backup');
+const databaseRoutes = require('./routes/database');
 const { checkInstallation } = require('./middleware/checkInstallation');
 
 // Installation routes (always accessible)
@@ -69,6 +70,7 @@ app.use('/api', checkInstallation);
 app.use('/api', accessRoutes);
 app.use('/api', diagramRoutes);
 app.use('/api/system', systemBackupRoutes);
+app.use('/api/database', databaseRoutes);
 
 
 const MongoStore = require('connect-mongo');

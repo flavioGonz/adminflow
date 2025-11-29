@@ -142,5 +142,6 @@ const restoreBackup = async (backupName) => {
 module.exports = {
     createBackup,
     listBackups,
-    restoreBackup
+    restoreBackup,
+    BACKUP_ROOT
 };

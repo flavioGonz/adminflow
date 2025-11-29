@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,127 +13,107 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { toast } from "sonner";
 import {
   Activity,
+  AlertTriangle,
   CheckCircle,
   Clock,
   Database,
-  GitCompareArrows,
+  Download,
+  FileJson,
   HardDrive,
   Loader2,
   RefreshCw,
+  RotateCcw,
   Server,
+  Trash2,
+  Upload,
   Wifi,
   WifiOff,
   Zap,
 } from "lucide-react";
-import {
-  getDatabaseConfig,
-  updateDatabaseConfig,
-  selectDatabaseEngine,
-  syncDatabase,
-  resetDatabase,
-  migrateToMongo,
-  verifyDatabaseConnection,
-  getDatabaseOverview,
-  type DbEngine,
-} from "@/lib/api-database";
-import { cn } from "@/lib/utils";
 import { ShinyText } from "@/components/ui/shiny-text";
+import { cn } from "@/lib/utils";
 
-type DatabaseConfig = {
-  engine: DbEngine;
-  mongoUri?: string;
-  mongoDb?: string;
-  sqlitePath?: string;
+type CollectionInfo = {
+  name: string;
+  count: number;
+  size: number;
 };
 
-type OverviewResponse = {
-  sqlite: {
-    tables: Record<string, number>;
-    status: string;
-  };
-  mongo: {
-    collections: { name: string; count: number }[];
-    size: number;
-    error?: string;
-  };
-  engine: DbEngine;
+type MongoOverview = {
+  collections: CollectionInfo[];
+  totalSize: number;
+  dbName: string;
+  connected: boolean;
+  error?: string;
 };
-
-type ConnectionState = "idle" | "pending" | "success" | "error";
 
 type ConnectionStatus = {
-  state: ConnectionState;
+  state: "idle" | "pending" | "success" | "error";
   message?: string;
   latency?: number;
 };
 
-const initialConnectionStatus: Record<DbEngine, ConnectionStatus> = {
-  sqlite: { state: "idle" },
-  mongodb: { state: "idle" },
+const formatBytes = (bytes: number): string => {
+  if (bytes === 0) return "0 B";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${(bytes / Math.pow(k, i)).toFixed(2)} ${sizes[i]}`;
 };
 
 export default function DatabasePage() {
-  const [config, setConfig] = useState<DatabaseConfig | null>(null);
-  const [overview, setOverview] = useState<OverviewResponse | null>(null);
-  const [selectedDb, setSelectedDb] = useState<DbEngine>("mongodb");
-  const [isLoadingConfig, setIsLoadingConfig] = useState(false);
-  const [isLoadingOverview, setIsLoadingOverview] = useState(false);
+  const [overview, setOverview] = useState<MongoOverview | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [formValues, setFormValues] = useState({
-    mongoUri: "",
-    mongoDb: "",
-    sqlitePath: "",
-  });
-  const [connectionStatus, setConnectionStatus] = useState<Record<DbEngine, ConnectionStatus>>(
-    initialConnectionStatus
-  );
+  const [mongoUri, setMongoUri] = useState("");
+  const [mongoDb, setMongoDb] = useState("");
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>({ state: "idle" });
+  const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
 
-  const fetchConfig = async () => {
-    setIsLoadingConfig(true);
-    try {
-      const response = await getDatabaseConfig();
-      const payload = response?.data ?? {};
-      setConfig(payload);
-      if (response?.engine) {
-        setSelectedDb(response.engine);
-      } else if (payload.engine) {
-        setSelectedDb(payload.engine);
-      }
-      setFormValues({
-        mongoUri: payload.mongoUri ?? "",
-        mongoDb: payload.mongoDb ?? "",
-        sqlitePath: payload.sqlitePath ?? "",
-      });
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No se pudo cargar la configuración.");
-    } finally {
-      setIsLoadingConfig(false);
-    }
-  };
+  // Backup states
+  const [backups, setBackups] = useState<any[]>([]);
+  const [showBackupModal, setShowBackupModal] = useState(false);
+  const [showRestoreModal, setShowRestoreModal] = useState(false);
+  const [selectedBackup, setSelectedBackup] = useState<any>(null);
 
   const fetchOverview = async () => {
-    setIsLoadingOverview(true);
+    setIsLoading(true);
     try {
-      const response = await getDatabaseOverview();
-      setOverview(response);
-      if (response?.engine) {
-        setSelectedDb(response.engine);
+      const response = await fetch("/api/database/overview");
+      if (!response.ok) throw new Error("Error al obtener información");
+      const data = await response.json();
+      setOverview(data);
+      setMongoUri(data.mongoUri || "");
+      setMongoDb(data.dbName || "");
+      setLastUpdate(new Date());
+
+      if (data.connected) {
+        setConnectionStatus({ state: "success", message: "Conectado correctamente" });
       }
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No se pudo cargar el estado de base.");
+      toast.error(error instanceof Error ? error.message : "Error al cargar datos");
+      setConnectionStatus({ state: "error", message: "Error de conexión" });
     } finally {
-      setIsLoadingOverview(false);
+      setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchConfig();
     fetchOverview();
+    loadBackups();
 
-    // Auto-refresh overview every 30 seconds
+    // Auto-refresh every 30 seconds
     const interval = setInterval(() => {
       fetchOverview();
     }, 30000);
@@ -141,350 +121,290 @@ export default function DatabasePage() {
     return () => clearInterval(interval);
   }, []);
 
-  const refreshOverview = () => {
-    fetchOverview();
-  };
-
-  const totalTables = useMemo(
-    () => Object.values(overview?.sqlite.tables ?? {}).reduce((total, count) => total + count, 0),
-    [overview]
-  );
-
-  const totalCollections = useMemo(
-    () => overview?.mongo.collections?.length ?? 0,
-    [overview?.mongo.collections]
-  );
-
-  const totalDocuments = useMemo(
-    () => overview?.mongo.collections?.reduce((sum, col) => sum + col.count, 0) ?? 0,
-    [overview?.mongo.collections]
-  );
-
-  const updateConnectionStatus = (engine: DbEngine, state: ConnectionState, message?: string, latency?: number) => {
-    setConnectionStatus((prev) => ({
-      ...prev,
-      [engine]: { state, message, latency },
-    }));
-  };
-
-  const handleSaveConfig = async () => {
-    if (!config) return;
-    setActionLoading("save-config");
-    try {
-      const payload = {
-        ...config,
-        engine: selectedDb,
-        mongoUri: formValues.mongoUri,
-        mongoDb: formValues.mongoDb,
-        sqlitePath: formValues.sqlitePath,
-      };
-      const response = await updateDatabaseConfig(payload);
-      const updatedConfig = response?.data ?? payload;
-      setConfig(updatedConfig);
-      toast.success("Configuración guardada correctamente");
-      refreshOverview();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No se pudo guardar la configuración.");
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleEngineSwitch = async (engine: DbEngine) => {
-    setActionLoading(`switch-${engine}`);
-    try {
-      const response = await selectDatabaseEngine(engine);
-      setSelectedDb(engine);
-      const payload: any = (response as any)?.data ?? response;
-      if (payload) {
-        setConfig(payload);
-        setFormValues({
-          mongoUri: payload.mongoUri ?? formValues.mongoUri,
-          mongoDb: payload.mongoDb ?? formValues.mongoDb,
-          sqlitePath: payload.sqlitePath ?? formValues.sqlitePath,
-        });
-      }
-      toast.success((response as any)?.message ?? `Motor cambiado a ${engine}`);
-      refreshOverview();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No se pudo cambiar el motor.");
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleAction = async (action: "sync" | "reset", engine: DbEngine) => {
-    setActionLoading(`${action}-${engine}`);
-    try {
-      const result =
-        action === "sync" ? await syncDatabase(engine) : await resetDatabase(engine);
-      toast.success(result.message);
-      refreshOverview();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : `No se pudo ${action}ar ${engine}.`);
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleMigrate = async () => {
-    setActionLoading("migrate");
-    try {
-      const result = await migrateToMongo();
-      toast.success(result.message);
-      refreshOverview();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No se pudo migrar la data.");
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleVerifyConnection = async (engine: DbEngine) => {
-    if (engine === "mongodb" && !formValues.mongoUri.trim()) {
-      toast.error("Indica la URI de MongoDB antes de verificar.");
-      return;
-    }
-    if (engine === "sqlite" && !formValues.sqlitePath.trim()) {
-      toast.error("Indica la ruta al archivo SQLite antes de verificar.");
+  const handleVerifyConnection = async () => {
+    if (!mongoUri.trim()) {
+      toast.error("Indica la URI de MongoDB");
       return;
     }
 
-    updateConnectionStatus(engine, "pending");
+    setConnectionStatus({ state: "pending" });
     const startTime = Date.now();
 
     try {
-      const payload =
-        engine === "mongodb"
-          ? {
-            engine,
-            mongoUri: formValues.mongoUri,
-            mongoDb: formValues.mongoDb,
-          }
-          : {
-            engine,
-            sqlitePath: formValues.sqlitePath,
-          };
-      const result = await verifyDatabaseConnection(payload);
+      const response = await fetch("/api/database/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mongoUri, mongoDb }),
+      });
+
+      if (!response.ok) throw new Error("Error al verificar conexión");
+
+      const result = await response.json();
       const latency = Date.now() - startTime;
-      updateConnectionStatus(engine, "success", result.info ?? result.message, latency);
-      toast.success(result.info ?? result.message ?? "Conexión verificada.");
-      refreshOverview();
+
+      setConnectionStatus({
+        state: "success",
+        message: result.message || "Conexión exitosa",
+        latency
+      });
+      toast.success("Conexión verificada correctamente");
+      fetchOverview();
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Error verificando conexión.";
-      updateConnectionStatus(engine, "error", message);
+      const message = error instanceof Error ? error.message : "Error verificando conexión";
+      setConnectionStatus({ state: "error", message });
       toast.error(message);
     }
   };
 
-  const isConnected = (engine: DbEngine) => {
-    return connectionStatus[engine].state === "success";
+  const handleCreateBackup = async () => {
+    setActionLoading("backup");
+    try {
+      const response = await fetch("/api/system/backups", {
+        method: "POST",
+      });
+
+      if (!response.ok) throw new Error("Error al crear respaldo");
+
+      const result = await response.json();
+      toast.success(`Respaldo creado: ${result.backupName}`);
+      loadBackups(); // Reload backups list
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Error al crear respaldo");
+    } finally {
+      setActionLoading(null);
+    }
   };
 
-  if (isLoadingConfig && !config) {
-    return (
-      <div className="flex h-screen items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
+  const loadBackups = async () => {
+    try {
+      const response = await fetch("/api/system/backups");
+      if (!response.ok) throw new Error("Error al cargar respaldos");
+      const data = await response.json();
+      setBackups(data);
+    } catch (error) {
+      console.error("Error loading backups:", error);
+    }
+  };
+
+  const handleDownloadBackup = async (backupName: string) => {
+    setActionLoading(`download-${backupName}`);
+    try {
+      const response = await fetch(`/api/system/backups/${backupName}/download`);
+
+      if (!response.ok) throw new Error("Error al descargar respaldo");
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${backupName}.tar.gz`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+      toast.success("Respaldo descargado");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Error al descargar");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleRestoreBackup = async () => {
+    if (!selectedBackup) return;
+
+    setActionLoading("restore");
+    try {
+      const response = await fetch("/api/system/backups/restore", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ backupName: selectedBackup.name }),
+      });
+
+      if (!response.ok) throw new Error("Error al restaurar respaldo");
+
+      const result = await response.json();
+      toast.success("Base de datos restaurada exitosamente");
+      setShowRestoreModal(false);
+      setSelectedBackup(null);
+      fetchOverview();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Error al restaurar");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleExportCollection = async (collectionName: string) => {
+    setActionLoading(`export-${collectionName}`);
+    try {
+      const response = await fetch(`/api/database/export/${collectionName}`);
+
+      if (!response.ok) throw new Error("Error al exportar colección");
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${collectionName}_${new Date().toISOString().split("T")[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+      toast.success(`Colección ${collectionName} exportada`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Error al exportar");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleDropCollection = async (collectionName: string) => {
+    if (!confirm(`¿Estás seguro de eliminar la colección "${collectionName}"? Esta acción no se puede deshacer.`)) {
+      return;
+    }
+
+    setActionLoading(`drop-${collectionName}`);
+    try {
+      const response = await fetch(`/api/database/collections/${collectionName}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) throw new Error("Error al eliminar colección");
+
+      toast.success(`Colección ${collectionName} eliminada`);
+      fetchOverview();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Error al eliminar");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const totalDocuments = overview?.collections?.reduce((sum, col) => sum + col.count, 0) ?? 0;
+  const isConnected = connectionStatus.state === "success";
 
   return (
     <div className="space-y-6 p-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-gradient-to-br from-purple-500 to-indigo-600">
+          <div className="p-2 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600">
             <Database className="h-6 w-6 text-white" />
           </div>
           <div>
             <h1 className="text-3xl font-bold">
-              <ShinyText size="3xl" weight="bold">Base de Datos</ShinyText>
+              <ShinyText size="3xl" weight="bold">Base de Datos MongoDB</ShinyText>
             </h1>
             <p className="text-sm text-muted-foreground">
-              Administra conexiones, monitorea estadísticas y sincroniza datos
+              Administra conexiones, colecciones y respaldos de MongoDB
             </p>
           </div>
         </div>
-        <Button onClick={refreshOverview} variant="outline" size="sm">
-          <RefreshCw className={cn("mr-2 h-4 w-4", isLoadingOverview && "animate-spin")} />
+        <Button onClick={fetchOverview} variant="outline" size="sm">
+          <RefreshCw className={cn("mr-2 h-4 w-4", isLoading && "animate-spin")} />
           Actualizar
         </Button>
       </div>
 
-      {/* Engine Selector Cards */}
-      <div className="grid gap-4 md:grid-cols-2">
-        {/* SQLite Card */}
-        <Card
-          className={cn(
-            "cursor-pointer transition-all hover:shadow-lg",
-            selectedDb === "sqlite" && "border-2 border-blue-500 shadow-lg"
-          )}
-          onClick={() => handleEngineSwitch("sqlite")}
-        >
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="rounded-lg bg-blue-50 p-2">
-                  <HardDrive className="h-6 w-6 text-blue-600" />
-                </div>
-                <div>
-                  <CardTitle className="text-lg">SQLite Local</CardTitle>
-                  <CardDescription>Base de datos embebida</CardDescription>
-                </div>
-              </div>
-              {isConnected("sqlite") ? (
-                <Wifi className="h-5 w-5 text-emerald-500" />
+      {/* Connection Status Card */}
+      <Card className={cn(
+        "border-l-4",
+        isConnected ? "border-l-emerald-500 bg-emerald-50/50" : "border-l-slate-300"
+      )}>
+        <CardContent className="flex items-center justify-between py-4">
+          <div className="flex items-center gap-3">
+            <div className={cn(
+              "rounded-lg p-2",
+              isConnected ? "bg-emerald-100" : "bg-slate-100"
+            )}>
+              {isConnected ? (
+                <Wifi className="h-5 w-5 text-emerald-600" />
               ) : (
                 <WifiOff className="h-5 w-5 text-slate-400" />
               )}
             </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Estado</span>
-              <Badge
-                variant={isConnected("sqlite") ? "default" : "secondary"}
-                className={cn(
-                  "gap-1",
-                  isConnected("sqlite") && "bg-emerald-500 hover:bg-emerald-600"
-                )}
-              >
-                {connectionStatus.sqlite.state === "pending" ? (
-                  <>
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                    Verificando
-                  </>
-                ) : isConnected("sqlite") ? (
-                  <>
-                    <CheckCircle className="h-3 w-3" />
-                    Conectado
-                  </>
-                ) : (
-                  "Desconectado"
-                )}
-              </Badge>
+            <div>
+              <p className="text-sm font-medium">Estado de Conexión</p>
+              <p className="text-xs text-muted-foreground">
+                {connectionStatus.message || "No conectado"}
+              </p>
             </div>
-            {connectionStatus.sqlite.latency && (
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Latencia</span>
-                <span className="flex items-center gap-1 font-medium">
-                  <Zap className="h-3 w-3 text-amber-500" />
-                  {connectionStatus.sqlite.latency}ms
-                </span>
+          </div>
+          <div className="flex items-center gap-4">
+            {connectionStatus.latency && (
+              <div className="flex items-center gap-1 text-sm">
+                <Zap className="h-3 w-3 text-amber-500" />
+                <span className="font-medium">{connectionStatus.latency}ms</span>
               </div>
             )}
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Tablas</span>
-              <span className="font-medium">{Object.keys(overview?.sqlite.tables ?? {}).length}</span>
-            </div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Registros</span>
-              <span className="font-medium">{totalTables.toLocaleString("es-UY")}</span>
-            </div>
+            <Badge className={cn(
+              "gap-2",
+              isConnected ? "bg-emerald-500 hover:bg-emerald-600" : "bg-slate-500"
+            )}>
+              {connectionStatus.state === "pending" ? (
+                <>
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Verificando
+                </>
+              ) : isConnected ? (
+                <>
+                  <CheckCircle className="h-3 w-3" />
+                  Conectado
+                </>
+              ) : (
+                "Desconectado"
+              )}
+            </Badge>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Statistics Cards */}
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Colecciones</CardTitle>
+            <Database className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{overview?.collections?.length ?? 0}</div>
+            <p className="text-xs text-muted-foreground">
+              Total de colecciones
+            </p>
           </CardContent>
         </Card>
 
-        {/* MongoDB Card */}
-        <Card
-          className={cn(
-            "cursor-pointer transition-all hover:shadow-lg",
-            selectedDb === "mongodb" && "border-2 border-emerald-500 shadow-lg"
-          )}
-          onClick={() => handleEngineSwitch("mongodb")}
-        >
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="rounded-lg bg-emerald-50 p-2">
-                  <Database className="h-6 w-6 text-emerald-600" />
-                </div>
-                <div>
-                  <CardTitle className="text-lg">MongoDB</CardTitle>
-                  <CardDescription>Base de datos remota</CardDescription>
-                </div>
-              </div>
-              {isConnected("mongodb") ? (
-                <Wifi className="h-5 w-5 text-emerald-500" />
-              ) : (
-                <WifiOff className="h-5 w-5 text-slate-400" />
-              )}
-            </div>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Documentos</CardTitle>
+            <FileJson className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Estado</span>
-              <Badge
-                variant={isConnected("mongodb") ? "default" : "secondary"}
-                className={cn(
-                  "gap-1",
-                  isConnected("mongodb") && "bg-emerald-500 hover:bg-emerald-600"
-                )}
-              >
-                {connectionStatus.mongodb.state === "pending" ? (
-                  <>
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                    Verificando
-                  </>
-                ) : isConnected("mongodb") ? (
-                  <>
-                    <CheckCircle className="h-3 w-3" />
-                    Conectado
-                  </>
-                ) : overview?.mongo.error ? (
-                  "Error"
-                ) : (
-                  "Desconectado"
-                )}
-              </Badge>
-            </div>
-            {connectionStatus.mongodb.latency && (
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Latencia</span>
-                <span className="flex items-center gap-1 font-medium">
-                  <Zap className="h-3 w-3 text-amber-500" />
-                  {connectionStatus.mongodb.latency}ms
-                </span>
-              </div>
-            )}
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Colecciones</span>
-              <span className="font-medium">{totalCollections}</span>
-            </div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Documentos</span>
-              <span className="font-medium">{totalDocuments.toLocaleString("es-UY")}</span>
-            </div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Tamaño</span>
-              <span className="font-medium">{formatBytes(overview?.mongo.size ?? 0)}</span>
-            </div>
+          <CardContent>
+            <div className="text-2xl font-bold">{totalDocuments.toLocaleString("es-UY")}</div>
+            <p className="text-xs text-muted-foreground">
+              Total de documentos
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Tamaño</CardTitle>
+            <HardDrive className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{formatBytes(overview?.totalSize ?? 0)}</div>
+            <p className="text-xs text-muted-foreground">
+              Espacio utilizado
+            </p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Active Engine Banner */}
-      <Card className="border-l-4 border-l-primary bg-primary/5">
-        <CardContent className="flex items-center justify-between py-4">
-          <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-primary/10 p-2">
-              <Server className="h-5 w-5 text-primary" />
-            </div>
-            <div>
-              <p className="text-sm font-medium">Motor Activo</p>
-              <p className="text-xs text-muted-foreground">
-                Todas las operaciones se realizan en {selectedDb === "sqlite" ? "SQLite" : "MongoDB"}
-              </p>
-            </div>
-          </div>
-          <Badge className="gap-2 bg-primary text-primary-foreground">
-            <Activity className="h-3 w-3" />
-            {selectedDb.toUpperCase()}
-          </Badge>
-        </CardContent>
-      </Card>
-
-      {/* Configuration Section */}
+      {/* Connection Configuration */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -492,328 +412,333 @@ export default function DatabasePage() {
             Configuración de Conexión
           </CardTitle>
           <CardDescription>
-            Configura las credenciales y rutas para cada motor de base de datos
+            Configura la URI y base de datos de MongoDB
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-6">
-          {/* MongoDB Config */}
-          <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              <Database className="h-4 w-4 text-emerald-600" />
-              <h3 className="font-semibold">MongoDB</h3>
-            </div>
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="mongoUri">URI de Conexión</Label>
-                <Input
-                  id="mongoUri"
-                  value={formValues.mongoUri}
-                  onChange={(e) =>
-                    setFormValues((prev) => ({ ...prev, mongoUri: e.target.value }))
-                  }
-                  placeholder="mongodb://usuario:pass@host:puerto"
-                  disabled={isLoadingConfig}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="mongoDb">Nombre de Base de Datos</Label>
-                <Input
-                  id="mongoDb"
-                  value={formValues.mongoDb}
-                  onChange={(e) =>
-                    setFormValues((prev) => ({ ...prev, mongoDb: e.target.value }))
-                  }
-                  placeholder="adminflow"
-                  disabled={isLoadingConfig}
-                />
-              </div>
-            </div>
-            <Button
-              onClick={() => handleVerifyConnection("mongodb")}
-              disabled={connectionStatus.mongodb.state === "pending"}
-              variant="outline"
-              size="sm"
-            >
-              {connectionStatus.mongodb.state === "pending" ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Verificando...
-                </>
-              ) : (
-                <>
-                  <CheckCircle className="mr-2 h-4 w-4" />
-                  Probar Conexión
-                </>
-              )}
-            </Button>
-          </div>
-
-          <Separator />
-
-          {/* SQLite Config */}
-          <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              <HardDrive className="h-4 w-4 text-blue-600" />
-              <h3 className="font-semibold">SQLite</h3>
-            </div>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="sqlitePath">Ruta del Archivo</Label>
+              <Label htmlFor="mongoUri">URI de Conexión</Label>
               <Input
-                id="sqlitePath"
-                value={formValues.sqlitePath}
-                onChange={(e) =>
-                  setFormValues((prev) => ({ ...prev, sqlitePath: e.target.value }))
-                }
-                placeholder="./database.db"
-                disabled={isLoadingConfig}
+                id="mongoUri"
+                value={mongoUri}
+                onChange={(e) => setMongoUri(e.target.value)}
+                placeholder="mongodb://usuario:pass@host:puerto"
               />
             </div>
-            <Button
-              onClick={() => handleVerifyConnection("sqlite")}
-              disabled={connectionStatus.sqlite.state === "pending"}
-              variant="outline"
-              size="sm"
-            >
-              {connectionStatus.sqlite.state === "pending" ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Verificando...
-                </>
-              ) : (
-                <>
-                  <CheckCircle className="mr-2 h-4 w-4" />
-                  Probar Conexión
-                </>
-              )}
-            </Button>
+            <div className="space-y-2">
+              <Label htmlFor="mongoDb">Nombre de Base de Datos</Label>
+              <Input
+                id="mongoDb"
+                value={mongoDb}
+                onChange={(e) => setMongoDb(e.target.value)}
+                placeholder="adminflow"
+              />
+            </div>
           </div>
-
-          <Separator />
-
-          <div className="flex justify-end">
-            <Button
-              onClick={handleSaveConfig}
-              disabled={actionLoading === "save-config" || isLoadingConfig}
-            >
-              {actionLoading === "save-config" ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Guardando...
-                </>
-              ) : (
-                "Guardar Configuración"
-              )}
-            </Button>
-          </div>
+          <Button
+            onClick={handleVerifyConnection}
+            disabled={connectionStatus.state === "pending"}
+            variant="outline"
+            size="sm"
+          >
+            {connectionStatus.state === "pending" ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Verificando...
+              </>
+            ) : (
+              <>
+                <CheckCircle className="mr-2 h-4 w-4" />
+                Probar Conexión
+              </>
+            )}
+          </Button>
         </CardContent>
       </Card>
 
-      {/* Actions Grid */}
-      <div className="grid gap-4 md:grid-cols-3">
-        {/* SQLite Actions */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <HardDrive className="h-4 w-4 text-blue-600" />
-              Acciones SQLite
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <Button
-              className="w-full"
-              variant="outline"
-              onClick={() => handleAction("sync", "sqlite")}
-              disabled={actionLoading === "sync-sqlite"}
-            >
-              {actionLoading === "sync-sqlite" ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Sincronizando...
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="mr-2 h-4 w-4" />
-                  Sincronizar
-                </>
-              )}
-            </Button>
-            <Button
-              variant="destructive"
-              className="w-full"
-              onClick={() => handleAction("reset", "sqlite")}
-              disabled={actionLoading === "reset-sqlite"}
-            >
-              {actionLoading === "reset-sqlite" ? "Reiniciando..." : "Recrear Tablas"}
-            </Button>
-          </CardContent>
-        </Card>
-
-        {/* MongoDB Actions */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Database className="h-4 w-4 text-emerald-600" />
-              Acciones MongoDB
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <Button
-              className="w-full"
-              variant="outline"
-              onClick={() => handleAction("sync", "mongodb")}
-              disabled={actionLoading === "sync-mongodb"}
-            >
-              {actionLoading === "sync-mongodb" ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Sincronizando...
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="mr-2 h-4 w-4" />
-                  Sincronizar
-                </>
-              )}
-            </Button>
-            <Button
-              variant="destructive"
-              className="w-full"
-              onClick={() => handleAction("reset", "mongodb")}
-              disabled={actionLoading === "reset-mongodb"}
-            >
-              {actionLoading === "reset-mongodb" ? "Reseteando..." : "Borrar Colecciones"}
-            </Button>
-          </CardContent>
-        </Card>
-
-        {/* Migration */}
-        <Card className="border-2 border-primary">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <GitCompareArrows className="h-4 w-4 text-primary" />
-              Migración
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Button
-              className="w-full"
-              onClick={handleMigrate}
-              disabled={actionLoading === "migrate"}
-            >
-              {actionLoading === "migrate" ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Migrando...
-                </>
-              ) : (
-                "SQLite → MongoDB"
-              )}
-            </Button>
-            <p className="mt-2 text-xs text-muted-foreground">
-              Migra todos los datos de SQLite a MongoDB
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Statistics Grid */}
-      <div className="grid gap-4 md:grid-cols-2">
-        {/* SQLite Tables */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <HardDrive className="h-5 w-5 text-blue-600" />
-              Tablas SQLite
-            </CardTitle>
-            <CardDescription>
-              {Object.keys(overview?.sqlite.tables ?? {}).length} tablas con {totalTables.toLocaleString("es-UY")} registros
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {Object.entries(overview?.sqlite.tables ?? {})
-              .sort(([, a], [, b]) => b - a)
-              .map(([table, count]) => (
-                <div
-                  key={table}
-                  className="flex items-center justify-between rounded-lg border bg-slate-50/50 px-3 py-2"
-                >
-                  <span className="font-medium">{table}</span>
-                  <Badge variant="secondary">{count.toLocaleString("es-UY")}</Badge>
-                </div>
-              ))}
-            {Object.keys(overview?.sqlite.tables ?? {}).length === 0 && (
-              <p className="text-center text-sm text-muted-foreground py-4">
-                No hay tablas disponibles
-              </p>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* MongoDB Collections */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Database className="h-5 w-5 text-emerald-600" />
-              Colecciones MongoDB
-            </CardTitle>
-            <CardDescription>
-              {totalCollections} colecciones con {totalDocuments.toLocaleString("es-UY")} documentos
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {overview?.mongo.error ? (
-              <p className="text-center text-sm text-rose-600 py-4">
-                Error: {overview.mongo.error}
-              </p>
+      {/* Actions */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Acciones Rápidas</CardTitle>
+          <CardDescription>
+            Operaciones de mantenimiento y respaldo
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-wrap gap-2">
+          <Button
+            onClick={handleCreateBackup}
+            disabled={actionLoading === "backup"}
+            variant="outline"
+          >
+            {actionLoading === "backup" ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Creando...
+              </>
             ) : (
               <>
-                {overview?.mongo.collections
-                  ?.sort((a, b) => b.count - a.count)
-                  .map((collection) => (
-                    <div
-                      key={collection.name}
-                      className="flex items-center justify-between rounded-lg border bg-emerald-50/50 px-3 py-2"
-                    >
-                      <span className="font-medium">{collection.name}</span>
-                      <Badge variant="secondary">{collection.count.toLocaleString("es-UY")}</Badge>
-                    </div>
-                  ))}
-                {totalCollections === 0 && !overview?.mongo.error && (
-                  <p className="text-center text-sm text-muted-foreground py-4">
-                    No hay colecciones disponibles
-                  </p>
-                )}
+                <Download className="mr-2 h-4 w-4" />
+                Crear Respaldo
               </>
             )}
-          </CardContent>
-        </Card>
-      </div>
+          </Button>
+        </CardContent>
+      </Card>
 
-      {/* Last Update Info */}
+      {/* Collections List */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Database className="h-5 w-5 text-emerald-600" />
+            Colecciones MongoDB
+          </CardTitle>
+          <CardDescription>
+            {overview?.collections?.length ?? 0} colecciones con {totalDocuments.toLocaleString("es-UY")} documentos
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {overview?.error ? (
+            <p className="text-center text-sm text-rose-600 py-4">
+              Error: {overview.error}
+            </p>
+          ) : (
+            <>
+              {overview?.collections
+                ?.sort((a, b) => b.count - a.count)
+                .map((collection) => (
+                  <div
+                    key={collection.name}
+                    className="flex items-center justify-between rounded-lg border bg-emerald-50/50 px-4 py-3 hover:bg-emerald-100/50 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Database className="h-4 w-4 text-emerald-600" />
+                      <div>
+                        <span className="font-medium">{collection.name}</span>
+                        <p className="text-xs text-muted-foreground">
+                          {formatBytes(collection.size)}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="secondary">
+                        {collection.count.toLocaleString("es-UY")} docs
+                      </Badge>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleExportCollection(collection.name)}
+                        disabled={actionLoading === `export-${collection.name}`}
+                        title="Exportar colección"
+                      >
+                        {actionLoading === `export-${collection.name}` ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Download className="h-4 w-4" />
+                        )}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleDropCollection(collection.name)}
+                        disabled={actionLoading === `drop-${collection.name}`}
+                        title="Eliminar colección"
+                        className="text-destructive hover:text-destructive"
+                      >
+                        {actionLoading === `drop-${collection.name}` ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              {!overview?.collections?.length && !overview?.error && (
+                <p className="text-center text-sm text-muted-foreground py-4">
+                  No hay colecciones disponibles
+                </p>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Backups Section */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <HardDrive className="h-5 w-5 text-blue-600" />
+                Respaldos de MongoDB
+              </CardTitle>
+              <CardDescription>
+                Gestiona los respaldos completos de tu base de datos
+              </CardDescription>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                onClick={handleCreateBackup}
+                disabled={actionLoading === "backup"}
+                variant="outline"
+              >
+                {actionLoading === "backup" ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Creando...
+                  </>
+                ) : (
+                  <>
+                    <Download className="mr-2 h-4 w-4" />
+                    Crear Respaldo
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {backups.length > 0 ? (
+            <div className="space-y-2">
+              {backups.map((backup) => (
+                <div
+                  key={backup.name}
+                  className="flex items-center justify-between rounded-lg border bg-blue-50/50 px-4 py-3 hover:bg-blue-100/50 transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <Database className="h-4 w-4 text-blue-600" />
+                    <div>
+                      <span className="font-medium">{backup.name}</span>
+                      <p className="text-xs text-muted-foreground">
+                        {new Date(backup.createdAt).toLocaleString("es-UY")}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleDownloadBackup(backup.name)}
+                      disabled={actionLoading === `download-${backup.name}`}
+                      title="Descargar respaldo"
+                    >
+                      {actionLoading === `download-${backup.name}` ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Download className="h-4 w-4" />
+                      )}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        setSelectedBackup(backup);
+                        setShowRestoreModal(true);
+                      }}
+                      title="Restaurar respaldo"
+                      className="text-amber-600 hover:text-amber-700"
+                    >
+                      <RotateCcw className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-center text-sm text-muted-foreground py-4">
+              No hay respaldos disponibles
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Last Update */}
       <Card className="bg-slate-50/50">
         <CardContent className="flex items-center justify-between py-3">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Clock className="h-4 w-4" />
-            <span>Última actualización: {new Date().toLocaleString("es-UY")}</span>
+            <span>Última actualización: {lastUpdate.toLocaleString("es-UY")}</span>
           </div>
           <Badge variant="outline" className="gap-1">
             <Activity className="h-3 w-3" />
-            Auto-refresh: 30s
+            MongoDB
           </Badge>
         </CardContent>
       </Card>
+
+      {/* Restore Backup Modal */}
+      <Dialog open={showRestoreModal} onOpenChange={setShowRestoreModal}>
+        <DialogContent className="sm:max-w-md">
+          <div className="absolute inset-0 bg-background/80 backdrop-blur-sm" />
+          <div className="relative">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <div className="p-2 rounded-lg bg-amber-100">
+                  <AlertTriangle className="h-5 w-5 text-amber-600" />
+                </div>
+                Restaurar Respaldo
+              </DialogTitle>
+              <DialogDescription>
+                Esta acción reemplazará todos los datos actuales
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-4">
+              <div className="space-y-4">
+                <div className="p-4 rounded-lg bg-amber-50 border border-amber-200">
+                  <p className="text-sm font-medium text-amber-900 mb-2">
+                    ⚠️ Advertencia: Esta acción no se puede deshacer
+                  </p>
+                  {selectedBackup && (
+                    <div className="space-y-1">
+                      <p className="text-sm text-muted-foreground">
+                        <span className="font-medium">Respaldo:</span> {selectedBackup.name}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        <span className="font-medium">Fecha:</span>{" "}
+                        {new Date(selectedBackup.createdAt).toLocaleString("es-UY")}
+                      </p>
+                    </div>
+                  )}
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Se restaurarán todas las colecciones y documentos del respaldo seleccionado.
+                  Los datos actuales serán reemplazados.
+                </p>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowRestoreModal(false);
+                  setSelectedBackup(null);
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button
+                variant="default"
+                onClick={handleRestoreBackup}
+                disabled={actionLoading === "restore"}
+                className="bg-amber-600 hover:bg-amber-700"
+              >
+                {actionLoading === "restore" ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Restaurando...
+                  </>
+                ) : (
+                  <>
+                    <RotateCcw className="mr-2 h-4 w-4" />
+                    Restaurar
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
-
-const formatBytes = (bytes: number) => {
-  if (bytes < 1024) return `${bytes} B`;
-  const units = ["KB", "MB", "GB", "TB"];
-  let index = -1;
-  let value = bytes;
-  do {
-    value /= 1024;
-    index += 1;
-  } while (value >= 1024 && index < units.length - 1);
-  return `${value.toFixed(1)} ${units[index]}`;
-};
