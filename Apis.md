@@ -22,7 +22,138 @@ Todas las llamadas devuelven JSON. Si se envÃ­a cuerpo, use `Content-Type: app
 Devuelve la cola de usuarios sincronizados en Mongo (`_id`, `sqliteId`, `email`, `roles`, `metadata`, `createdAt`, `updatedAt`). Retorna `503` si Mongo no estÃ¡ conectado.
 
 ### `PATCH /api/users/registered/:id`
-Actualiza roles/metadata/email de un registro existente (puede suministrarse `_id` de Mongo o `sqliteId`). El cuerpo debe ser un objeto con alguno de los campos; se registra en `sync_events`.
+Actualiza roles/metadata/groupId o cualquier campo de un usuario sincronizado. Puedes pasar el `_id` de Mongo o el `sqliteId` heredado; si el documento Mongo no existe se sincroniza automáticamente a partir del usuario en SQLite antes de aplicar los cambios.
+
+**Body:** (Parcial, solo los campos a actualizar)
+```json
+{
+  "roles": ["admin", "support"],
+  "groupId": "507f1f77bcf86cd799439011",
+  "metadata": {
+    "phone": "+598 99 123 456",
+    "department": "IT"
+  }
+}
+```
+
+**Campos actualizables:**
+- `roles`: Array de roles del usuario
+- `groupId`: ID del grupo al que pertenece el usuario (referencia a `/api/groups`)
+- `metadata`: Objeto con información adicional del usuario
+- `avatar`: URL del avatar del usuario
+
+**Respuesta:** El usuario actualizado completo
+
+**Errores:**
+- `400`: No se proporcionó ningún campo para actualizar
+- `404`: Usuario no encontrado en MongoDB o SQLite
+- `500`: Error al actualizar
+- `503`: MongoDB no está conectado
+
+### `DELETE /api/users/:id`
+Elimina el usuario indicado. Primero intenta borrarlo en Mongo; si no se encuentra, borra el registro original en SQLite usando el `sqliteId`. Siempre retorna el mensaje de eliminación exitosa si el usuario existía en cualquiera de los motores.
+
+### `PATCH /api/users/:id/password`
+Actualiza la contraseña de un usuario existente (`_id` o `sqliteId`). Hashea la nueva contraseña y la guarda en Mongo o, si el documento no existe, en SQLite. Requiere `{ newPassword }` con al menos 8 caracteres.
+
+---
+
+## Grupos de Usuarios (MongoDB)
+
+Administra grupos/equipos de usuarios en MongoDB. Los grupos permiten organizar usuarios en equipos de trabajo (Administración, Soporte, Instaladores, etc.) y asignar tickets a grupos completos.
+
+**Grupos por Defecto:**
+- `administracion`: Equipo interno responsable de la coordinación general
+- `soporte`: Grupo de respaldo para incidentes y asistencia técnica
+- `instaladores`: Equipo de instalación y despliegues en sitio
+
+### `GET /api/groups`
+Devuelve todos los grupos registrados.
+
+**Respuesta:**
+```json
+[
+  {
+    "_id": "507f1f77bcf86cd799439011",
+    "id": "507f1f77bcf86cd799439011",
+    "name": "Soporte",
+    "slug": "soporte",
+    "description": "Grupo de respaldo para incidentes y asistencia técnica",
+    "members": [],
+    "createdAt": "2025-12-01T10:00:00.000Z",
+    "updatedAt": "2025-12-01T10:00:00.000Z"
+  }
+]
+```
+
+**Errores:**
+- `503`: MongoDB no está disponible
+- `500`: Error al cargar los grupos
+
+### `POST /api/groups`
+Crea un nuevo grupo.
+
+**Body:**
+```json
+{
+  "name": "Ventas",
+  "slug": "ventas",
+  "description": "Equipo de ventas y atención comercial"
+}
+```
+
+**Validaciones:**
+- `name` (requerido): Nombre del grupo
+- `slug` (opcional): Identificador único (se genera automáticamente desde `name` si se omite)
+- `description` (opcional): Descripción del grupo
+
+**Respuesta:** `201` con el grupo creado
+
+**Errores:**
+- `400`: Nombre requerido
+- `500`: Error al crear (ej: slug duplicado)
+- `503`: MongoDB no está conectado
+
+### `PATCH /api/groups/:id`
+Actualiza un grupo existente.
+
+**Parámetros:**
+- `id`: `_id` del grupo en MongoDB
+
+**Body:** (Parcial, solo los campos a actualizar)
+```json
+{
+  "name": "Soporte Técnico",
+  "description": "Equipo de soporte técnico especializado"
+}
+```
+
+**Respuesta:** El grupo actualizado completo
+
+**Errores:**
+- `404`: Grupo no encontrado
+- `500`: Error al actualizar (ej: slug duplicado)
+- `503`: MongoDB no está conectado
+
+### `DELETE /api/groups/:id`
+Elimina un grupo permanentemente.
+
+**Parámetros:**
+- `id`: `_id` del grupo en MongoDB
+
+**Respuesta:**
+```json
+{
+  "message": "Grupo eliminado."
+}
+```
+
+**Errores:**
+- `404`: Grupo no encontrado
+- `500`: Error al eliminar
+- `503`: MongoDB no está conectado
+
+**Nota:** Al eliminar un grupo, los usuarios asignados a ese grupo no se eliminan, solo se desvinculan del grupo.
 
 ---
 
@@ -75,6 +206,202 @@ Simula una exportaciÃ³n serializada a JSON (`engine` debe ser `mongodb` o `sql
 
 ### `POST /api/db/migrate-to-mongo`
 Replica SQLite en Mongo borrando las colecciones antes de insertar (`dropExisting: true`). Devuelve el resumen de cada tabla.
+
+---
+
+## Gestión de Base de Datos
+
+### `GET /api/database/overview`
+Obtiene un resumen completo de la base de datos MongoDB activa.
+
+**Respuesta:**
+```json
+{
+  "collections": [
+    {
+      "name": "clients",
+      "count": 150,
+      "size": 524288
+    }
+  ],
+  "totalSize": 5242880,
+  "dbName": "adminflow",
+  "mongoUri": "mongodb://localhost:27017",
+  "connected": true
+}
+```
+
+### `POST /api/database/verify`
+Verifica la conexión a MongoDB con los parámetros proporcionados.
+
+**Body:**
+```json
+{
+  "mongoUri": "mongodb://localhost:27017",
+  "mongoDb": "adminflow"
+}
+```
+
+**Respuesta:**
+```json
+{
+  "success": true,
+  "message": "Conexión exitosa a MongoDB",
+  "info": "Conectado a adminflow"
+}
+```
+
+### `GET /api/database/export/:collection`
+Exporta una colección completa como archivo JSON descargable.
+
+**Parámetros:**
+- `collection`: Nombre de la colección a exportar
+
+**Respuesta:** Archivo JSON con todos los documentos de la colección.
+
+### `DELETE /api/database/collections/:collection`
+Elimina una colección completa de la base de datos.
+
+**Parámetros:**
+- `collection`: Nombre de la colección a eliminar
+
+**Respuesta:**
+```json
+{
+  "success": true,
+  "message": "Colección clients eliminada correctamente"
+}
+```
+
+### `GET /api/database/collections/:collection/documents`
+Obtiene documentos de una colección con paginación.
+
+**Parámetros:**
+- `collection`: Nombre de la colección
+- `page` (query): Número de página (default: 1)
+- `limit` (query): Documentos por página (default: 20)
+
+**Respuesta:**
+```json
+{
+  "documents": [...],
+  "pagination": {
+    "page": 1,
+    "limit": 20,
+    "total": 150,
+    "totalPages": 8
+  }
+}
+```
+
+---
+
+## Respaldos (Backups)
+
+### `GET /api/system/backups`
+Lista todos los respaldos disponibles en el servidor.
+
+**Respuesta:**
+```json
+[
+  {
+    "name": "adminflow_2025-12-01T10-30-00-000Z",
+    "createdAt": "2025-12-01T10:30:00.000Z",
+    "size": 5242880
+  }
+]
+```
+
+### `POST /api/system/backups`
+Crea un nuevo respaldo completo de la base de datos MongoDB.
+
+**Nota:** Solo respalda la base de datos específica configurada en `.selected-db.json`, no todas las bases de datos del servidor MongoDB.
+
+**Respuesta:**
+```json
+{
+  "success": true,
+  "backupName": "adminflow_2025-12-01T10-30-00-000Z",
+  "path": "/path/to/backup",
+  "timestamp": "2025-12-01T10:30:00.000Z"
+}
+```
+
+### `GET /api/system/backups/:backupName/download`
+Descarga un respaldo como archivo `.tar.gz`.
+
+**Parámetros:**
+- `backupName`: Nombre del respaldo a descargar
+
+**Respuesta:** Archivo `.tar.gz` con el respaldo completo.
+
+### `POST /api/system/backups/restore`
+Restaura la base de datos desde un respaldo local existente.
+
+**Body:**
+```json
+{
+  "backupName": "adminflow_2025-12-01T10-30-00-000Z"
+}
+```
+
+**Respuesta:**
+```json
+{
+  "success": true,
+  "message": "Restauración completada"
+}
+```
+
+### `POST /api/system/backups/analyze`
+Analiza un archivo de respaldo subido para ver su contenido antes de restaurar.
+
+**Body:** `multipart/form-data` con campo `backup` (archivo `.tar.gz`)
+
+**Respuesta:**
+```json
+{
+  "collections": [
+    {
+      "name": "clients",
+      "size": 524288
+    }
+  ],
+  "totalSize": 5242880,
+  "backupId": "temp_backup_id"
+}
+```
+
+### `POST /api/system/backups/restore-upload`
+Restaura la base de datos desde un archivo de respaldo previamente analizado.
+
+**Body:**
+```json
+{
+  "backupId": "temp_backup_id"
+}
+```
+
+**Respuesta:**
+```json
+{
+  "success": true,
+  "message": "Restauración completada exitosamente"
+}
+```
+
+### `DELETE /api/system/backups/:backupName`
+Elimina un respaldo del servidor.
+
+**Parámetros:**
+- `backupName`: Nombre del respaldo a eliminar
+
+**Respuesta:**
+```json
+{
+  "message": "Backup deleted successfully"
+}
+```
 
 ---
 

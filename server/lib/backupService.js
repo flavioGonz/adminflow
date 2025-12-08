@@ -1,9 +1,10 @@
-const { exec } = require('child_process');
+const { exec, execFile } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const { promisify } = require('util');
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 const readdir = promisify(fs.readdir);
 const stat = promisify(fs.stat);
 
@@ -16,6 +17,11 @@ const MONGORESTORE_PATH = path.join(TOOLS_DIR, 'mongorestore.exe');
 const getToolPath = (tool) => {
     const bundledPath = tool === 'mongodump' ? MONGODUMP_PATH : MONGORESTORE_PATH;
     return fs.existsSync(bundledPath) ? `"${bundledPath}"` : tool;
+};
+
+const getToolExecutable = (tool) => {
+    const bundledPath = tool === 'mongodump' ? MONGODUMP_PATH : MONGORESTORE_PATH;
+    return fs.existsSync(bundledPath) ? bundledPath : tool;
 };
 
 const BACKUP_ROOT = path.resolve(__dirname, '..', 'backup');
@@ -43,15 +49,18 @@ const createBackup = async () => {
     const backupName = `${mongoDb}_${timestamp}`;
     const backupDir = path.join(BACKUP_ROOT, backupName);
 
-    // Create command
-    // mongodump --uri="mongodb://..." --out="backup/dir"
-    const dumpCmd = getToolPath('mongodump');
-    const command = `${dumpCmd} --uri="${mongoUri}" --out="${backupDir}"`;
+    // Use execFile to avoid shell quoting issues
+    const dumpExe = getToolExecutable('mongodump');
+    const args = [
+        `--uri=${mongoUri}`,
+        `--db=${mongoDb}`, // Only backup the specific database
+        `--out=${backupDir}`
+    ];
 
-    console.log(`Starting backup: ${command}`);
+    console.log(`Starting backup: ${dumpExe} ${args.join(' ')}`);
 
     try {
-        const { stdout, stderr } = await execAsync(command);
+        const { stdout, stderr } = await execFileAsync(dumpExe, args);
         console.log('Backup stdout:', stdout);
         if (stderr) console.warn('Backup stderr:', stderr);
 
@@ -87,6 +96,7 @@ const listBackups = async () => {
         // Sort by date desc
         return backups.sort((a, b) => b.createdAt - a.createdAt);
     } catch (error) {
+        console.error('Error in listBackups:', error);
         throw new Error(`Error al listar respaldos: ${error.message}`);
     }
 };
@@ -102,30 +112,20 @@ const restoreBackup = async (backupName) => {
         throw new Error(`El respaldo ${backupName} no existe`);
     }
 
-    // The backup structure is usually backupDir/dbName/...
-    // We want to restore specifically that database.
-    // mongorestore --uri="..." --drop "backupDir/dbName"
+    const restoreExe = getToolExecutable('mongorestore');
 
-    // Check if the db subdirectory exists
-    const dbDumpDir = path.join(backupDir, mongoDb);
-    const targetDir = fs.existsSync(dbDumpDir) ? dbDumpDir : backupDir;
+    // Use execFile arguments
+    const args = [
+        `--uri=${mongoUri}`,
+        '--drop',
+        `--nsInclude=${mongoDb}.*`,
+        backupDir
+    ];
 
-    const restoreCmd = getToolPath('mongorestore');
-    // --drop ensures we overwrite existing data
-    // --nsInclude=${mongoDb}.* ensures we only restore this db's data if we point to a root dir
-
-    // If we point directly to the dump of the DB (dbDumpDir), mongorestore usually infers the DB name from the folder name 
-    // OR we can force it with --nsInclude.
-
-    // Safest approach:
-    // mongorestore --uri="URI" --drop --nsInclude="DBNAME.*" "PATH_TO_DUMP"
-
-    const command = `${restoreCmd} --uri="${mongoUri}" --drop --nsInclude="${mongoDb}.*" "${backupDir}"`;
-
-    console.log(`Starting restore: ${command}`);
+    console.log(`Starting restore: ${restoreExe} ${args.join(' ')}`);
 
     try {
-        const { stdout, stderr } = await execAsync(command);
+        const { stdout, stderr } = await execFileAsync(restoreExe, args);
         console.log('Restore stdout:', stdout);
         if (stderr) console.warn('Restore stderr:', stderr);
 

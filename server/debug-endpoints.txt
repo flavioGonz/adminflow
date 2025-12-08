@@ -1,0 +1,59 @@
+// Endpoint temporal de debug - añadir al final de index.js antes de app.listen()
+
+app.get('/api/debug/users', async (req, res) => {
+  try {
+    const mongoDb = getMongoDb();
+    if (!mongoDb) {
+      return res.status(503).json({ message: 'MongoDB no conectado' });
+    }
+    
+    const users = await mongoDb.collection('users').find({}).toArray();
+    const usersDebug = users.map(u => ({
+      _id: u._id,
+      _id_type: typeof u._id,
+      _id_string: u._id?.toString(),
+      email: u.email,
+      name: u.name
+    }));
+    
+    res.json(usersDebug);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.patch('/api/debug/users/:id', async (req, res) => {
+  try {
+    const mongoDb = getMongoDb();
+    if (!mongoDb) {
+      return res.status(503).json({ message: 'MongoDB no conectado' });
+    }
+    
+    const identifier = req.params.id;
+    const numericId = Number(identifier);
+    
+    let filter;
+    if (!isNaN(numericId) && identifier.toString() === numericId.toString()) {
+      filter = { _id: numericId };
+    } else if (identifier.length === 24) {
+      const { ObjectId } = require('mongodb');
+      filter = { _id: new ObjectId(identifier) };
+    } else {
+      filter = { _id: identifier };
+    }
+    
+    const result = await mongoDb.collection('users').findOneAndUpdate(
+      filter,
+      { $set: { testUpdate: new Date(), ...req.body } },
+      { returnDocument: 'after' }
+    );
+    
+    res.json({
+      filter,
+      found: !!result.value,
+      user: result.value
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});

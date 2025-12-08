@@ -6,36 +6,45 @@ import { CreateClientDialog } from "@/components/clients/create-client-dialog";
 import { ImportClientsDialog } from "@/components/clients/import-clients-dialog";
 import { API_URL } from "@/lib/http";
 import { ShinyText } from "@/components/ui/shiny-text";
+import { PageTransition } from "@/components/ui/page-transition";
 import { Users } from "lucide-react";
-
-interface Client {
-  id: string;
-  name: string;
-  alias?: string;
-  rut?: string;
-  email: string;
-  phone?: string;
-  address?: string;
-  contract?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-}
+import { Client } from "@/types/client";
 
 export default function ClientsPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchClients = useCallback(async () => {
+  const loadClients = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`${API_URL}/clients`);
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+      const clientsResponse = await fetch(`${API_URL}/clients`);
+      if (!clientsResponse.ok) {
+        throw new Error(`HTTP error! status: ${clientsResponse.status}`);
       }
-      const data = await response.json();
-      setClients(data);
+      const clientsData: Client[] = await clientsResponse.json();
+
+      let implementationIds: string[] = [];
+      try {
+        const indicatorRes = await fetch(`${API_URL}/clients/implementation-indicators`);
+        if (indicatorRes.ok) {
+          implementationIds = await indicatorRes.json();
+        } else {
+          console.warn("No se pudieron cargar los indicadores de implementación:", indicatorRes.statusText);
+        }
+      } catch (indicatorError) {
+        console.error("Error fetching implementation indicators:", indicatorError);
+      }
+
+      const indicatorSet = new Set(implementationIds.map((id) => String(id)));
+      const enrichedClients = clientsData.map((client) => ({
+        ...client,
+        hasImplementation:
+          indicatorSet.has(String(client.id)) || Boolean(client.hasImplementation),
+      }));
+
+      setClients(enrichedClients);
     } catch (err: any) {
       setError(err.message || "Failed to fetch clients.");
       console.error("Error fetching clients:", err);
@@ -45,24 +54,24 @@ export default function ClientsPage() {
   }, []);
 
   useEffect(() => {
-    fetchClients();
-  }, [fetchClients]);
+    loadClients();
+  }, [loadClients]);
 
   const handleClientCreated = () => {
-    fetchClients();
+    loadClients();
   };
 
   const handleClientUpdated = () => {
-    fetchClients();
+    loadClients();
   };
 
   const handleClientDeleted = () => {
-    fetchClients();
+    loadClients();
   };
 
   const handleImportComplete = () => {
     console.log("Importación de clientes completada. Refrescando lista...");
-    fetchClients();
+    loadClients();
   };
 
   if (loading) {
@@ -74,27 +83,29 @@ export default function ClientsPage() {
   }
 
   return (
-    <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-gradient-to-br from-emerald-500 to-green-600">
-            <Users className="h-6 w-6 text-white" />
-          </div>
-          <div>
-            <h1 className="text-3xl font-bold">
-              <ShinyText size="3xl" weight="bold">Clientes</ShinyText>
-            </h1>
-            <p className="text-sm text-muted-foreground">Gestiona tu cartera de clientes</p>
+    <PageTransition>
+      <div className="p-6">
+        <div className="flex justify-between items-center mb-6">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-gradient-to-br from-emerald-500 to-green-600">
+              <Users className="h-6 w-6 text-white" />
+            </div>
+            <div>
+              <h1 className="text-3xl font-bold">
+                <ShinyText size="3xl" weight="bold">Clientes</ShinyText>
+              </h1>
+              <p className="text-sm text-muted-foreground">Gestiona tu cartera de clientes</p>
+            </div>
           </div>
         </div>
+        <ClientTable
+          clients={clients}
+          onClientCreated={handleClientCreated}
+          onClientUpdated={handleClientUpdated}
+          onClientDeleted={handleClientDeleted}
+          onImportComplete={handleImportComplete}
+        />
       </div>
-      <ClientTable
-        clients={clients}
-        onClientCreated={handleClientCreated}
-        onClientUpdated={handleClientUpdated}
-        onClientDeleted={handleClientDeleted}
-        onImportComplete={handleImportComplete}
-      />
-    </div>
+    </PageTransition>
   );
 }

@@ -172,6 +172,10 @@ async function createIndexes(db, collectionName) {
             { key: { start: 1 } },
             { key: { sourceType: 1, sourceId: 1 } }
         ],
+        groups: [
+            { key: { slug: 1 }, unique: true },
+            { key: { name: 1 } },
+        ],
         notifications: [
             { key: { event: 1 } },
             { key: { createdAt: -1 } }

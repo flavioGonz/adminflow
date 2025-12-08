@@ -209,6 +209,7 @@ interface Client {
   email: string;
   phone?: string;
   address?: string;
+  avatarUrl?: string;
   contract?: boolean;
   latitude?: number;
   longitude?: number;
@@ -670,7 +671,7 @@ export default function ClientDetailPage() {
       title: "Implementaciones",
       description: "Proyectos e implementaciones del cliente",
       icon: Rocket,
-      onClick: () => toast.info("Implementaciones - Próximamente"),
+      href: `/clients/${client.id}/implementation`,
       accent: "from-purple-50 to-pink-50",
     },
   ];

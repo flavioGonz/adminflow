@@ -1,1 +1,0 @@
-{"indexes":[{"v":{"$numberInt":"2"},"key":{"_id":{"$numberInt":"1"}},"name":"_id_"},{"v":{"$numberInt":"2"},"key":{"deviceId":{"$numberInt":"1"}},"name":"deviceId_1","background":true},{"v":{"$numberInt":"2"},"key":{"state":{"$numberInt":"1"}},"name":"state_1","background":true}],"uuid":"fda8353b4f1149aa83e3775c0781ee6e","collectionName":"devicecommands","type":"collection"}

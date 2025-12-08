@@ -4,6 +4,9 @@
 const fs = require('fs');
 const path = require('path');
 const { initDB } = require('../db');
+const { ensureTicketSchema } = require('./ticketSchema');
+const { ensureBudgetSchema } = require('./budgetSchema');
+const { ensureDefaultGroups } = require('./groupService');
 
 const INSTALL_LOCK_FILE = path.join(__dirname, '../.installed');
 
@@ -62,6 +65,27 @@ async function startServer(app, PORT) {
         console.log('✅ Base de datos inicializada');
     } catch (dbError) {
         console.error('❌ Error inicializando base de datos:', dbError);
+    }
+
+    try {
+        await ensureTicketSchema();
+        console.log('╨Yo. Esquema de tickets asegurado');
+    } catch (schemaError) {
+        console.error('╨?O Error asegurando la columna assigned_group en tickets:', schemaError);
+    }
+
+    try {
+        await ensureBudgetSchema();
+        console.log('╨Yo. Esquema de presupuestos asegurado');
+    } catch (schemaError) {
+        console.error('╨?O Error asegurando el esquema de presupuestos:', schemaError);
+    }
+
+    try {
+        await ensureDefaultGroups();
+        console.log('╨Yo. Grupos predeterminados verificados');
+    } catch (groupError) {
+        console.error('╨?O Error asegurando los grupos predeterminados:', groupError);
     }
 
     // Determinar motor de BD

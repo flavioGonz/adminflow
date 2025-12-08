@@ -1,4 +1,4 @@
-export type PaymentStatus = "Pendiente" | "A confirmar" | "Pagado";
+export type PaymentStatus = "Pendiente" | "Enviado" | "A confirmar" | "Emitir Factura" | "Pagado";
 
 export type Currency = "UYU" | "USD";
 

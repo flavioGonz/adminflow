@@ -12,6 +12,8 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import {
     AlertTriangle,
@@ -21,6 +23,7 @@ import {
     FileUp,
     HardDrive,
     Loader2,
+    RefreshCw,
     Upload,
     X,
 } from "lucide-react";
@@ -50,6 +53,7 @@ export function ImportBackupDialog({
     const [uploadProgress, setUploadProgress] = useState(0);
     const [backupStats, setBackupStats] = useState<any>(null);
     const [backupId, setBackupId] = useState<string | null>(null);
+    const [confirmed, setConfirmed] = useState(false);
 
     const onDrop = useCallback((acceptedFiles: File[]) => {
         if (acceptedFiles.length > 0) {
@@ -109,7 +113,7 @@ export function ImportBackupDialog({
     };
 
     const handleRestore = async () => {
-        if (!backupId) return;
+        if (!backupId || !confirmed) return;
 
         setStep("restoring");
         try {
@@ -143,6 +147,7 @@ export function ImportBackupDialog({
         setUploadProgress(0);
         setBackupStats(null);
         setBackupId(null);
+        setConfirmed(false);
     };
 
     const formatBytes = (bytes: number) => {
@@ -294,15 +299,31 @@ export function ImportBackupDialog({
                                 </ResponsiveContainer>
                             </div>
 
-                            <div className="p-4 rounded-lg bg-amber-50 border border-amber-200 flex gap-3">
-                                <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0" />
-                                <div className="space-y-1">
-                                    <p className="text-sm font-medium text-amber-900">
-                                        Advertencia de Sobrescritura
-                                    </p>
-                                    <p className="text-xs text-amber-700">
-                                        Al confirmar, la base de datos actual será reemplazada completamente por el contenido del respaldo. Esta acción es irreversible.
-                                    </p>
+                            <div className="p-4 rounded-lg bg-amber-50 border border-amber-200 space-y-3">
+                                <div className="flex gap-3">
+                                    <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0" />
+                                    <div className="space-y-1">
+                                        <p className="text-sm font-medium text-amber-900">
+                                            Advertencia de Sobrescritura
+                                        </p>
+                                        <p className="text-xs text-amber-700">
+                                            Al confirmar, la base de datos actual será reemplazada completamente por el contenido del respaldo. Esta acción es irreversible.
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center space-x-2 pt-2">
+                                    <Checkbox
+                                        id="confirm-overwrite"
+                                        checked={confirmed}
+                                        onCheckedChange={(c) => setConfirmed(!!c)}
+                                        className="border-amber-400 text-amber-600 focus:ring-amber-500"
+                                    />
+                                    <Label
+                                        htmlFor="confirm-overwrite"
+                                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 text-amber-900"
+                                    >
+                                        Entiendo y quiero sobrescribir los datos
+                                    </Label>
                                 </div>
                             </div>
                         </div>
@@ -362,7 +383,14 @@ export function ImportBackupDialog({
                                 <X className="mr-2 h-4 w-4" />
                                 Cancelar
                             </Button>
-                            <Button onClick={handleRestore} className="bg-amber-600 hover:bg-amber-700 text-white">
+                            <Button
+                                onClick={handleRestore}
+                                disabled={!confirmed}
+                                className={cn(
+                                    "text-white transition-colors",
+                                    confirmed ? "bg-amber-600 hover:bg-amber-700" : "bg-slate-300 cursor-not-allowed"
+                                )}
+                            >
                                 Confirmar e Importar
                             </Button>
                         </>

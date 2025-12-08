@@ -159,4 +159,39 @@ router.delete('/collections/:collection', async (req, res) => {
     }
 });
 
+// Get documents from collection (paginated)
+router.get('/collections/:collection/documents', async (req, res) => {
+    const { collection } = req.params;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const skip = (page - 1) * limit;
+
+    try {
+        const mongoDb = getMongoDb();
+        if (!mongoDb) {
+            return res.status(503).json({ message: 'MongoDB no está conectado' });
+        }
+
+        const total = await mongoDb.collection(collection).countDocuments();
+        const documents = await mongoDb.collection(collection)
+            .find({})
+            .skip(skip)
+            .limit(limit)
+            .toArray();
+
+        res.json({
+            documents,
+            pagination: {
+                page,
+                limit,
+                total,
+                totalPages: Math.ceil(total / limit)
+            }
+        });
+    } catch (error) {
+        console.error(`Error getting documents for ${collection}:`, error);
+        res.status(500).json({ message: 'Error al obtener documentos', error: error.message });
+    }
+});
+
 module.exports = router;

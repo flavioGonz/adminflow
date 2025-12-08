@@ -1,7 +1,7 @@
 "use client";
 
 import { DateSelectArg, EventChangeArg, EventClickArg } from "@fullcalendar/core";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import DashboardLayout from "@/components/layout/dashboard-layout";
 import FullCalendar from "@fullcalendar/react";
 import interactionPlugin from "@fullcalendar/interaction";
@@ -24,10 +24,33 @@ import {
 // Shadcn Combobox for client selection
 import { Combobox } from "@/components/ui/combobox";
 import { useToast } from "@/hooks/use-toast";
-import { User2 } from "lucide-react";
-import { CalendarPlus, CircleDollarSign, Clock4, Edit3, FileBadge2, Lock, MapPin, Save, Ticket, Trash2, X, Calendar, ArrowRight } from "lucide-react";
+import {
+  CalendarPlus,
+  CircleDollarSign,
+  Clock4,
+  Edit3,
+  FileBadge2,
+  Lock,
+  MapPin,
+  Save,
+  Ticket,
+  Trash2,
+  X,
+  Calendar,
+  ArrowRight,
+  Maximize2,
+  Minimize2,
+  User2,
+  Users
+} from "lucide-react";
 import { ShinyText } from "@/components/ui/shiny-text";
 import { useRouter } from "next/navigation";
+import { Switch } from "@/components/ui/switch";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Badge } from "@/components/ui/badge";
+import { listUsers } from "@/lib/api-users-v2";
+import { User } from "@/types/user";
 
 type CalendarEvent = {
   id: string;
@@ -38,6 +61,8 @@ type CalendarEvent = {
   sourceType?: "ticket" | "payment" | "contract" | "manual" | string;
   sourceId?: string | null;
   clientId?: string | null;
+  assignedTo?: string | null;
+  assignedGroup?: string | null;
   locked?: boolean;
   createdAt?: string;
   updatedAt?: string;
@@ -50,6 +75,12 @@ type DraftEvent = {
   end: string;
 };
 
+type Group = {
+  _id: string;
+  name: string;
+  slug: string;
+};
+
 const mapEventRow = (row: any): CalendarEvent => ({
   id: String(row.id),
   title: row.title,
@@ -59,6 +90,8 @@ const mapEventRow = (row: any): CalendarEvent => ({
   sourceType: row.sourceType ?? row.source_type ?? "manual",
   sourceId: row.sourceId ?? row.source_id ?? null,
   clientId: row.clientId ?? row.client_id ?? null,
+  assignedTo: row.assignedTo ?? row.ticket_assigned_to ?? null,
+  assignedGroup: row.assignedGroup ?? row.ticket_assigned_group ?? null,
   locked: Boolean(row.locked),
   createdAt: row.createdAt,
   updatedAt: row.updatedAt,
@@ -89,6 +122,19 @@ export default function CalendarPage() {
   const [saving, setSaving] = useState(false);
   const [clients, setClients] = useState<Client[]>([]);
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
+  const [users, setUsers] = useState<User[]>([]);
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Filters
+  const [filters, setFilters] = useState({
+    tickets: true,
+    contracts: true,
+    payments: true,
+    manual: true
+  });
+
   const { toast } = useToast();
   const router = useRouter();
 
@@ -117,19 +163,28 @@ export default function CalendarPage() {
     return () => controller.abort();
   }, []);
 
-  // Load clients for combobox
+  // Load clients, users and groups
   useEffect(() => {
-    const fetchClients = async () => {
+    const fetchData = async () => {
       try {
-        const res = await fetch(`${API_URL}/clients`);
-        if (!res.ok) throw new Error('Failed to load clients');
-        const data = await res.json();
-        setClients(data);
+        const [resClients, resUsers, resGroups] = await Promise.all([
+          fetch(`${API_URL}/clients`),
+          listUsers(),
+          fetch("/api/groups")
+        ]);
+
+        if (resClients.ok) setClients(await resClients.json());
+        if (Array.isArray(resUsers)) {
+          console.log("Calendar loaded users:", resUsers);
+          setUsers(resUsers);
+        }
+        if (resGroups.ok) setGroups(await resGroups.json());
+
       } catch (e) {
         console.error(e);
       }
     };
-    fetchClients();
+    fetchData();
   }, []);
 
   const openModal = (mode: "create" | "edit" | "view", values: Partial<DraftEvent> & { id?: string }) => {
@@ -155,7 +210,8 @@ export default function CalendarPage() {
   };
 
   const handleEventClick = (info: EventClickArg) => {
-    if (info.event.extendedProps?.locked) {
+    const sourceLocked = info.event.extendedProps?.locked;
+    if (sourceLocked) {
       openModal("view", {
         id: info.event.id,
         title: info.event.title,
@@ -172,7 +228,7 @@ export default function CalendarPage() {
       start: info.event.startStr,
       end: info.event.endStr || info.event.startStr,
     });
-    setEditingLocked(Boolean(info.event.extendedProps?.locked));
+    setEditingLocked(Boolean(sourceLocked));
   };
 
   const handleEventChange = async (changeInfo: EventChangeArg) => {
@@ -304,11 +360,7 @@ export default function CalendarPage() {
     if (draft.start) {
       setFormattedStart(
         new Intl.DateTimeFormat("es-UY", {
-          weekday: "short",
-          day: "numeric",
-          month: "short",
-          hour: "2-digit",
-          minute: "2-digit",
+          weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
         }).format(new Date(draft.start))
       );
     } else {
@@ -317,11 +369,7 @@ export default function CalendarPage() {
     if (draft.end) {
       setFormattedEnd(
         new Intl.DateTimeFormat("es-UY", {
-          weekday: "short",
-          day: "numeric",
-          month: "short",
-          hour: "2-digit",
-          minute: "2-digit",
+          weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
         }).format(new Date(draft.end))
       );
     } else {
@@ -329,86 +377,192 @@ export default function CalendarPage() {
     }
   }, [draft.start, draft.end]);
 
+  // Load filters from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem("calendar_filters");
+    if (saved) {
+      try {
+        setFilters(JSON.parse(saved));
+      } catch (e) {
+        console.error("Error loading filters", e);
+      }
+    }
+  }, []);
+
+  const handleSaveFilters = () => {
+    localStorage.setItem("calendar_filters", JSON.stringify(filters));
+    toast({ title: "Configuración guardada", description: "Tus preferencias de visualización se han guardado." });
+  };
+
+  // Handle fullscreen changes (ESC key support)
+  useEffect(() => {
+    const handleChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", handleChange);
+    return () => document.removeEventListener("fullscreenchange", handleChange);
+  }, []);
+
+  const toggleFullscreen = () => {
+    if (!containerRef.current) return;
+    if (!document.fullscreenElement) {
+      containerRef.current.requestFullscreen().catch(console.error);
+    } else {
+      document.exitFullscreen().catch(console.error);
+    }
+  };
+
   const renderEventContent = (arg: any) => {
     const sourceType = arg.event.extendedProps?.sourceType as CalendarEvent["sourceType"];
     const locked = Boolean(arg.event.extendedProps?.locked);
-    const locationText = arg.event.extendedProps?.location;
-    const sourceId = arg.event.extendedProps?.sourceId;
+    const assignedToId = arg.event.extendedProps?.assignedTo;
+    const assignedGroupId = arg.event.extendedProps?.assignedGroup;
+
+    // Debug
+    if (sourceType === 'ticket' && assignedToId) {
+      // console.log
+    }
+
+    const assignedUser = assignedToId ? users.find(u =>
+      u.id === assignedToId ||
+      u._id === assignedToId ||
+      u.name === assignedToId ||
+      u.email === assignedToId
+    ) : null;
+    const assignedGroup = assignedGroupId ? groups.find(g => g._id === assignedGroupId) : null;
 
     const isAuto = sourceType !== "manual";
 
-    const tone = isAuto
-      ? "bg-slate-100 border-slate-200 text-slate-500 hover:bg-slate-200/80 transition-colors"
-      : "bg-slate-900 border-slate-800 text-white";
+    // Simplificado y moderno
+    let bgColor = "bg-slate-800 border-slate-700 text-white";
+    if (sourceType === "ticket") bgColor = "bg-amber-100 border-amber-200 text-amber-900";
+    if (sourceType === "contract") bgColor = "bg-blue-100 border-blue-200 text-blue-900";
+    if (sourceType === "payment") bgColor = "bg-emerald-100 border-emerald-200 text-emerald-900";
 
-    const iconClass = isAuto ? "text-slate-500" : "text-white";
-
-    const icon =
-      sourceType === "ticket" ? (
-        <Ticket className={`h-4 w-4 ${iconClass}`} />
-      ) : sourceType === "payment" ? (
-        <CircleDollarSign className={`h-4 w-4 ${iconClass}`} />
-      ) : sourceType === "contract" ? (
-        <FileBadge2 className={`h-4 w-4 ${iconClass}`} />
-      ) : (
-        <CalendarPlus className={`h-4 w-4 ${iconClass}`} />
-      );
+    const title = arg.event.title;
 
     return (
       <div
-        className={`flex h-full w-full min-h-full flex-col gap-0 rounded-md border px-2 py-1.5 text-sm font-semibold leading-tight shadow-sm ${tone}`}
-        style={{ height: "100%" }}
+        className={`flex h-full w-full min-h-full flex-col justify-center rounded-md border px-2 py-1 text-xs font-semibold shadow-sm transition-all overflow-hidden cursor-pointer hover:brightness-95 ${bgColor}`}
       >
-        <div className="flex items-center gap-1">
-          {icon}
-          <span className="truncate">{arg.event.title}</span>
-          {locked ? <Lock className={`h-3.5 w-3.5 ${isAuto ? "text-slate-400" : "text-white/80"}`} /> : null}
+        <div className="flex items-center gap-1.5 w-full">
+          {assignedUser ? (
+            <Avatar className="h-5 w-5 border border-white/20 shadow-sm shrink-0">
+              <AvatarImage src={assignedUser.avatar ? `${API_URL.replace(/\/api\/?$/, "")}${assignedUser.avatar}` : undefined} />
+              <AvatarFallback className="text-[9px] bg-slate-900/10 text-slate-700">{assignedUser.name?.substring(0, 2).toUpperCase()}</AvatarFallback>
+            </Avatar>
+          ) : assignedGroup ? (
+            <div className="h-5 w-5 bg-white/20 rounded-full flex items-center justify-center shrink-0" title={assignedGroup.name}>
+              <Users className="h-3 w-3 opacity-70" />
+            </div>
+          ) : sourceType === "ticket" ? (
+            <Ticket className="h-3.5 w-3.5 opacity-70 shrink-0" />
+          ) : sourceType === "payment" ? (
+            <CircleDollarSign className="h-3.5 w-3.5 opacity-70 shrink-0" />
+          ) : sourceType === "contract" ? (
+            <FileBadge2 className="h-3.5 w-3.5 opacity-70 shrink-0" />
+          ) : (
+            <CalendarPlus className="h-3.5 w-3.5 opacity-70 shrink-0" />
+          )}
+
+          <div className="flex flex-col min-w-0 flex-1">
+            <span className="truncate leading-tight">{title}</span>
+            {assignedUser && <span className="text-[10px] opacity-75 truncate">{assignedUser.name.split(' ')[0]}</span>}
+            {!assignedUser && assignedGroup && <span className="text-[10px] opacity-75 truncate">{assignedGroup.name}</span>}
+          </div>
+
+          {locked && <Lock className="h-2.5 w-2.5 opacity-50 ml-auto shrink-0" />}
         </div>
-        {sourceType === "ticket" && sourceId ? (
-          <span className={`mt-1 inline-flex w-fit items-center gap-1 rounded-full px-2 py-[2px] text-[0.65rem] font-semibold shadow-sm ring-1 ${isAuto ? "bg-slate-200 text-slate-600 ring-slate-300" : "bg-amber-500 text-white ring-amber-300"}`}>
-            <Ticket className="h-3 w-3" />
-            Ticket #{sourceId}
-          </span>
-        ) : null}
-        {locationText ? (
-          <span className={`flex items-center gap-1 text-[0.65rem] font-medium ${isAuto ? "text-slate-400" : "text-white/80"}`}>
-            <MapPin className={`h-3 w-3 ${isAuto ? "text-slate-400" : "text-white/80"}`} />
-            <span className="truncate">{locationText}</span>
-          </span>
-        ) : null}
       </div>
     );
   };
 
-  const calendarEvents = useMemo(
-    () =>
-      events.map((event) => ({
+  const calendarEvents = useMemo(() => {
+    return events
+      .filter(ev => {
+        if (ev.sourceType === "ticket" && !filters.tickets) return false;
+        if (ev.sourceType === "payment" && !filters.payments) return false;
+        if (ev.sourceType === "contract" && !filters.contracts) return false;
+        if (ev.sourceType === "manual" && !filters.manual) return false;
+        return true;
+      })
+      .map((event) => ({
         ...event,
         editable: !event.locked,
         durationEditable: !event.locked,
-      })),
-    [events]
-  );
+      }));
+  }, [events, filters]);
 
   return (
     <DashboardLayout className="p-0">
-      <div className="px-6 pt-6 pb-2">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-gradient-to-br from-pink-500 to-rose-600">
-            <Calendar className="h-6 w-6 text-white" />
+      <div className="px-6 pt-4 pb-2">
+        <div className="flex flex-col xl:flex-row items-start xl:items-center justify-between gap-4">
+          {/* Header Title */}
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-gradient-to-br from-pink-500 to-rose-600 shadow-sm">
+              <Calendar className="h-6 w-6 text-white" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold">
+                <ShinyText size="2xl" weight="bold">Calendario</ShinyText>
+              </h1>
+              <p className="text-xs text-muted-foreground">
+                Planificación y eventos del sistema
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-3xl font-bold">
-              <ShinyText size="3xl" weight="bold">Calendario</ShinyText>
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              Gestiona eventos, vencimientos y recordatorios.
-            </p>
+
+          {/* Controls */}
+          <div className="flex flex-wrap items-center gap-4 bg-white p-2 rounded-xl border shadow-sm">
+
+            <div className="flex items-center gap-4 px-2 border-r">
+              {/* Toggles */}
+              <div className="flex items-center gap-2">
+                <Switch id="filter-tickets" checked={filters.tickets} onCheckedChange={(c) => setFilters(prev => ({ ...prev, tickets: c }))} className="data-[state=checked]:bg-amber-500 scale-75 origin-right" />
+                <Label htmlFor="filter-tickets" className="text-xs flex items-center gap-1 cursor-pointer"><Ticket className="h-3 w-3 text-amber-500" /> Tickets</Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Switch id="filter-contracts" checked={filters.contracts} onCheckedChange={(c) => setFilters(prev => ({ ...prev, contracts: c }))} className="data-[state=checked]:bg-blue-500 scale-75 origin-right" />
+                <Label htmlFor="filter-contracts" className="text-xs flex items-center gap-1 cursor-pointer"><FileBadge2 className="h-3 w-3 text-blue-500" /> Contratos</Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Switch id="filter-payments" checked={filters.payments} onCheckedChange={(c) => setFilters(prev => ({ ...prev, payments: c }))} className="data-[state=checked]:bg-emerald-500 scale-75 origin-right" />
+                <Label htmlFor="filter-payments" className="text-xs flex items-center gap-1 cursor-pointer"><CircleDollarSign className="h-3 w-3 text-emerald-500" /> Pagos</Label>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 pl-2">
+              {/* Save Button */}
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="ghost" size="icon" onClick={handleSaveFilters} className="text-slate-500 hover:text-slate-900">
+                      <Save className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Guardar filtros
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="ghost" size="icon" onClick={toggleFullscreen}>
+                      {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Pantalla Completa
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
           </div>
         </div>
       </div>
-      <div className="flex h-[calc(100vh-140px)] w-full overflow-hidden px-6 pb-6">
-        <div className="flex-1">
+
+      <div ref={containerRef} className={`w-full px-6 pb-6 transition-all duration-300 ${isFullscreen ? "fixed inset-0 z-50 bg-white p-6" : "h-[calc(100vh-140px)]"}`}>
+        <div className="h-full">
           <FullCalendar
             plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
             locale={esLocale}
@@ -417,15 +571,18 @@ export default function CalendarPage() {
             headerToolbar={{
               left: "prev,next today",
               center: "title",
-              right: "timeGridWeek,timeGridDay",
+              right: "dayGridMonth,timeGridWeek,timeGridDay",
             }}
             buttonText={{
               today: "Hoy",
+              month: "Mes",
               week: "Semana",
               day: "Día",
             }}
-            slotMinTime="00:00:00"
-            slotMaxTime="24:00:00"
+            slotMinTime="08:00:00"
+            slotMaxTime="20:00:00"
+            allDaySlot={true}
+            expandRows={true}
             height="100%"
             events={calendarEvents}
             eventBackgroundColor="transparent"
@@ -439,7 +596,7 @@ export default function CalendarPage() {
             eventClick={handleEventClick}
             eventChange={handleEventChange}
             eventAllow={(_, draggedEvent) => !draggedEvent?.extendedProps?.locked}
-            dayMaxEvents
+            dayMaxEvents={3}
             nowIndicator
             scrollTime={new Date().toISOString().split("T")[1].slice(0, 8)}
             eventContent={renderEventContent}
@@ -479,6 +636,28 @@ export default function CalendarPage() {
                     {draft.location}
                   </div>
                 )}
+                {/* Mostrar asignado si existe */}
+                {(() => {
+                  const event = events.find(e => e.id === editingId);
+                  if (event?.assignedTo) {
+                    const user = users.find(u => u.id === event.assignedTo || u._id === event.assignedTo);
+                    if (user) {
+                      return <div className="mt-2 flex items-center gap-2 text-sm text-slate-600">
+                        <User2 className="h-4 w-4" /> Asignado a: {user.name}
+                      </div>
+                    }
+                  }
+                  if (event?.assignedGroup) {
+                    const group = groups.find(g => g._id === event.assignedGroup);
+                    if (group) {
+                      return <div className="mt-2 flex items-center gap-2 text-sm text-slate-600">
+                        <Users className="h-4 w-4" /> Grupo: {group.name}
+                      </div>
+                    }
+                  }
+                  return null;
+                })()}
+
                 <div className="mt-4 grid grid-cols-2 gap-4">
                   <div>
                     <span className="text-xs font-medium text-slate-500">Inicio</span>
@@ -602,6 +781,6 @@ export default function CalendarPage() {
           )}
         </DialogContent>
       </Dialog>
-    </DashboardLayout>
+    </DashboardLayout >
   );
 }

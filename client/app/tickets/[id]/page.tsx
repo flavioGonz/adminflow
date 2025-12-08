@@ -27,6 +27,7 @@ import {
   Activity,
   AlertTriangle,
   User,
+  Users,
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import ReactCountryFlag from "react-country-flag";
@@ -46,7 +47,10 @@ import {
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -59,6 +63,7 @@ import {
   TicketPriority,
   TicketStatus,
 } from "@/types/ticket";
+import { Group } from "@/types/group";
 import { API_URL } from "@/lib/http";
 
 const formatDateTime = (value?: string) =>
@@ -162,7 +167,9 @@ export default function TicketDetailPage() {
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [isLocked, setIsLocked] = useState(true);
   const [users, setUsers] = useState<{ id: string; name: string; email: string; avatar?: string }[]>([]);
+  const [groups, setGroups] = useState<Group[]>([]);
   const [formAssignedTo, setFormAssignedTo] = useState<string | null>(null);
+  const [formAssignedGroupId, setFormAssignedGroupId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -258,10 +265,82 @@ export default function TicketDetailPage() {
   }, []);
 
   useEffect(() => {
+    const controller = new AbortController();
+    const loadGroups = async () => {
+      try {
+        const response = await fetch(`${API_URL}/groups`, {
+          signal: controller.signal,
+        });
+        if (!response.ok) {
+          console.warn("No se pudieron cargar los grupos.", response.status);
+          setGroups([]);
+          return;
+        }
+        const data = await response.json();
+        setGroups(Array.isArray(data) ? data : []);
+      } catch (err) {
+        if ((err as DOMException)?.name === "AbortError") {
+          return;
+        }
+        console.error("Error fetching groups:", err);
+      }
+    };
+
+    loadGroups();
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
     if (ticket) {
       setFormAssignedTo(ticket.assignedTo ?? null);
+      setFormAssignedGroupId(ticket.assignedGroupId ?? null);
     }
   }, [ticket]);
+
+  const groupsMap = useMemo(() => {
+    const map: Record<string, Group> = {};
+    groups.forEach((group) => {
+      if (group._id) {
+        map[group._id] = group;
+      }
+    });
+    return map;
+  }, [groups]);
+
+  const assignedUser = useMemo(
+    () => users.find((user) => user.email === formAssignedTo) ?? null,
+    [users, formAssignedTo]
+  );
+
+  const assignmentValue = useMemo(() => {
+    if (formAssignedTo) {
+      return `user:${formAssignedTo}`;
+    }
+    if (formAssignedGroupId) {
+      return `group:${formAssignedGroupId}`;
+    }
+    return "none";
+  }, [formAssignedGroupId, formAssignedTo]);
+
+  const handleAssignmentChange = useCallback(
+    (value: string) => {
+      if (value === "none") {
+        setFormAssignedTo(null);
+        setFormAssignedGroupId(null);
+        return;
+      }
+      if (value.startsWith("user:")) {
+        setFormAssignedTo(value.replace(/^user:/, ""));
+        setFormAssignedGroupId(null);
+        return;
+      }
+      if (value.startsWith("group:")) {
+        setFormAssignedGroupId(value.replace(/^group:/, ""));
+        setFormAssignedTo(null);
+      }
+    },
+    [setFormAssignedGroupId, setFormAssignedTo]
+  );
 
   const metrics = useMemo(
     () => [
@@ -333,6 +412,13 @@ export default function TicketDetailPage() {
             const newUser = formAssignedTo || "Sin asignar";
             changes.push(`Asignado: <strong>${oldUser}</strong> → <strong>${newUser}</strong>`);
           }
+          if ((ticket.assignedGroupId ?? null) !== (formAssignedGroupId ?? null)) {
+            const oldGroup =
+              groupsMap[ticket.assignedGroupId ?? ""]?.name || "Sin grupo";
+            const newGroup =
+              groupsMap[formAssignedGroupId ?? ""]?.name || "Sin grupo";
+            changes.push(`Grupo: <strong>${oldGroup}</strong> → <strong>${newGroup}</strong>`);
+          }
 
           if (changes.length) {
             const changeNote = {
@@ -361,6 +447,7 @@ export default function TicketDetailPage() {
             description: formDescription,
             annotations: annotationsToSend,
             assignedTo: formAssignedTo,
+            assignedGroupId: formAssignedGroupId,
             notifyClient,
           }),
         });
@@ -378,6 +465,7 @@ export default function TicketDetailPage() {
         setFormCurrency(updated.amountCurrency ?? "UYU");
         setFormDescription(updated.description ?? "");
         setFormAssignedTo(updated.assignedTo ?? null);
+        setFormAssignedGroupId(updated.assignedGroupId ?? null);
         toast.success("Ficha actualizada correctamente.");
       } catch (err) {
         const message =
@@ -400,6 +488,8 @@ export default function TicketDetailPage() {
       formDescription,
       formAnnotations,
       formAssignedTo,
+      formAssignedGroupId,
+      groupsMap,
       notifyClient,
     ]
   );
@@ -882,78 +972,114 @@ export default function TicketDetailPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="assigned-to">Asignado a</Label>
+              <Label htmlFor="assignment">Asignación</Label>
               <Select
-                value={formAssignedTo || "unassigned"}
-                onValueChange={(value) => setFormAssignedTo(value === "unassigned" ? null : value)}
+                id="assignment"
+                value={assignmentValue}
+                onValueChange={handleAssignmentChange}
                 disabled={isLocked}
               >
-                <SelectTrigger id="assigned-to" className="w-full">
-                  <SelectValue>
-                    {formAssignedTo ? (
-                      <div className="flex items-center gap-2">
-                        {(() => {
-                          const user = users.find((u) => u.email === formAssignedTo);
-                          if (!user) return formAssignedTo;
-                          return (
-                            <>
-                              {user.avatar ? (
-                                <img
-                                  src={
-                                    user.avatar.startsWith("http")
-                                      ? user.avatar
-                                      : `${API_URL.replace('/api', '')}${user.avatar}`
-                                  }
-                                  alt={user.name}
-                                  className="h-5 w-5 rounded-full object-cover"
-                                />
-                              ) : (
-                                <div className="h-5 w-5 rounded-full bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center text-white text-xs font-semibold">
-                                  {user.name.charAt(0).toUpperCase()}
-                                </div>
-                              )}
-                              <span className="leading-none">{user.name}</span>
-                            </>
-                          );
-                        })()}
-                      </div>
-                    ) : (
+                <SelectTrigger className="w-full">
+                  <SelectValue>{(() => {
+                    if (assignedUser) {
+                      return (
+                        <div className="flex items-center gap-2">
+                          {assignedUser.avatar ? (
+                            <img
+                              src={
+                                assignedUser.avatar.startsWith("http")
+                                  ? assignedUser.avatar
+                                  : `${API_URL.replace("/api", "")}${assignedUser.avatar}`
+                              }
+                              alt={assignedUser.name}
+                              className="h-5 w-5 rounded-full object-cover"
+                            />
+                          ) : (
+                            <div className="h-5 w-5 rounded-full bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center text-white text-xs font-semibold">
+                              {assignedUser.name.charAt(0).toUpperCase()}
+                            </div>
+                          )}
+                          <span className="leading-none">{assignedUser.name}</span>
+                        </div>
+                      );
+                    }
+                    if (formAssignedGroupId) {
+                      const activeGroup = groupsMap[formAssignedGroupId];
+                      return (
+                        <div className="flex items-center gap-2">
+                          <Users className="h-4 w-4 text-muted-foreground" />
+                          <span>{activeGroup?.name ?? "Grupo"}</span>
+                        </div>
+                      );
+                    }
+                    return (
                       <div className="flex items-center gap-2">
                         <User className="h-4 w-4 text-muted-foreground" />
                         <span className="leading-none">Sin asignar</span>
                       </div>
-                    )}
-                  </SelectValue>
+                    );
+                  })()}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="unassigned">
+                  <SelectItem value="none">
                     <div className="flex items-center gap-2">
                       <User className="h-4 w-4 text-muted-foreground" />
                       <span>Sin asignar</span>
                     </div>
                   </SelectItem>
-                  {users.map((user) => (
-                    <SelectItem key={user.id} value={user.email}>
-                      <div className="flex items-center gap-2">
-                        {user.avatar ? (
-                          <img
-                            src={
-                              user.avatar.startsWith("http")
-                                ? user.avatar
-                                : `${API_URL.replace('/api', '')}${user.avatar}`
-                            }
-                            alt={user.email}
-                            className="h-5 w-5 rounded-full object-cover"
-                          />
-                        ) : (
-                          <div className="h-5 w-5 rounded-full bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center text-white text-xs font-semibold">
-                            {user.email.charAt(0).toUpperCase()}
+                  <SelectSeparator />
+                  <SelectGroup>
+                    <SelectLabel>Grupos</SelectLabel>
+                    {groups.map((group) => {
+                      const groupValue = group._id || group.id || group.slug;
+                      if (!groupValue) return null;
+                      return (
+                        <SelectItem key={`group-${groupValue}`} value={`group:${groupValue}`}>
+                          <div className="flex flex-col gap-0.5">
+                            <div className="flex items-center gap-2">
+                              <Users className="h-4 w-4 text-muted-foreground" />
+                              <span>{group.name}</span>
+                            </div>
+                            {group.description ? (
+                              <span className="text-[11px] text-muted-foreground">
+                                {group.description}
+                              </span>
+                            ) : null}
                           </div>
-                        )}
-                        <span>{user.name} ({user.email})</span>
-                      </div>
-                    </SelectItem>
-                  ))}
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectGroup>
+                  <SelectSeparator />
+                  <SelectGroup>
+                    <SelectLabel>Usuarios</SelectLabel>
+                    {users.map((user) => {
+                      const userValue = user.email || user.id;
+                      if (!userValue) return null;
+                      return (
+                        <SelectItem key={`user-${userValue}`} value={`user:${userValue}`}>
+                          <div className="flex items-center gap-2">
+                            {user.avatar ? (
+                              <img
+                                src={
+                                  user.avatar.startsWith("http")
+                                    ? user.avatar
+                                    : `${API_URL.replace("/api", "")}${user.avatar}`
+                                }
+                                alt={user.email}
+                                className="h-5 w-5 rounded-full object-cover"
+                              />
+                            ) : (
+                              <div className="h-5 w-5 rounded-full bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center text-white text-xs font-semibold">
+                                {user.email.charAt(0).toUpperCase()}
+                              </div>
+                            )}
+                            <span>{user.name} ({user.email})</span>
+                          </div>
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectGroup>
                 </SelectContent>
               </Select>
             </div >

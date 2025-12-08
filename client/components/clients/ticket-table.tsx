@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Table,
-  TableBody,
   TableCell,
   TableHead,
   TableHeader,
@@ -40,6 +39,7 @@ import {
   Hash,
   CaseSensitive,
   User,
+  Users,
   Activity,
   ShieldAlert,
   ShieldCheck,
@@ -61,16 +61,19 @@ import {
 } from "lucide-react";
 import { DeleteTicketDialog } from "./delete-ticket-dialog";
 import { Ticket } from "@/types/ticket";
+import { Group } from "@/types/group";
 import { Contract } from "@/types/contract";
 import { API_URL } from "@/lib/http";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { TablePageTransition } from "@/components/ui/page-transition";
 
 interface TicketTableProps {
   tickets: Ticket[];
   onTicketDeleted: (ticketId: string) => void;
   onReopenTicket?: (ticket: Ticket) => void;
   actionLoadingTicketId?: string | null;
+  groups?: Group[];
 }
 
 type SortKey = keyof Ticket;
@@ -111,6 +114,7 @@ export function TicketTable({
   onTicketDeleted,
   onReopenTicket,
   actionLoadingTicketId,
+  groups = [],
 }: TicketTableProps) {
   const router = useRouter();
   const [currentPage, setCurrentPage] = useState(1);
@@ -126,6 +130,15 @@ export function TicketTable({
   const [users, setUsers] = useState<{ id: string; name: string; email: string; avatar?: string }[]>([]);
   const [clients, setClients] = useState<Record<string, { name: string; avatarUrl?: string }>>({});
   const [assignPopoverOpen, setAssignPopoverOpen] = useState<string | null>(null);
+  const groupsMap = useMemo(() => {
+    const map: Record<string, Group> = {};
+    groups.forEach((group) => {
+      if (group._id) {
+        map[group._id] = group;
+      }
+    });
+    return map;
+  }, [groups]);
   const ticketsPerPage = 15;
 
   useEffect(() => {
@@ -341,7 +354,11 @@ export function TicketTable({
       const response = await fetch(`${API_URL}/tickets/${ticket.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...ticket, assignedTo: userEmail }),
+        body: JSON.stringify({
+          ...ticket,
+          assignedTo: userEmail,
+          assignedGroupId: null,
+        }),
       });
       if (!response.ok) {
         const errorText = await response.text();
@@ -352,6 +369,33 @@ export function TicketTable({
       setAssignPopoverOpen(null);
     } catch (error: any) {
       toast.error(error?.message || "No se pudo actualizar la asignación");
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  const handleGroupAssignmentChange = async (ticket: Ticket, groupId: string | null) => {
+    setUpdatingId(ticket.id);
+    try {
+      const response = await fetch(`${API_URL}/tickets/${ticket.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...ticket,
+          assignedGroupId: groupId,
+          assignedTo: null,
+        }),
+      });
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || `Error al actualizar el grupo (${response.status})`);
+      }
+      window.dispatchEvent(new Event("tickets:refresh"));
+      const groupName = groupId ? groupsMap[groupId]?.name || "grupo" : "";
+      toast.success(groupId ? `Asignado al grupo ${groupName}` : "Asignación de grupo eliminada");
+      setAssignPopoverOpen(null);
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo actualizar el grupo");
     } finally {
       setUpdatingId(null);
     }
@@ -477,9 +521,11 @@ export function TicketTable({
               </TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody>
+          <TablePageTransition pageKey={currentPage}>
             {currentTickets.length > 0 ? (
-              currentTickets.map((ticket) => (
+              currentTickets.map((ticket) => {
+                const assignedGroup = ticket.assignedGroupId ? groupsMap[ticket.assignedGroupId] : null;
+                return (
                 <TableRow
                   key={ticket.id}
                   onClick={() => {
@@ -580,93 +626,142 @@ export function TicketTable({
                           className="h-8 w-full justify-start font-normal px-2"
                           disabled={updatingId === ticket.id || isRowLocked(ticket)}
                         >
-                          {ticket.assignedTo ? (
-                            <div className="flex items-center gap-2">
-                              {(() => {
-                                const assignedUser = users.find(u => u.email === ticket.assignedTo);
-                                const avatarUrl = assignedUser?.avatar;
-                                const initial = ticket.assignedTo.charAt(0).toUpperCase();
-
-                                return avatarUrl ? (
-                                  <img
-                                    src={
-                                      avatarUrl.startsWith("http")
-                                        ? avatarUrl
-                                        : `${API_URL.replace('/api', '')}${avatarUrl}`
-                                    }
-                                    alt={ticket.assignedTo}
-                                    className="h-6 w-6 rounded-full object-cover"
-                                  />
-                                ) : (
-                                  <div className="h-6 w-6 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-xs font-semibold">
-                                    {initial}
-                                  </div>
-                                );
-                              })()}
-                              <span className="truncate max-w-[120px]" title={ticket.assignedTo}>
-                                {ticket.assignedTo.split('@')[0]}
+                          <div className="flex flex-col items-start gap-1 text-left">
+                            {assignedGroup && (
+                              <span className="flex items-center gap-1 text-[11px] text-slate-500">
+                                <Users className="h-3.5 w-3.5 text-slate-500" />
+                                {assignedGroup.name}
                               </span>
-                            </div>
-                          ) : (
-                            <span className="text-xs text-slate-400 italic">Sin asignar</span>
-                          )}
+                            )}
+                            {ticket.assignedTo ? (
+                              <div className="flex items-center gap-2">
+                                {(() => {
+                                  const assignedUser = users.find(u => u.email === ticket.assignedTo);
+                                  const avatarUrl = assignedUser?.avatar;
+                                  const initial = ticket.assignedTo.charAt(0).toUpperCase();
+
+                                  return avatarUrl ? (
+                                    <img
+                                      src={
+                                        avatarUrl.startsWith("http")
+                                          ? avatarUrl
+                                          : `${API_URL.replace('/api', '')}${avatarUrl}`
+                                      }
+                                      alt={ticket.assignedTo}
+                                      className="h-6 w-6 rounded-full object-cover"
+                                    />
+                                  ) : (
+                                    <div className="h-6 w-6 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-xs font-semibold">
+                                      {initial}
+                                    </div>
+                                  );
+                                })()}
+                                <span className="truncate max-w-[120px]" title={ticket.assignedTo}>
+                                  {ticket.assignedTo.split('@')[0]}
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-slate-400 italic">Sin asignar</span>
+                            )}
+                          </div>
                         </Button>
                       </PopoverTrigger>
                       <PopoverContent className="w-[280px] p-0" align="start">
-                        <Command>
-                          <CommandInput placeholder="Buscar usuario..." />
-                          <CommandList>
-                            <CommandEmpty>No se encontró el usuario.</CommandEmpty>
-                            <CommandGroup>
+                    <Command>
+                      <CommandInput placeholder="Buscar usuario o grupo..." />
+                      <CommandList>
+                        <CommandEmpty>No se encontró coincidencia.</CommandEmpty>
+                        {groups.length > 0 && (
+                          <CommandGroup heading="Grupos">
+                            <CommandItem onSelect={() => handleGroupAssignmentChange(ticket, null)}>
+                              <Check
+                                className={cn(
+                                  "mr-2 h-4 w-4",
+                                  !ticket.assignedGroupId ? "opacity-100" : "opacity-0"
+                                )}
+                              />
+                              <div className="flex items-center gap-2">
+                                <Users className="h-4 w-4 text-slate-500" />
+                                <span>Sin grupo</span>
+                              </div>
+                            </CommandItem>
+                            {groups.map((group) => (
                               <CommandItem
-                                onSelect={() => handleAssignedToChange(ticket, null)}
+                                key={group._id}
+                                value={group.name}
+                                onSelect={() => handleGroupAssignmentChange(ticket, group._id)}
                               >
                                 <Check
                                   className={cn(
                                     "mr-2 h-4 w-4",
-                                    !ticket.assignedTo ? "opacity-100" : "opacity-0"
+                                    ticket.assignedGroupId === group._id ? "opacity-100" : "opacity-0"
                                   )}
                                 />
-                                <span className="text-slate-400 italic">Sin asignar</span>
-                              </CommandItem>
-                              {users.map((user) => (
-                                <CommandItem
-                                  key={user.id}
-                                  value={user.email}
-                                  onSelect={() => handleAssignedToChange(ticket, user.email)}
-                                >
-                                  <Check
-                                    className={cn(
-                                      "mr-2 h-4 w-4",
-                                      ticket.assignedTo === user.email ? "opacity-100" : "opacity-0"
-                                    )}
-                                  />
-                                  <div className="flex items-center gap-2">
-                                    {user.avatar ? (
-                                      <img
-                                        src={
-                                          user.avatar.startsWith("http")
-                                            ? user.avatar
-                                            : `${API_URL.replace('/api', '')}${user.avatar}`
-                                        }
-                                        alt={user.email}
-                                        className="h-6 w-6 rounded-full object-cover"
-                                      />
-                                    ) : (
-                                      <div className="h-6 w-6 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-xs font-semibold">
-                                        {user.email.charAt(0).toUpperCase()}
-                                      </div>
-                                    )}
-                                    <div className="flex flex-col">
-                                      <span className="text-sm">{user.name}</span>
-                                      <span className="text-xs text-muted-foreground">{user.email}</span>
-                                    </div>
+                                <div className="flex items-center gap-2">
+                                  <Users className="h-4 w-4 text-slate-500" />
+                                  <div className="flex flex-col">
+                                    <span>{group.name}</span>
+                                    {group.description ? (
+                                      <span className="text-[11px] text-muted-foreground">
+                                        {group.description}
+                                      </span>
+                                    ) : null}
                                   </div>
-                                </CommandItem>
-                              ))}
-                            </CommandGroup>
-                          </CommandList>
-                        </Command>
+                                </div>
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        )}
+                        <CommandGroup heading="Usuarios">
+                          <CommandItem
+                            onSelect={() => handleAssignedToChange(ticket, null)}
+                          >
+                            <Check
+                              className={cn(
+                                "mr-2 h-4 w-4",
+                                !ticket.assignedTo ? "opacity-100" : "opacity-0"
+                              )}
+                            />
+                            <span className="text-slate-400 italic">Sin asignar</span>
+                          </CommandItem>
+                          {users.map((user) => (
+                            <CommandItem
+                              key={user.id}
+                              value={user.email}
+                              onSelect={() => handleAssignedToChange(ticket, user.email)}
+                            >
+                              <Check
+                                className={cn(
+                                  "mr-2 h-4 w-4",
+                                  ticket.assignedTo === user.email ? "opacity-100" : "opacity-0"
+                                )}
+                              />
+                              <div className="flex items-center gap-2">
+                                {user.avatar ? (
+                                  <img
+                                    src={
+                                      user.avatar.startsWith("http")
+                                        ? user.avatar
+                                        : `${API_URL.replace('/api', '')}${user.avatar}`
+                                    }
+                                    alt={user.email}
+                                    className="h-6 w-6 rounded-full object-cover"
+                                  />
+                                ) : (
+                                  <div className="h-6 w-6 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-xs font-semibold">
+                                    {user.email.charAt(0).toUpperCase()}
+                                  </div>
+                                )}
+                                <div className="flex flex-col">
+                                  <span className="text-sm">{user.name}</span>
+                                  <span className="text-xs text-muted-foreground">{user.email}</span>
+                                </div>
+                              </div>
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
                       </PopoverContent>
                     </Popover>
                   </TableCell>
@@ -747,7 +842,8 @@ export function TicketTable({
                     </div>
                   </TableCell>
                 </TableRow>
-              ))
+                );
+              })
             ) : (
               <TableRow>
                 <TableCell colSpan={8} className="h-24 text-center">
@@ -755,7 +851,7 @@ export function TicketTable({
                 </TableCell>
               </TableRow>
             )}
-          </TableBody>
+          </TablePageTransition>
         </Table>
       </div>
       <Pagination>

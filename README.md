@@ -157,6 +157,23 @@ El sistema cubre todo el ciclo comercial de una empresa de servicios:
 - Confirmación al mover ubicaciones
 - Persistencia automática
 
+#### 👥 **Gestión de Usuarios y Grupos (Nuevo Sistema V2)**
+- **API V2:** Sistema completamente rediseñado usando `ObjectId` de MongoDB. Ver [APIS_V2.md](./APIS_V2.md).
+- **Control de Acceso (RBAC):** Roles definidos (Admin, Soporte, Instalador, Visor) con permisos granulares.
+- **Grupos de Trabajo:** Organización de usuarios en equipos (ej. "Técnicos Zona Norte").
+- **Interfaz Moderna:** Nueva tabla con filtros, búsqueda y gestión de avatares.
+- **Sistema de Roles**: Admin, Manager, Editor, Viewer, Support
+- **Grupos de Trabajo**: Organización en equipos (Administración, Soporte, Instaladores)
+- **Asignación de Tickets**: Por usuario individual o por grupo completo
+- **Gestión de Avatares**: Upload y visualización de fotos de perfil
+- **Metadata Personalizable**: Información adicional por usuario
+- **Grupos por Defecto**:
+  - 🏢 **Administración**: Coordinación general del sistema
+  - 🛠️ **Soporte**: Atención de incidentes y asistencia técnica
+  - 📦 **Instaladores**: Despliegues e instalaciones en sitio
+- **Integración Completa**: Los grupos se reflejan en tickets, auditoría y reportes
+
+
 ---
 
 ## 🛠️ Tecnologías
@@ -890,12 +907,30 @@ db.configurations.updateOne(
 - Pruebas de canal
 
 ### **12. Base de Datos** (`/database`)
-- Cambio de motor
-- Verificación de conexiones
-- Sincronización
-- Reset
-- Migración
-- Overview de tablas
+- **Panel de Información**:
+  - Estado de conexión en tiempo real
+  - Latencia de conexión
+  - Estadísticas generales (colecciones, documentos, tamaño)
+- **Configuración de Conexión**:
+  - URI de MongoDB editable
+  - Selección de base de datos
+  - Prueba de conexión
+- **Explorador de Colecciones**:
+  - Lista completa con búsqueda
+  - Información detallada (documentos, tamaño)
+  - Visor de documentos con paginación
+  - Modos de vista: Tabla y JSON
+  - Panel de detalles lateral
+  - Exportación a JSON
+  - Eliminación de colecciones
+- **Sistema de Respaldos**:
+  - Creación de respaldos (solo base de datos de la app)
+  - Importación con análisis previo
+  - Comparación visual (actual vs. respaldo)
+  - Restauración con confirmación explícita
+  - Descarga de respaldos
+  - Eliminación de respaldos
+- **Documentación**: Ver [DATABASE_PAGE.md](./DATABASE_PAGE.md)
 
 ### **13. Sistema** (`/system`)
 - Gestión de usuarios

@@ -9,6 +9,8 @@ export interface Budget {
   amount?: number;
   currency?: string;
   status?: string;
+  assignedTo?: string | null;
+  assignedGroupId?: string | null;
   filePath?: string;
   createdAt: string;
   updatedAt: string;

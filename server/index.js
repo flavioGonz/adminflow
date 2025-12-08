@@ -26,9 +26,84 @@ const {
 const { notify, isReady: notificationsReady } = require('./lib/notificationService');
 const { logEvent, getAuditLogs } = require('./lib/auditService');
 const { getConfig, listConfigs, upsertConfig } = require('./lib/configService');
-const { trackRegisteredUser, listRegisteredUsers, updateRegisteredUser } = require('./lib/userService');
+const {
+    trackRegisteredUser,
+    listRegisteredUsers,
+    updateRegisteredUser,
+    syncSqliteUserToMongo,
+} = require('./lib/userService');
+const userServiceV2 = require('./lib/userServiceV2');
+const { listGroups, createGroup, updateGroup, deleteGroup } = require('./lib/groupService');
 const { fetchRecentSyncEvents } = require('./lib/sqliteSync');
 const { syncLocalToMongo } = require('./lib/mongo-sync');
+
+const parseSqliteIdentifier = (value) => {
+    if (value === undefined || value === null) {
+        return null;
+    }
+    const numeric = Number(value);
+    return Number.isNaN(numeric) ? null : numeric;
+};
+
+const getSqliteUserById = (identifier) => {
+    const sqliteId = parseSqliteIdentifier(identifier);
+    if (sqliteId === null) {
+        return Promise.resolve(null);
+    }
+    return new Promise((resolve, reject) => {
+        db.get('SELECT * FROM users WHERE id = ?', [sqliteId], (err, row) => {
+            if (err) {
+                return reject(err);
+            }
+            resolve(row || null);
+        });
+    });
+};
+
+const deleteSqliteUserById = (identifier) => {
+    const sqliteId = parseSqliteIdentifier(identifier);
+    if (sqliteId === null) {
+        return Promise.resolve(false);
+    }
+    return new Promise((resolve, reject) => {
+        db.run('DELETE FROM users WHERE id = ?', [sqliteId], function (err) {
+            if (err) {
+                return reject(err);
+            }
+            resolve(this.changes > 0);
+        });
+    });
+};
+
+const updateSqliteUserPasswordById = (identifier, hashedPassword) => {
+    const sqliteId = parseSqliteIdentifier(identifier);
+    if (sqliteId === null) {
+        return Promise.resolve(false);
+    }
+    return new Promise((resolve, reject) => {
+        db.run('UPDATE users SET password = ? WHERE id = ?', [hashedPassword, sqliteId], function (err) {
+            if (err) {
+                return reject(err);
+            }
+            resolve(this.changes > 0);
+        });
+    });
+};
+
+const updateSqliteUserAvatarById = (identifier, avatarPath) => {
+    const sqliteId = parseSqliteIdentifier(identifier);
+    if (sqliteId === null) {
+        return Promise.resolve(false);
+    }
+    return new Promise((resolve, reject) => {
+        db.run('UPDATE users SET avatar = ? WHERE id = ?', [avatarPath, sqliteId], function (err) {
+            if (err) {
+                return reject(err);
+            }
+            resolve(this.changes > 0);
+        });
+    });
+};
 const DB_CONFIG_DEFAULTS = require('./lib/dbConfigDefaults');
 
 const { getTemplateForEvent } = require('./lib/emailTemplates');
@@ -58,6 +133,7 @@ const diagramRoutes = require('./routes/diagrams');
 const installRoutes = require('./routes/install');
 const systemBackupRoutes = require('./routes/system-backup');
 const databaseRoutes = require('./routes/database');
+const implementationRoutes = require('./routes/implementation');
 const { checkInstallation } = require('./middleware/checkInstallation');
 
 // Installation routes (always accessible)
@@ -69,6 +145,7 @@ app.use('/api', checkInstallation);
 // Protected routes (require installation)
 app.use('/api', accessRoutes);
 app.use('/api', diagramRoutes);
+app.use('/api', implementationRoutes);
 app.use('/api/system', systemBackupRoutes);
 app.use('/api/database', databaseRoutes);
 
@@ -179,6 +256,7 @@ const mapTicketRow = (row) => ({
     attachments: parseJsonColumn(row.attachments, []),
     audioNotes: parseJsonColumn(row.audioNotes, []),
     assignedTo: row.assignedTo || null,
+    assignedGroupId: row.assignedGroupId || null,
     clientNotificationsEnabled: !!row.clientNotificationsEnabled,
     clientEmail: row.clientEmail || '',
 });
@@ -330,6 +408,7 @@ const TICKET_SELECT_BASE = `
     t.attachments,
     t.audioNotes,
     t.assigned_to as assignedTo,
+    t.assigned_group as assignedGroupId,
     t.createdAt,
     t.updatedAt,
     c.name as clientName,
@@ -568,23 +647,31 @@ app.get('/api/users/registered', async (req, res) => {
     }
 });
 
-app.get('/api/users', (req, res) => {
+app.get('/api/users', async (req, res) => {
     const mongoDb = getMongoDb();
     if (!mongoDb) {
         return res.status(503).json({ message: 'MongoDB no está conectado.' });
     }
 
-    mongoDb.collection('users').find({}).toArray()
-        .then(users => {
-            res.json(users.map(u => ({
-                id: u._id,
-                email: u.email,
-                name: u.name || u.email.split('@')[0],
-                role: u.role || 'user',
-                avatar: u.avatar || null
-            })));
-        })
-        .catch(err => res.status(500).json({ message: err.message }));
+    try {
+        const groups = await listGroups();
+        const groupMap = groups.reduce((acc, group) => {
+            acc[group._id] = group;
+            return acc;
+        }, {});
+        const users = await mongoDb.collection('users').find({}).toArray();
+        res.json(users.map(u => ({
+            id: u._id,
+            email: u.email,
+            name: u.name || u.email.split('@')[0],
+            role: u.role || 'user',
+            avatar: u.avatar || null,
+            groupId: u.groupId || null,
+            groupName: u.groupId ? groupMap[u.groupId]?.name || null : null,
+        })));
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
 });
 
 app.patch('/api/users/registered/:id', async (req, res) => {
@@ -595,17 +682,41 @@ app.patch('/api/users/registered/:id', async (req, res) => {
     if (!updates || Object.keys(updates).length === 0) {
         return res.status(400).json({ message: 'Provee al menos un campo para actualizar' });
     }
+
     try {
-        const updated = await updateRegisteredUser(req.params.id, updates);
+        let updated = await updateRegisteredUser(req.params.id, updates);
+        let source = 'mongo';
+        let sqliteUser = null;
+
         if (!updated) {
-            return res.status(404).json({ message: 'Usuario no encontrado en MongoDB' });
+            sqliteUser = await getSqliteUserById(req.params.id);
+            if (!sqliteUser) {
+                return res.status(404).json({ message: 'Usuario no encontrado en MongoDB o SQLite' });
+            }
+            updated = await syncSqliteUserToMongo(sqliteUser, updates);
+            source = 'sqlite';
         }
 
-        // Audit log
-        logEvent('user', 'update', 'user', {
-            userId: req.params.id,
-            updates: Object.keys(updates)
-        }, req).catch(console.error);
+        if (!updated) {
+            return res.status(404).json({ message: 'No fue posible actualizar el usuario' });
+        }
+
+        const targetId =
+            updated._id?.toString?.() ||
+            sqliteUser?.id?.toString?.() ||
+            req.params.id;
+
+        logEvent({
+            user: req.user ? req.user.email : 'system',
+            action: 'update',
+            resource: 'user',
+            details: {
+                userId: targetId,
+                updates: Object.keys(updates),
+                source,
+            },
+            ip: req.ip,
+        }).catch(() => { });
 
         res.json(updated);
     } catch (error) {
@@ -690,7 +801,13 @@ app.post('/api/users/:id/avatar', avatarUpload.single('avatar'), async (req, res
         }
 
         const { ObjectId } = require('mongodb');
-        const filter = ObjectId.isValid(userId) ? { _id: new ObjectId(userId) } : { _id: userId };
+        // Determinar filtro: numérico o ObjectId
+        const numericId = Number(userId);
+        const filter = (!isNaN(numericId) && userId.toString() === numericId.toString())
+            ? { _id: numericId }
+            : (ObjectId.isValid(userId) && userId.length === 24)
+                ? { _id: new ObjectId(userId) }
+                : { _id: userId };
 
         const result = await mongoDb.collection('users').updateOne(
             filter,
@@ -698,6 +815,10 @@ app.post('/api/users/:id/avatar', avatarUpload.single('avatar'), async (req, res
         );
 
         if (result.matchedCount === 0) {
+            const sqliteUpdated = await updateSqliteUserAvatarById(userId, avatarPath);
+            if (sqliteUpdated) {
+                return res.json({ avatarUrl: avatarPath, message: 'Avatar actualizado correctamente' });
+            }
             return res.status(404).json({ message: 'Usuario no encontrado' });
         }
 
@@ -728,7 +849,13 @@ app.patch('/api/users/:id', async (req, res) => {
         updates.updatedAt = new Date();
 
         const { ObjectId } = require('mongodb');
-        const filter = ObjectId.isValid(userId) ? { _id: new ObjectId(userId) } : { _id: userId };
+        // Determinar filtro: numérico o ObjectId
+        const numericId = Number(userId);
+        const filter = (!isNaN(numericId) && userId.toString() === numericId.toString())
+            ? { _id: numericId }
+            : (ObjectId.isValid(userId) && userId.length === 24)
+                ? { _id: new ObjectId(userId) }
+                : { _id: userId };
 
         const result = await mongoDb.collection('users').findOneAndUpdate(
             filter,
@@ -757,11 +884,28 @@ app.delete('/api/users/:id', async (req, res) => {
         }
 
         const { ObjectId } = require('mongodb');
-        const filter = ObjectId.isValid(userId) ? { _id: new ObjectId(userId) } : { _id: userId };
+        // Determinar filtro: numérico o ObjectId
+        const numericId = Number(userId);
+        const filter = (!isNaN(numericId) && userId.toString() === numericId.toString())
+            ? { _id: numericId }
+            : (ObjectId.isValid(userId) && userId.length === 24)
+                ? { _id: new ObjectId(userId) }
+                : { _id: userId };
 
         const result = await mongoDb.collection('users').deleteOne(filter);
 
         if (result.deletedCount === 0) {
+            const sqliteDeleted = await deleteSqliteUserById(userId);
+            if (sqliteDeleted) {
+                await logEvent({
+                    user: req.user ? req.user.email : 'system',
+                    action: 'delete',
+                    resource: 'user',
+                    details: { userId, source: 'sqlite' },
+                    ip: req.ip,
+                }).catch(() => { });
+                return res.json({ message: 'Usuario eliminado correctamente' });
+            }
             return res.status(404).json({ message: 'Usuario no encontrado' });
         }
 
@@ -802,7 +946,13 @@ app.patch('/api/users/:id/password', async (req, res) => {
         const hashedPassword = await bcrypt.hash(newPassword, 10);
 
         const { ObjectId } = require('mongodb');
-        const filter = ObjectId.isValid(userId) ? { _id: new ObjectId(userId) } : { _id: userId };
+        // Determinar filtro: numérico o ObjectId
+        const numericId = Number(userId);
+        const filter = (!isNaN(numericId) && userId.toString() === numericId.toString())
+            ? { _id: numericId }
+            : (ObjectId.isValid(userId) && userId.length === 24)
+                ? { _id: new ObjectId(userId) }
+                : { _id: userId };
 
         const result = await mongoDb.collection('users').updateOne(
             filter,
@@ -810,6 +960,17 @@ app.patch('/api/users/:id/password', async (req, res) => {
         );
 
         if (result.matchedCount === 0) {
+            const sqliteUpdated = await updateSqliteUserPasswordById(userId, hashedPassword);
+            if (sqliteUpdated) {
+                await logEvent({
+                    user: req.user ? req.user.email : 'system',
+                    action: 'update',
+                    resource: 'user',
+                    details: { userId, action: 'password_reset', source: 'sqlite' },
+                    ip: req.ip,
+                }).catch(() => { });
+                return res.json({ message: 'Contrase\u00f1a actualizada correctamente' });
+            }
             return res.status(404).json({ message: 'Usuario no encontrado' });
         }
 
@@ -818,9 +979,9 @@ app.patch('/api/users/:id/password', async (req, res) => {
             user: req.user ? req.user.email : 'system',
             action: 'update',
             resource: 'user',
-            details: { userId, action: 'password_reset' },
+            details: { userId, action: 'password_reset', source: 'mongo' },
             ip: req.ip
-        });
+        }).catch(() => { });
 
         res.json({ message: 'Contraseña actualizada correctamente' });
     } catch (error) {
@@ -1317,6 +1478,7 @@ app.get('/api/clients', async (req, res) => {
                     let hasDiagram = false;
                     let hasAccess = false;
                     let hasFiles = false;
+                    let hasImplementation = false;
 
                     try {
                         // Check for diagram
@@ -1348,11 +1510,21 @@ app.get('/api/clients', async (req, res) => {
                         // Silently ignore
                     }
 
+                    try {
+                        const implementation = await mongoDb.collection('client_implementations').findOne({
+                            clientId: client.id.toString()
+                        });
+                        hasImplementation = !!implementation;
+                    } catch (e) {
+                        // Silently ignore
+                    }
+
                     return {
                         ...client,
                         hasDiagram,
                         hasAccess,
-                        hasFiles
+                        hasFiles,
+                        hasImplementation
                     };
                 }));
 
@@ -1397,7 +1569,7 @@ app.post('/api/clients', (req, res) => {
         return res.status(400).json({ message: 'Name is required.' });
     }
     const contractValue = contract === true ? 1 : 0;
-    const notificationsValue = notificationsEnabled === false ? 0 : 1; // Default true
+    const notificationsValue = notificationsEnabled === true ? 1 : 0; // Default false
     db.run(
         'INSERT INTO clients (name, alias, rut, email, phone, address, latitude, longitude, contract, notifications_enabled) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
         [name, alias, rut, email, phone, address, latitude, longitude, contractValue, notificationsValue],
@@ -1521,7 +1693,7 @@ app.put('/api/clients/:id', (req, res) => {
         const nextEmail = email ?? existing.email ?? null;
         const proceedUpdate = () => {
             const contractValue = contract === undefined ? existing.contract : contract ? 1 : 0;
-            const notificationsValue = notificationsEnabled === undefined ? existing.notifications_enabled : notificationsEnabled === false ? 0 : 1;
+            const notificationsValue = notificationsEnabled === undefined ? existing.notifications_enabled : (notificationsEnabled ? 1 : 0);
             const payload = {
                 name: nextName,
                 alias: alias ?? existing.alias,
@@ -1600,7 +1772,7 @@ app.post('/api/clients/import', (req, res) => {
     const insertClient = (client) =>
         new Promise((resolve) => {
             const contractValue = client.contract === true ? 1 : 0;
-            const notificationsValue = client.notificationsEnabled === false ? 0 : 1;
+            const notificationsValue = client.notificationsEnabled === true ? 1 : 0;
             db.run(
                 'INSERT INTO clients (name, alias, rut, email, phone, address, contract, notifications_enabled) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
                 [client.name, client.alias, client.rut, client.email, client.phone, client.address, contractValue, notificationsValue],
@@ -2169,6 +2341,8 @@ const mapBudgetRow = (row) => ({
     title: row.title || '',
     description: row.description || '',
     amount: row.amount,
+    assignedTo: row.assigned_to || row.assignedTo || null,
+    assignedGroupId: row.assigned_group || row.assignedGroupId || null,
     status: row.status || '',
     filePath: row.file_path || null,
     sections: parseJsonColumn(row.sections, []),
@@ -2217,14 +2391,16 @@ app.post('/api/budgets', (req, res) => {
         amount,
         status,
         sections,
+        assignedTo,
+        assignedGroupId,
     } = req.body;
     const numericClientId = Number(clientId);
     if (!numericClientId || !title) {
         return res.status(400).json({ message: 'clientId and title are required.' });
     }
     db.run(
-        `INSERT INTO budgets (client_id, title, description, amount, status, sections)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO budgets (client_id, title, description, amount, status, sections, assigned_to, assigned_group)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [
             numericClientId,
             title,
@@ -2232,6 +2408,8 @@ app.post('/api/budgets', (req, res) => {
             amount ?? null,
             status || null,
             JSON.stringify(Array.isArray(sections) ? sections : []),
+            assignedTo ?? null,
+            assignedGroupId ?? null,
         ],
         function (err) {
             if (err) return res.status(500).json({ message: err.message });
@@ -2271,6 +2449,10 @@ app.put('/api/budgets/:id', (req, res) => {
         const sectionsPayload = Array.isArray(req.body.sections)
             ? JSON.stringify(req.body.sections)
             : existing.sections;
+        const assignedTo =
+            req.body.assignedTo !== undefined ? req.body.assignedTo : existing.assigned_to;
+        const assignedGroupId =
+            req.body.assignedGroupId !== undefined ? req.body.assignedGroupId : existing.assigned_group;
         const payload = {
             title: req.body.title ?? existing.title,
             description: req.body.description ?? existing.description,
@@ -2278,10 +2460,12 @@ app.put('/api/budgets/:id', (req, res) => {
             status: req.body.status ?? existing.status,
             clientId,
             sections: sectionsPayload,
+            assignedTo,
+            assignedGroupId,
         };
         db.run(
             `UPDATE budgets
-       SET title = ?, description = ?, amount = ?, status = ?, client_id = ?, sections = ?, updatedAt = CURRENT_TIMESTAMP
+       SET title = ?, description = ?, amount = ?, status = ?, client_id = ?, sections = ?, assigned_to = ?, assigned_group = ?, updatedAt = CURRENT_TIMESTAMP
        WHERE id = ?`,
             [
                 payload.title,
@@ -2290,6 +2474,8 @@ app.put('/api/budgets/:id', (req, res) => {
                 payload.status,
                 payload.clientId,
                 payload.sections,
+                payload.assignedTo,
+                payload.assignedGroupId,
                 req.params.id,
             ],
             function (updateErr) {
@@ -2326,6 +2512,47 @@ app.put('/api/budgets/:id', (req, res) => {
                         details: { budgetId: updatedBudget.id, title: updatedBudget.title, status: updatedBudget.status },
                         ip: req.ip
                     });
+                });
+            }
+        );
+    });
+});
+
+app.patch('/api/budgets/:id/assignment', (req, res) => {
+    db.get('SELECT * FROM budgets WHERE id = ?', [req.params.id], (err, existing) => {
+        if (err) return res.status(500).json({ message: err.message });
+        if (!existing) return res.status(404).json({ message: 'Budget not found' });
+        const assignedTo = req.body.assignedTo !== undefined ? req.body.assignedTo : existing.assigned_to;
+        const assignedGroupId =
+            req.body.assignedGroupId !== undefined ? req.body.assignedGroupId : existing.assigned_group;
+        db.run(
+            `UPDATE budgets
+       SET assigned_to = ?, assigned_group = ?, updatedAt = CURRENT_TIMESTAMP
+       WHERE id = ?`,
+            [
+                assignedTo ?? null,
+                assignedGroupId ?? null,
+                req.params.id,
+            ],
+            function (updateErr) {
+                if (updateErr) return res.status(500).json({ message: updateErr.message });
+                db.get(`${BUDGET_SELECT_BASE} WHERE budgets.id = ?`, [req.params.id], async (selectErr, row) => {
+                    if (selectErr) return res.status(500).json({ message: selectErr.message });
+                    const updatedBudget = mapBudgetRow(row);
+
+                    await logEvent({
+                        user: req.user ? req.user.email : 'system',
+                        action: 'update',
+                        resource: 'budget_assignment',
+                        details: {
+                            budgetId: updatedBudget.id,
+                            assignedTo: updatedBudget.assignedTo,
+                            assignedGroupId: updatedBudget.assignedGroupId,
+                        },
+                        ip: req.ip
+                    });
+
+                    res.json(updatedBudget);
                 });
             }
         );
@@ -2620,6 +2847,67 @@ app.get('/api/tickets/:id', (req, res) => {
     });
 });
 
+app.get('/api/groups', async (req, res) => {
+    const mongoDb = getMongoDb();
+    if (!mongoDb) {
+        return res.status(503).json({ message: 'MongoDB no está disponible.' });
+    }
+
+    try {
+        const groups = await listGroups();
+        res.json(groups);
+    } catch (error) {
+        res.status(500).json({ message: 'No se pudieron cargar los grupos.', detail: error.message });
+    }
+});
+
+app.post('/api/groups', async (req, res) => {
+    if (!getMongoDb()) {
+        return res.status(503).json({ message: 'MongoDB no está conectado.' });
+    }
+    const { name, slug, description } = req.body || {};
+    if (!name) {
+        return res.status(400).json({ message: 'El nombre del grupo es requerido.' });
+    }
+    try {
+        const newGroup = await createGroup({ name, slug, description });
+        res.status(201).json(newGroup);
+    } catch (error) {
+        res.status(500).json({ message: error.message || 'No se pudo crear el grupo.' });
+    }
+});
+
+app.patch('/api/groups/:id', async (req, res) => {
+    if (!getMongoDb()) {
+        return res.status(503).json({ message: 'MongoDB no está conectado.' });
+    }
+    const updates = req.body || {};
+    try {
+        const updated = await updateGroup(req.params.id, updates);
+        if (!updated) {
+            return res.status(404).json({ message: 'Grupo no encontrado.' });
+        }
+        res.json(updated);
+    } catch (error) {
+        res.status(500).json({ message: error.message || 'No se pudo actualizar el grupo.' });
+    }
+});
+
+app.delete('/api/groups/:id', async (req, res) => {
+    if (!getMongoDb()) {
+        return res.status(503).json({ message: 'MongoDB no está conectado.' });
+    }
+    try {
+        const removed = await deleteGroup(req.params.id);
+        if (!removed) {
+            return res.status(404).json({ message: 'Grupo no encontrado.' });
+        }
+        res.json({ message: 'Grupo eliminado.' });
+    } catch (error) {
+        res.status(500).json({ message: error.message || 'No se pudo eliminar el grupo.' });
+    }
+});
+
 app.post('/api/tickets', (req, res) => {
     const {
         clientId,
@@ -2633,6 +2921,7 @@ app.post('/api/tickets', (req, res) => {
         attachments = [],
         audioNotes = [],
         assignedTo = null,
+        assignedGroupId = null,
     } = req.body;
     if (!clientId || !title || !priority) {
         return res.status(400).json({ message: 'Client, title, and priority are required.' });
@@ -2645,8 +2934,8 @@ app.post('/api/tickets', (req, res) => {
     const attachmentsText = JSON.stringify(Array.isArray(attachments) ? attachments : []);
     const audioNotesText = JSON.stringify(Array.isArray(audioNotes) ? audioNotes : []);
     db.run(
-        'INSERT INTO tickets (client_id, title, priority, status, annotations, amount, visit, description, attachments, audioNotes, assigned_to) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        [numericClientId, title, priority, status, annotationsText, amount, visit ? 1 : 0, description || null, attachmentsText, audioNotesText, assignedTo || null],
+        'INSERT INTO tickets (client_id, title, priority, status, annotations, amount, visit, description, attachments, audioNotes, assigned_to, assigned_group) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [numericClientId, title, priority, status, annotationsText, amount, visit ? 1 : 0, description || null, attachmentsText, audioNotesText, assignedTo || null, assignedGroupId || null],
         function (err) {
             if (err) return res.status(500).json({ message: err.message });
             const ticketId = this.lastID;
@@ -2723,10 +3012,14 @@ app.put('/api/tickets/:id', (req, res) => {
                     : parseJsonColumn(existing.audioNotes, [])
             ),
             assignedTo: req.body.assignedTo !== undefined ? req.body.assignedTo : existing.assigned_to,
+            assignedGroupId:
+                req.body.assignedGroupId !== undefined
+                    ? req.body.assignedGroupId
+                    : existing.assigned_group,
         };
         db.run(
             `UPDATE tickets
-       SET title = ?, status = ?, priority = ?, amount = ?, visit = ?, annotations = ?, description = ?, attachments = ?, audioNotes = ?, assigned_to = ?, updatedAt = CURRENT_TIMESTAMP
+       SET title = ?, status = ?, priority = ?, amount = ?, visit = ?, annotations = ?, description = ?, attachments = ?, audioNotes = ?, assigned_to = ?, assigned_group = ?, updatedAt = CURRENT_TIMESTAMP
        WHERE id = ?`,
             [
                 payload.title,
@@ -2739,6 +3032,7 @@ app.put('/api/tickets/:id', (req, res) => {
                 payload.attachments,
                 payload.audioNotes,
                 payload.assignedTo,
+                payload.assignedGroupId,
                 req.params.id,
             ],
             function (updateErr) {
@@ -2809,6 +3103,8 @@ app.get('/api/calendar-events', (req, res) => {
         SELECT 
             ce.*, 
             t.client_id as ticket_client_id, 
+            t.assigned_to as ticket_assigned_to,
+            t.assigned_group as ticket_assigned_group,
             p.client_id as payment_client_id, 
             c.client_id as contract_client_id 
         FROM calendar_events ce 
@@ -2819,7 +3115,11 @@ app.get('/api/calendar-events', (req, res) => {
     `;
     db.all(query, (err, rows) => {
         if (err) return res.status(500).json({ message: err.message });
-        res.json(rows.map(mapCalendarEventRow));
+        res.json(rows.map(row => ({
+            ...mapCalendarEventRow(row),
+            assignedTo: row.ticket_assigned_to || null,
+            assignedGroup: row.ticket_assigned_group || null
+        })));
     });
 });
 
@@ -2933,6 +3233,60 @@ app.delete('/api/calendar-events/:id', (req, res) => {
             res.json({ message: 'Evento eliminado.' });
         });
     });
+});
+
+// ==========================================
+// SYSTEM V2 ROUTES
+// ==========================================
+
+// Rutas de Usuarios V2
+app.use('/api/v2/users', require('./routes/users-v2'));
+
+// Login V2
+app.post('/api/v2/auth/login', async (req, res) => {
+    try {
+        const { email, password } = req.body;
+
+        if (!email || !password) {
+            return res.status(400).json({ message: 'Email y contraseña son requeridos' });
+        }
+
+        const user = await userServiceV2.verifyCredentials(email, password);
+
+        if (!user) {
+            return res.status(401).json({ message: 'Credenciales inválidas' });
+        }
+
+        if (user.status !== 'active') {
+            return res.status(403).json({ message: 'Usuario inactivo o suspendido' });
+        }
+
+        // Generar token JWT
+        const token = jwt.sign(
+            {
+                userId: user.id,
+                email: user.email,
+                roles: user.roles
+            },
+            process.env.JWT_SECRET || 'your-secret-key',
+            { expiresIn: '24h' }
+        );
+
+        res.json({
+            message: 'Login exitoso',
+            token,
+            user: {
+                id: user.id,
+                email: user.email,
+                name: user.name,
+                roles: user.roles,
+                groupId: user.groupId
+            }
+        });
+    } catch (error) {
+        console.error('Error during login:', error);
+        res.status(500).json({ message: 'Error durante el login' });
+    }
 });
 
 const { startServer } = require('./lib/serverStart');

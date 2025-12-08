@@ -1,1 +1,0 @@
-{"indexes":[{"v":{"$numberInt":"2"},"key":{"_id":{"$numberInt":"1"}},"name":"_id_"},{"v":{"$numberInt":"2"},"key":{"module":{"$numberInt":"1"}},"name":"module_1","unique":true,"sparse":false}],"uuid":"69a7997a70a14c43b7b61db2e6e15e58","collectionName":"configurations","type":"collection"}

@@ -55,4 +55,5 @@ export interface Ticket {
   audioNotes?: TicketAudioNote[];
   paid?: boolean;
   assignedTo?: string | null;
+  assignedGroupId?: string | null;
 }

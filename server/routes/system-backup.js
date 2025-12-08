@@ -207,4 +207,28 @@ router.post('/backups/restore-upload', async (req, res) => {
     }
 });
 
+// Delete a backup
+router.delete('/backups/:backupName', async (req, res) => {
+    const { backupName } = req.params;
+    const backupPath = path.join(BACKUP_ROOT, backupName);
+
+    try {
+        if (!fs.existsSync(backupPath)) {
+            return res.status(404).json({ message: 'Backup not found' });
+        }
+
+        // Check if it's a directory or file and remove accordingly
+        if (fs.lstatSync(backupPath).isDirectory()) {
+            fs.rmSync(backupPath, { recursive: true, force: true });
+        } else {
+            fs.unlinkSync(backupPath);
+        }
+
+        res.json({ message: 'Backup deleted successfully' });
+    } catch (error) {
+        console.error('Error deleting backup:', error);
+        res.status(500).json({ message: 'Error deleting backup', error: error.message });
+    }
+});
+
 module.exports = router;

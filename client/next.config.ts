@@ -5,10 +5,6 @@ const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL
   : "http://localhost:5000";
 
 const nextConfig: NextConfig = {
-  i18n: {
-    defaultLocale: "es",
-    locales: ["es"],
-  },
   async rewrites() {
     return [
       {

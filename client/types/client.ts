@@ -14,6 +14,7 @@ export interface Client {
   hasDiagram?: boolean;
   hasAccess?: boolean;
   hasFiles?: boolean;
+  hasImplementation?: boolean;
   createdAt?: string;
   updatedAt?: string;
 }

@@ -1,6 +1,7 @@
 import { apiFetch } from "./http";
 
 export interface SystemUser {
+  id: string; // Campo requerido para identificación consistente
   _id?: string;
   sqliteId?: number;
   email: string;
@@ -10,6 +11,8 @@ export interface SystemUser {
   metadata?: Record<string, any>;
   createdAt?: string;
   updatedAt?: string;
+  groupId?: string | null;
+  groupName?: string | null;
 }
 
 export interface NotificationChannelConfig {
@@ -183,4 +186,23 @@ export const restoreBackup = async (backupName: string): Promise<{ success: bool
     method: "POST",
     body: JSON.stringify({ backupName }),
   });
+};
+
+export const SystemApi = {
+  getUsers: getRegisteredUsers,
+  getRegisteredUsers,
+  updateUser,
+  createUser,
+  uploadUserAvatar,
+  resetUserPassword,
+  deleteUser,
+  getNotificationConfig,
+  saveNotificationConfig,
+  getNotificationHistory,
+  sendTestNotification,
+  verifySmtpConnection,
+  getAuditLogs,
+  getBackups,
+  createBackup,
+  restoreBackup,
 };

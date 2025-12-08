@@ -21,6 +21,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
 import {
   Activity,
@@ -34,16 +35,18 @@ import {
   Loader2,
   RefreshCw,
   RotateCcw,
+  Search,
   Server,
   Trash2,
   Upload,
   Wifi,
-  WifiOff,
   Zap,
+  Eye,
 } from "lucide-react";
 import { ShinyText } from "@/components/ui/shiny-text";
 import { cn } from "@/lib/utils";
 import { ImportBackupDialog } from "@/components/database/import-backup-dialog";
+import { CollectionViewerDialog } from "@/components/database/collection-viewer-dialog";
 
 type CollectionInfo = {
   name: string;
@@ -81,12 +84,16 @@ export default function DatabasePage() {
   const [mongoUri, setMongoUri] = useState("");
   const [mongoDb, setMongoDb] = useState("");
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>({ state: "idle" });
-  const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
 
   // Backup states
   const [backups, setBackups] = useState<any[]>([]);
   const [showRestoreModal, setShowRestoreModal] = useState(false);
   const [selectedBackup, setSelectedBackup] = useState<any>(null);
+
+  // Collection Viewer state
+  const [viewingCollection, setViewingCollection] = useState<string | null>(null);
 
   const fetchOverview = async () => {
     setIsLoading(true);
@@ -164,7 +171,10 @@ export default function DatabasePage() {
         method: "POST",
       });
 
-      if (!response.ok) throw new Error("Error al crear respaldo");
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Error al crear respaldo");
+      }
 
       const result = await response.json();
       toast.success(`Respaldo creado: ${result.backupName}`);
@@ -179,11 +189,15 @@ export default function DatabasePage() {
   const loadBackups = async () => {
     try {
       const response = await fetch("/api/system/backups");
-      if (!response.ok) throw new Error("Error al cargar respaldos");
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || "Error al cargar respaldos");
+      }
       const data = await response.json();
       setBackups(data);
     } catch (error) {
       console.error("Error loading backups:", error);
+      // Optional: toast.error("No se pudieron cargar los respaldos");
     }
   };
 
@@ -284,107 +298,151 @@ export default function DatabasePage() {
     }
   };
 
+  const handleDeleteBackup = async (backupName: string) => {
+    if (!confirm(`¿Estás seguro de eliminar el respaldo "${backupName}"? Esta acción no se puede deshacer.`)) {
+      return;
+    }
+
+    setActionLoading(`delete-backup-${backupName}`);
+    try {
+      const response = await fetch(`/api/system/backups/${backupName}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) throw new Error("Error al eliminar respaldo");
+
+      toast.success("Respaldo eliminado correctamente");
+      loadBackups();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Error al eliminar respaldo");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const totalDocuments = overview?.collections?.reduce((sum, col) => sum + col.count, 0) ?? 0;
   const isConnected = connectionStatus.state === "success";
 
+  const filteredCollections = overview?.collections?.filter(col =>
+    col.name.toLowerCase().includes(searchTerm.toLowerCase())
+  ) || [];
+
   return (
-    <div className="space-y-6 p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600">
-            <Database className="h-6 w-6 text-white" />
+    <div className="min-h-screen bg-slate-50/50 p-6 space-y-8">
+      {/* Header Section */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <div className="p-3 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 shadow-lg shadow-emerald-500/20">
+            <Database className="h-8 w-8 text-white" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold">
-              <ShinyText size="3xl" weight="bold">Base de Datos</ShinyText>
+            <h1 className="text-3xl font-bold tracking-tight text-slate-900">
+              <ShinyText size="3xl" weight="bold" className="text-slate-900">Base de Datos</ShinyText>
             </h1>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-slate-500 font-medium">
               Panel de control y gestión de MongoDB
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground bg-slate-100 px-3 py-1 rounded-full">
-            <Clock className="h-3 w-3" />
-            <span>Actualizado: {lastUpdate.toLocaleTimeString("es-UY")}</span>
+        <div className="flex items-center gap-3">
+          <div className="hidden md:flex items-center gap-2 text-xs font-medium text-slate-500 bg-white px-3 py-1.5 rounded-full border border-slate-200 shadow-sm">
+            <Clock className="h-3.5 w-3.5" />
+            {lastUpdate && (
+              <span>Actualizado: {lastUpdate.toLocaleTimeString("es-UY")}</span>
+            )}
           </div>
-          <Button onClick={fetchOverview} variant="outline" size="sm">
+          <Button
+            onClick={fetchOverview}
+            variant="outline"
+            size="sm"
+            className="bg-white hover:bg-slate-50 border-slate-200 text-slate-700 shadow-sm"
+          >
             <RefreshCw className={cn("mr-2 h-4 w-4", isLoading && "animate-spin")} />
             Refrescar
           </Button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 items-start">
-
-        {/* Column 1: Connection & Config */}
-        <div className="space-y-6">
+      <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
+        {/* Left Column: Stats & Config */}
+        <div className="xl:col-span-1 space-y-6">
+          {/* Connection Status Card */}
           <Card className={cn(
-            "border-l-4 shadow-sm",
-            isConnected ? "border-l-emerald-500 bg-emerald-50/30" : "border-l-slate-300"
+            "border-0 shadow-md transition-all duration-300 overflow-hidden relative",
+            isConnected ? "bg-gradient-to-br from-emerald-600 to-teal-700 text-white" : "bg-white"
           )}>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <Wifi className="h-4 w-4" /> Estado
+            <div className="absolute top-0 right-0 p-3 opacity-10">
+              <Wifi className="h-24 w-24" />
+            </div>
+            <CardHeader className="pb-2 relative z-10">
+              <CardTitle className="text-sm font-medium opacity-90 flex items-center gap-2">
+                <Activity className="h-4 w-4" /> Estado de Conexión
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-between mb-2">
-                <span className={cn(
-                  "text-2xl font-bold",
-                  isConnected ? "text-emerald-700" : "text-slate-500"
-                )}>
+            <CardContent className="relative z-10">
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-3xl font-bold tracking-tight">
                   {isConnected ? "Conectado" : "Desconectado"}
                 </span>
-                {connectionStatus.state === "pending" && <Loader2 className="h-5 w-5 animate-spin text-emerald-600" />}
+                {connectionStatus.state === "pending" && <Loader2 className="h-6 w-6 animate-spin" />}
+                {isConnected && (
+                  <div className="h-3 w-3 rounded-full bg-white animate-pulse shadow-[0_0_10px_rgba(255,255,255,0.5)]" />
+                )}
               </div>
-              <p className="text-xs text-muted-foreground mb-3">
-                {connectionStatus.message || "Esperando verificación..."}
-              </p>
-              {connectionStatus.latency && (
-                <div className="flex items-center gap-1 text-xs font-medium text-emerald-600 bg-emerald-100 px-2 py-1 rounded-md w-fit">
-                  <Zap className="h-3 w-3" />
-                  {connectionStatus.latency}ms latencia
-                </div>
-              )}
+
+              <div className="flex items-center gap-3 text-sm opacity-90">
+                {connectionStatus.latency && (
+                  <div className="flex items-center gap-1.5 bg-white/20 px-2.5 py-1 rounded-md backdrop-blur-sm">
+                    <Zap className="h-3.5 w-3.5" />
+                    <span className="font-semibold">{connectionStatus.latency}ms</span>
+                  </div>
+                )}
+                <span className="truncate max-w-[150px]" title={mongoDb}>
+                  DB: {mongoDb || "Sin seleccionar"}
+                </span>
+              </div>
             </CardContent>
           </Card>
 
-          <Card className="shadow-sm">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
+          {/* Configuration Card */}
+          <Card className="border-slate-200 shadow-sm">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base text-slate-800">
                 <Server className="h-4 w-4 text-slate-500" />
                 Configuración
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="mongoUri" className="text-xs">URI de Conexión</Label>
-                <Input
-                  id="mongoUri"
-                  value={mongoUri}
-                  onChange={(e) => setMongoUri(e.target.value)}
-                  placeholder="mongodb://..."
-                  className="h-8 text-xs font-mono"
-                />
+                <Label htmlFor="mongoUri" className="text-xs font-medium text-slate-500 uppercase tracking-wider">URI de Conexión</Label>
+                <div className="relative">
+                  <Input
+                    id="mongoUri"
+                    value={mongoUri}
+                    onChange={(e) => setMongoUri(e.target.value)}
+                    placeholder="mongodb://..."
+                    className="h-9 text-xs font-mono bg-slate-50 border-slate-200 focus:border-emerald-500 focus:ring-emerald-500/20"
+                  />
+                  <div className="absolute inset-y-0 right-2 flex items-center pointer-events-none">
+                    <div className={cn("h-2 w-2 rounded-full", isConnected ? "bg-emerald-500" : "bg-slate-300")} />
+                  </div>
+                </div>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="mongoDb" className="text-xs">Base de Datos</Label>
+                <Label htmlFor="mongoDb" className="text-xs font-medium text-slate-500 uppercase tracking-wider">Base de Datos</Label>
                 <Input
                   id="mongoDb"
                   value={mongoDb}
                   onChange={(e) => setMongoDb(e.target.value)}
                   placeholder="adminflow"
-                  className="h-8 text-xs font-mono"
+                  className="h-9 text-xs font-mono bg-slate-50 border-slate-200 focus:border-emerald-500 focus:ring-emerald-500/20"
                 />
               </div>
               <Button
                 onClick={handleVerifyConnection}
                 disabled={connectionStatus.state === "pending"}
-                variant="outline"
+                className="w-full bg-slate-900 hover:bg-slate-800 text-white shadow-sm"
                 size="sm"
-                className="w-full"
               >
                 {connectionStatus.state === "pending" ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -394,263 +452,354 @@ export default function DatabasePage() {
               </Button>
             </CardContent>
           </Card>
-        </div>
 
-        {/* Column 2: Stats */}
-        <div className="space-y-4">
-          <Card className="shadow-sm hover:shadow-md transition-shadow">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Colecciones</CardTitle>
-              <Database className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{overview?.collections?.length ?? 0}</div>
-              <p className="text-xs text-muted-foreground">Estructuras de datos</p>
-            </CardContent>
-          </Card>
-
-          <Card className="shadow-sm hover:shadow-md transition-shadow">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Documentos</CardTitle>
-              <FileJson className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{totalDocuments.toLocaleString("es-UY")}</div>
-              <p className="text-xs text-muted-foreground">Registros totales</p>
-            </CardContent>
-          </Card>
-
-          <Card className="shadow-sm hover:shadow-md transition-shadow">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Almacenamiento</CardTitle>
-              <HardDrive className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{formatBytes(overview?.totalSize ?? 0)}</div>
-              <p className="text-xs text-muted-foreground">Espacio en disco</p>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Column 3: Collections List */}
-        <Card className="shadow-sm h-full flex flex-col">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Database className="h-4 w-4 text-emerald-600" />
-              Colecciones
-            </CardTitle>
-            <CardDescription className="text-xs">
-              Gestión de datos
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex-1 overflow-auto max-h-[500px] pr-2 space-y-2">
-            {overview?.collections
-              ?.sort((a, b) => b.count - a.count)
-              .map((collection) => (
-                <div
-                  key={collection.name}
-                  className="group flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50/50 px-3 py-2 hover:bg-white hover:border-emerald-200 hover:shadow-sm transition-all"
-                >
-                  <div className="min-w-0">
-                    <p className="font-medium text-sm truncate" title={collection.name}>{collection.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {formatBytes(collection.size)}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Badge variant="secondary" className="text-[10px] px-1 h-5">
-                      {collection.count}
-                    </Badge>
-                    <div className="opacity-0 group-hover:opacity-100 transition-opacity flex">
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-6 w-6"
-                        onClick={() => handleExportCollection(collection.name)}
-                        disabled={actionLoading === `export-${collection.name}`}
-                        title="Exportar"
-                      >
-                        <Download className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-6 w-6 text-rose-500 hover:text-rose-600 hover:bg-rose-50"
-                        onClick={() => handleDropCollection(collection.name)}
-                        disabled={actionLoading === `drop-${collection.name}`}
-                        title="Eliminar"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  </div>
+          {/* Quick Stats Grid (Mobile/Tablet only, hidden on XL) */}
+          <div className="grid grid-cols-2 gap-4 xl:hidden">
+            <Card className="shadow-sm border-slate-200 bg-white">
+              <CardContent className="p-4 flex flex-col items-center justify-center text-center">
+                <div className="p-2 rounded-full bg-blue-50 text-blue-600 mb-2">
+                  <Database className="h-5 w-5" />
                 </div>
-              ))}
-          </CardContent>
-        </Card>
+                <div className="text-2xl font-bold text-slate-900">{overview?.collections?.length ?? 0}</div>
+                <p className="text-xs text-slate-500 font-medium">Colecciones</p>
+              </CardContent>
+            </Card>
+            <Card className="shadow-sm border-slate-200 bg-white">
+              <CardContent className="p-4 flex flex-col items-center justify-center text-center">
+                <div className="p-2 rounded-full bg-indigo-50 text-indigo-600 mb-2">
+                  <FileJson className="h-5 w-5" />
+                </div>
+                <div className="text-2xl font-bold text-slate-900">{totalDocuments.toLocaleString("es-UY")}</div>
+                <p className="text-xs text-slate-500 font-medium">Documentos</p>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
 
-        {/* Column 4: Backups */}
-        <Card className="shadow-sm h-full flex flex-col border-t-4 border-t-sky-500">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <HardDrive className="h-4 w-4 text-sky-600" />
-              Respaldos
-            </CardTitle>
-            <CardDescription className="text-xs">
-              Copias de seguridad y restauración
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4 flex-1">
-            <div className="grid grid-cols-2 gap-2">
-              <Button
-                onClick={handleCreateBackup}
-                disabled={actionLoading === "backup"}
-                className="w-full bg-sky-600 hover:bg-sky-700 text-white"
-                size="sm"
-              >
-                {actionLoading === "backup" ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <>
-                    <Download className="mr-2 h-4 w-4" />
-                    Crear
-                  </>
-                )}
-              </Button>
+        {/* Middle Column: Collections */}
+        <div className="xl:col-span-2 space-y-6">
+          {/* Stats Row (Visible only on XL) */}
+          <div className="hidden xl:grid grid-cols-3 gap-4">
+            <Card className="shadow-sm border-slate-200 bg-white hover:shadow-md transition-shadow">
+              <CardContent className="p-4 flex items-center gap-4">
+                <div className="p-3 rounded-xl bg-blue-50 text-blue-600">
+                  <Database className="h-6 w-6" />
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Colecciones</p>
+                  <div className="text-2xl font-bold text-slate-900">{overview?.collections?.length ?? 0}</div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="shadow-sm border-slate-200 bg-white hover:shadow-md transition-shadow">
+              <CardContent className="p-4 flex items-center gap-4">
+                <div className="p-3 rounded-xl bg-indigo-50 text-indigo-600">
+                  <FileJson className="h-6 w-6" />
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Documentos</p>
+                  <div className="text-2xl font-bold text-slate-900">{totalDocuments.toLocaleString("es-UY")}</div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="shadow-sm border-slate-200 bg-white hover:shadow-md transition-shadow">
+              <CardContent className="p-4 flex items-center gap-4">
+                <div className="p-3 rounded-xl bg-amber-50 text-amber-600">
+                  <HardDrive className="h-6 w-6" />
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Tamaño</p>
+                  <div className="text-2xl font-bold text-slate-900">{formatBytes(overview?.totalSize ?? 0)}</div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
 
-              <ImportBackupDialog
-                onImportComplete={() => {
-                  fetchOverview();
-                  loadBackups();
-                }}
-                currentStats={{
-                  collections: overview?.collections || [],
-                  totalSize: overview?.totalSize || 0
-                }}
-              >
+          {/* Collections List */}
+          <Card className="border-slate-200 shadow-sm h-[calc(100vh-280px)] min-h-[500px] flex flex-col">
+            <CardHeader className="pb-3 border-b border-slate-100">
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2 text-base text-slate-800">
+                  <Database className="h-4 w-4 text-emerald-600" />
+                  Colecciones
+                  <Badge variant="secondary" className="ml-2 bg-slate-100 text-slate-600 hover:bg-slate-200">
+                    {overview?.collections?.length ?? 0}
+                  </Badge>
+                </CardTitle>
+                <div className="relative w-48">
+                  <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                  <Input
+                    placeholder="Buscar..."
+                    className="h-8 pl-8 text-xs bg-slate-50 border-slate-200 focus:bg-white transition-colors"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0 flex-1 overflow-hidden">
+              <ScrollArea className="h-full">
+                <div className="p-4 space-y-2">
+                  {filteredCollections.length === 0 ? (
+                    <div className="text-center py-12 text-slate-400">
+                      <Search className="h-10 w-10 mx-auto mb-3 opacity-20" />
+                      <p className="text-sm">No se encontraron colecciones</p>
+                    </div>
+                  ) : (
+                    filteredCollections
+                      .sort((a, b) => b.count - a.count)
+                      .map((collection) => (
+                        <div
+                          key={collection.name}
+                          className="group flex items-center justify-between rounded-lg border border-slate-100 bg-white p-3 hover:border-emerald-200 hover:shadow-sm hover:bg-emerald-50/10 transition-all duration-200"
+                        >
+                          <div className="flex items-center gap-4 min-w-0">
+                            <div className="p-2 rounded-lg bg-slate-100 text-slate-500 group-hover:bg-emerald-100 group-hover:text-emerald-600 transition-colors">
+                              <Database className="h-4 w-4" />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-medium text-sm text-slate-900 truncate" title={collection.name}>
+                                {collection.name}
+                              </p>
+                              <div className="flex items-center gap-2 text-xs text-slate-500">
+                                <span>{formatBytes(collection.size)}</span>
+                                <span className="text-slate-300">•</span>
+                                <span>{collection.count.toLocaleString()} docs</span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-8 w-8 text-slate-500 hover:text-sky-600 hover:bg-sky-50"
+                              onClick={() => setViewingCollection(collection.name)}
+                              title="Ver Documentos"
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-8 w-8 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50"
+                              onClick={() => handleExportCollection(collection.name)}
+                              disabled={actionLoading === `export-${collection.name}`}
+                              title="Exportar JSON"
+                            >
+                              <Download className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-8 w-8 text-slate-500 hover:text-rose-600 hover:bg-rose-50"
+                              onClick={() => handleDropCollection(collection.name)}
+                              disabled={actionLoading === `drop-${collection.name}`}
+                              title="Eliminar Colección"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))
+                  )}
+                </div>
+              </ScrollArea>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Right Column: Backups */}
+        <div className="xl:col-span-1">
+          <Card className="border-slate-200 shadow-sm h-full flex flex-col bg-white">
+            <CardHeader className="pb-3 border-b border-slate-100 bg-slate-50/50">
+              <CardTitle className="flex items-center gap-2 text-base text-slate-800">
+                <HardDrive className="h-4 w-4 text-sky-600" />
+                Respaldos
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Gestión de copias de seguridad
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex-1 flex flex-col p-4 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
                 <Button
-                  variant="outline"
-                  className="w-full border-sky-200 text-sky-700 hover:bg-sky-50"
+                  onClick={handleCreateBackup}
+                  disabled={actionLoading === "backup"}
+                  className="w-full bg-sky-600 hover:bg-sky-700 text-white shadow-sm shadow-sky-200"
                   size="sm"
                 >
-                  <Upload className="mr-2 h-4 w-4" />
-                  Importar
+                  {actionLoading === "backup" ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <>
+                      <Download className="mr-2 h-4 w-4" />
+                      Crear
+                    </>
+                  )}
                 </Button>
-              </ImportBackupDialog>
-            </div>
 
-            <Separator />
-
-            <div className="space-y-2 overflow-auto max-h-[400px] pr-1">
-              {backups.map((backup) => (
-                <div
-                  key={backup.name}
-                  className="rounded-lg border bg-slate-50 p-3 hover:bg-white hover:shadow-sm transition-all"
+                <ImportBackupDialog
+                  onImportComplete={() => {
+                    fetchOverview();
+                    loadBackups();
+                  }}
+                  currentStats={{
+                    collections: overview?.collections || [],
+                    totalSize: overview?.totalSize || 0
+                  }}
                 >
-                  <div className="flex items-start justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <div className="p-1.5 rounded bg-sky-100 text-sky-600">
-                        <Database className="h-3 w-3" />
+                  <Button
+                    variant="outline"
+                    className="w-full border-sky-200 text-sky-700 hover:bg-sky-50 hover:text-sky-800 hover:border-sky-300"
+                    size="sm"
+                  >
+                    <Upload className="mr-2 h-4 w-4" />
+                    Importar
+                  </Button>
+                </ImportBackupDialog>
+              </div>
+
+              <div className="flex-1 overflow-hidden relative rounded-xl border border-slate-100 bg-slate-50/50">
+                <ScrollArea className="h-full">
+                  <div className="p-3 space-y-2">
+                    {backups.length === 0 ? (
+                      <div className="text-center py-12 text-slate-400">
+                        <HardDrive className="h-10 w-10 mx-auto mb-3 opacity-20" />
+                        <p className="text-sm font-medium">No hay respaldos</p>
+                        <p className="text-xs opacity-70">Crea uno nuevo para empezar</p>
                       </div>
-                      <div className="overflow-hidden">
-                        <p className="text-xs font-medium truncate w-[120px]" title={backup.name}>
-                          {backup.name.replace('adminflow_', '').split('_')[0]}...
-                        </p>
-                        <p className="text-[10px] text-muted-foreground">
-                          {new Date(backup.createdAt).toLocaleDateString()}
-                        </p>
-                      </div>
-                    </div>
+                    ) : (
+                      backups.map((backup) => (
+                        <div
+                          key={backup.name}
+                          className="group relative rounded-lg border border-slate-200 bg-white p-3 hover:border-sky-300 hover:shadow-md transition-all duration-200"
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className="p-2 rounded-lg bg-sky-50 text-sky-600 group-hover:bg-sky-100 transition-colors">
+                              <FileJson className="h-4 w-4" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-xs font-semibold text-slate-700 truncate" title={backup.name}>
+                                {backup.name.replace('adminflow_', '').split('_')[0]}
+                              </p>
+                              <p className="text-[10px] text-slate-500 mt-0.5">
+                                {new Date(backup.createdAt).toLocaleString()}
+                              </p>
+                              <p className="text-[10px] text-slate-400 mt-0.5">
+                                {formatBytes(backup.size)}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Overlay Actions */}
+                          <div className="absolute inset-0 bg-white/90 backdrop-blur-[1px] opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 rounded-lg">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 px-2 text-xs border-slate-200 hover:bg-slate-50"
+                              onClick={() => handleDownloadBackup(backup.name)}
+                              title="Descargar"
+                            >
+                              <Download className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 px-2 text-xs border-amber-200 text-amber-700 hover:bg-amber-50 hover:border-amber-300"
+                              onClick={() => {
+                                setSelectedBackup(backup);
+                                setShowRestoreModal(true);
+                              }}
+                              title="Restaurar"
+                            >
+                              <RotateCcw className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 px-2 text-xs border-rose-200 text-rose-700 hover:bg-rose-50 hover:border-rose-300"
+                              onClick={() => handleDeleteBackup(backup.name)}
+                              disabled={actionLoading === `delete-backup-${backup.name}`}
+                              title="Eliminar"
+                            >
+                              {actionLoading === `delete-backup-${backup.name}` ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <Trash2 className="h-3 w-3" />
+                              )}
+                            </Button>
+                          </div>
+                        </div>
+                      ))
+                    )}
                   </div>
-                  <div className="flex items-center gap-1 justify-end">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-7 text-xs"
-                      onClick={() => handleDownloadBackup(backup.name)}
-                    >
-                      <Download className="h-3 w-3 mr-1" />
-                      Bajar
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-7 text-xs text-amber-600 hover:text-amber-700 hover:bg-amber-50"
-                      onClick={() => {
-                        setSelectedBackup(backup);
-                        setShowRestoreModal(true);
-                      }}
-                    >
-                      <RotateCcw className="h-3 w-3 mr-1" />
-                      Restaurar
-                    </Button>
-                  </div>
-                </div>
-              ))}
-              {backups.length === 0 && (
-                <div className="text-center py-8 text-muted-foreground text-xs">
-                  <HardDrive className="h-8 w-8 mx-auto mb-2 opacity-20" />
-                  No hay respaldos
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+                </ScrollArea>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </div>
 
       {/* Restore Backup Modal (Local) */}
       <Dialog open={showRestoreModal} onOpenChange={setShowRestoreModal}>
-        <DialogContent className="sm:max-w-md">
-          <div className="absolute inset-0 bg-background/80 backdrop-blur-sm" />
-          <div className="relative">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <div className="p-2 rounded-lg bg-amber-100">
-                  <AlertTriangle className="h-5 w-5 text-amber-600" />
-                </div>
-                Restaurar Respaldo Local
-              </DialogTitle>
-              <DialogDescription>
-                Esta acción reemplazará todos los datos actuales
-              </DialogDescription>
-            </DialogHeader>
-            <div className="py-4">
-              <div className="space-y-4">
-                <div className="p-4 rounded-lg bg-amber-50 border border-amber-200">
-                  <p className="text-sm font-medium text-amber-900 mb-2">
-                    ⚠️ Advertencia: Irreversible
-                  </p>
-                  {selectedBackup && (
-                    <div className="space-y-1">
-                      <p className="text-sm text-muted-foreground">
-                        <span className="font-medium">Archivo:</span> {selectedBackup.name}
-                      </p>
-                    </div>
-                  )}
-                </div>
+        <DialogContent className="sm:max-w-md overflow-hidden border-0 shadow-2xl">
+          <div className="absolute inset-0 bg-amber-50/50 backdrop-blur-sm -z-10" />
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-amber-900">
+              <div className="p-2 rounded-lg bg-amber-100 text-amber-600">
+                <AlertTriangle className="h-5 w-5" />
               </div>
+              Restaurar Respaldo Local
+            </DialogTitle>
+            <DialogDescription className="text-amber-800/80">
+              Esta acción reemplazará todos los datos actuales con la versión seleccionada.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-6">
+            <div className="p-4 rounded-xl bg-white border border-amber-100 shadow-sm space-y-3">
+              <div className="flex items-center gap-3 text-sm text-slate-600">
+                <Database className="h-4 w-4 text-slate-400" />
+                <span>Base de datos actual será eliminada</span>
+              </div>
+              <div className="flex items-center gap-3 text-sm text-slate-600">
+                <RotateCcw className="h-4 w-4 text-slate-400" />
+                <span>Se restaurará la versión:</span>
+              </div>
+              {selectedBackup && (
+                <div className="mt-2 p-2 rounded bg-slate-50 border border-slate-100 text-xs font-mono text-slate-600 break-all">
+                  {selectedBackup.name}
+                </div>
+              )}
             </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setShowRestoreModal(false)}>
-                Cancelar
-              </Button>
-              <Button
-                variant="default"
-                onClick={handleRestoreBackup}
-                disabled={actionLoading === "restore"}
-                className="bg-amber-600 hover:bg-amber-700"
-              >
-                {actionLoading === "restore" ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <RotateCcw className="mr-2 h-4 w-4" />
-                )}
-                Restaurar
-              </Button>
-            </DialogFooter>
           </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="ghost" onClick={() => setShowRestoreModal(false)} className="hover:bg-amber-100 hover:text-amber-900">
+              Cancelar
+            </Button>
+            <Button
+              variant="default"
+              onClick={handleRestoreBackup}
+              disabled={actionLoading === "restore"}
+              className="bg-amber-600 hover:bg-amber-700 text-white border-0"
+            >
+              {actionLoading === "restore" ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <RotateCcw className="mr-2 h-4 w-4" />
+              )}
+              Confirmar Restauración
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <CollectionViewerDialog
+        collectionName={viewingCollection}
+        isOpen={!!viewingCollection}
+        onClose={() => setViewingCollection(null)}
+      />
     </div>
   );
 }

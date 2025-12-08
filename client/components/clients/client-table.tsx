@@ -1,12 +1,10 @@
-// client/components/clients/client-table.tsx
 import React, { useState, useMemo } from "react";
 import {
   Table,
-  TableBody,
-  TableCell,
-  TableHead,
   TableHeader,
   TableRow,
+  TableHead,
+  TableCell,
 } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -53,6 +51,7 @@ import * as XLSX from 'xlsx';
 import { CreateClientDialog } from "./create-client-dialog";
 import { Client } from "@/types/client";
 import { API_URL } from "@/lib/http";
+import { TablePageTransition } from "@/components/ui/page-transition";
 
 interface ClientTableProps {
   clients: Client[];
@@ -288,7 +287,7 @@ export function ClientTable({
               </TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody>
+          <TablePageTransition pageKey={currentPage}>
             {currentClients.length > 0 ? (
               currentClients.map((client) => (
                 <TableRow
@@ -373,6 +372,27 @@ export function ClientTable({
                             </span>
                           </div>
                         )}
+                        {client.hasImplementation && (
+                          <div className="group relative">
+                            <button
+                              type="button"
+                              className="rounded-full border border-transparent bg-white p-0.5 transition hover:border-slate-300"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                router.push(`/clients/${client.id}/implementation`);
+                              }}
+                            >
+                              <img
+                                src="/assets/patchpanel/rj45.png"
+                                alt="Implementación"
+                                className="h-3.5 w-3.5 object-contain"
+                              />
+                            </button>
+                            <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 text-xs bg-slate-900 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10">
+                              Implementación guardada
+                            </span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </TableCell>
@@ -409,7 +429,7 @@ export function ClientTable({
                   <TableCell>
                     <div onClick={(e) => e.stopPropagation()} className="flex items-center">
                       <Switch
-                        checked={client.notificationsEnabled !== false}
+                        checked={!!client.notificationsEnabled}
                         onCheckedChange={(checked) => handleToggleNotifications(client, Boolean(checked))}
                         disabled={togglingId === client.id}
                         className="scale-75 origin-left data-[state=checked]:bg-sky-500"
@@ -450,7 +470,7 @@ export function ClientTable({
                 </TableCell>
               </TableRow>
             )}
-          </TableBody>
+          </TablePageTransition>
         </Table>
       </div>
       <div className="flex items-center justify-between px-2 py-4">

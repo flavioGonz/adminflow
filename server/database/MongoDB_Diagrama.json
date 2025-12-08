@@ -1239,6 +1239,70 @@
           }
         }
       }
+    },
+    "adminflow.groups": {
+      "ns": "adminflow.groups",
+      "jsonSchema": {
+        "bsonType": "object",
+        "required": [
+          "_id",
+          "name",
+          "slug",
+          "members",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "_id": {
+            "bsonType": "objectId"
+          },
+          "name": {
+            "bsonType": "string"
+          },
+          "slug": {
+            "bsonType": "string"
+          },
+          "description": {
+            "bsonType": [
+              "string",
+              "null"
+            ]
+          },
+          "members": {
+            "bsonType": "array",
+            "items": {
+              "bsonType": "object",
+              "properties": {
+                "userId": {
+                  "bsonType": [
+                    "objectId",
+                    "string",
+                    "null"
+                  ]
+                },
+                "email": {
+                  "bsonType": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "name": {
+                  "bsonType": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            }
+          },
+          "createdAt": {
+            "bsonType": "date"
+          },
+          "updatedAt": {
+            "bsonType": "date"
+          }
+        }
+      }
     }
   },
   "relationships": [

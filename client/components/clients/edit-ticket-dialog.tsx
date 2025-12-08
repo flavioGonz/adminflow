@@ -62,6 +62,7 @@ import {
 } from "@/components/ui/command";
 import { toast } from "sonner";
 import { Ticket, TicketAttachment, TicketAudioNote } from "@/types/ticket";
+import { Group } from "@/types/group";
 import { Client } from "@/types/client";
 import { API_URL } from "@/lib/http";
 import { Textarea } from "@/components/ui/textarea";
@@ -119,7 +120,9 @@ export function EditTicketDialog({
   const [clientTickets, setClientTickets] = useState<Ticket[]>([]);
   const [clientTicketsLoading, setClientTicketsLoading] = useState(false);
   const [users, setUsers] = useState<{ id: string; name: string; email: string }[]>([]);
+  const [groups, setGroups] = useState<Group[]>([]);
   const [assignedTo, setAssignedTo] = useState<string | null>(ticket?.assignedTo ?? null);
+  const [assignedGroupId, setAssignedGroupId] = useState<string | null>(ticket?.assignedGroupId ?? null);
 
   useEffect(() => {
     fetch(`${API_URL}/users`)
@@ -156,6 +159,7 @@ export function EditTicketDialog({
         ? (ticket.audioNotes as TicketAudioNote[])
         : [],
       assignedTo: ticket?.assignedTo ?? null,
+      assignedGroupId: ticket?.assignedGroupId ?? null,
     };
   }, [ticket]);
 
@@ -337,6 +341,30 @@ export function EditTicketDialog({
     }
   }, [clientMenuOpen, clientsLoaded, fetchClients]);
 
+  useEffect(() => {
+    const controller = new AbortController();
+      const loadGroups = async () => {
+        try {
+          const response = await fetch(`${API_URL}/groups`, {
+            signal: controller.signal,
+          });
+          if (!response.ok) {
+            console.warn("No se pudieron cargar los grupos:", response.status);
+            toast.error("No se pudieron cargar los grupos.");
+            setGroups([]);
+            return;
+          }
+          const data = await response.json();
+          setGroups(Array.isArray(data) ? data : []);
+        } catch (err) {
+          if ((err as DOMException)?.name === "AbortError") return;
+          console.error("Error fetching groups:", err);
+        }
+      };
+    loadGroups();
+    return () => controller.abort();
+  }, []);
+
 
   useEffect(() => {
     return () => {
@@ -366,6 +394,7 @@ export function EditTicketDialog({
       setAttachments(initialState.attachments);
       setAudioNotes(initialState.audioNotes);
       setAssignedTo(initialState.assignedTo);
+      setAssignedGroupId(initialState.assignedGroupId);
       setNotes("");
     }
   }, [isEditMode, initialState]);
@@ -386,6 +415,7 @@ export function EditTicketDialog({
     setAttachments(initialState.attachments);
     setAudioNotes(initialState.audioNotes);
     setAssignedTo(initialState.assignedTo);
+    setAssignedGroupId(initialState.assignedGroupId);
     setNotes("");
   };
 
@@ -445,6 +475,7 @@ export function EditTicketDialog({
       attachments: sanitizeAttachments(),
       audioNotes: sanitizeAudioNotes(),
       assignedTo,
+      assignedGroupId,
     };
 
     if (isEditMode) {
@@ -721,6 +752,52 @@ export function EditTicketDialog({
                         </SelectItem>
                       );
                     })}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-0.5">
+                <Label className="text-sm font-semibold">Grupo asignado</Label>
+                <Select
+                  value={assignedGroupId ?? "none"}
+                  onValueChange={(value) =>
+                    setAssignedGroupId(value === "none" ? null : value)
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue>
+                      <div className="flex items-center gap-2">
+                        <Users className="h-4 w-4 text-muted-foreground" />
+                        <span>
+                          {assignedGroupId
+                            ? groups.find((group) => group._id === assignedGroupId)?.name ||
+                              "Grupo"
+                            : "Sin grupo"}
+                        </span>
+                      </div>
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">
+                      <div className="flex items-center gap-2">
+                        <Users className="h-4 w-4 text-muted-foreground" />
+                        <span>Sin grupo</span>
+                      </div>
+                    </SelectItem>
+                    {groups.map((group) => (
+                      <SelectItem key={group._id} value={group._id}>
+                        <div className="flex flex-col gap-0.5">
+                          <div className="flex items-center gap-2">
+                            <Users className="h-4 w-4 text-muted-foreground" />
+                            <span>{group.name}</span>
+                          </div>
+                          {group.description ? (
+                            <span className="text-[11px] text-muted-foreground">
+                              {group.description}
+                            </span>
+                          ) : null}
+                        </div>
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>

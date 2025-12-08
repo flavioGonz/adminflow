@@ -2,7 +2,6 @@ import React, { useState, useMemo } from "react";
 import Link from "next/link";
 import {
   Table,
-  TableBody,
   TableCell,
   TableHead,
   TableHeader,
@@ -45,6 +44,7 @@ import { EditContractDialog } from "./edit-contract-dialog";
 import { DeleteContractDialog } from "./delete-contract-dialog";
 import { UploadContractDialog } from "./upload-contract-dialog";
 import { Contract } from "@/types/contract";
+import { TablePageTransition } from "@/components/ui/page-transition";
 
 interface ContractTableProps {
   contracts: Contract[];
@@ -218,7 +218,7 @@ export function ContractTable({
               </TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody>
+          <TablePageTransition pageKey={currentPage}>
             {currentContracts.length > 0 ? (
               currentContracts.map((contract) => (
                 <TableRow key={contract.id} className="hover:bg-slate-50">
@@ -356,7 +356,7 @@ export function ContractTable({
                 </TableCell>
               </TableRow>
             )}
-          </TableBody>
+          </TablePageTransition>
         </Table>
       </div>
       <Pagination>

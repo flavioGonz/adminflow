@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Apex Patch Panel Console v9.2</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@500&family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    <!-- Librerías -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <!-- Librería para Excel con estilos -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        :root {
+            --color-bg: #f8fafc; --color-surface: #ffffff; --color-chassis: #eef2f7;
+            --color-text: #1e293b; --color-text-muted: #64748b; --color-accent: #2563eb;
+            --color-accent-light: #eff6ff; --color-accent-glow: rgba(37, 99, 235, 0.4);
+            --color-unpatched: #dc2626; --color-success: #16a34a; --color-warning: #f59e0b;
+            --shadow: 0 4px 10px -2px rgb(0 0 0 / 0.05); --shadow-lg: 0 10px 25px -3px rgb(0 0 0 / 0.1);
+            --border-color: #e2e8f0; --border-radius: 0.75rem;
+            --port-width: 42px; --port-height: 42px; --port-margin: 3px;
+        }
+
+        /* --- Estructura y Estilo General --- */
+        * { box-sizing: border-box; }
+        body { font-family: 'Inter', sans-serif; background-color: var(--color-bg); color: var(--color-text); margin: 0; padding: 1.5rem; }
+        .main-container { max-width: 1400px; margin: 0 auto; display: grid; gap: 2rem; }
+        .main-header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: 1.5rem; }
+        h1 { margin: 0; font-size: 1.5rem; }
+        .card { background: var(--color-surface); border-radius: var(--border-radius); box-shadow: var(--shadow); padding: 1.5rem; border: 1px solid var(--border-color); }
+        .card-header { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; border-bottom: 1px solid var(--border-color); padding-bottom: 1rem; margin-bottom: 1.5rem; }
+        h2 { margin: 0; font-size: 1.15rem; }
+        .icon-small { width: 1.2em; height: 1.2em; vertical-align: -0.2em; margin-right: 0.4em; }
+        
+        /* --- Layouts --- */
+        .top-info-layout { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 2rem; }
+        .dashboard-layout { display: grid; gap: 2rem; }
+
+        /* --- Patch Panel Físico --- */
+        .patch-panel-chassis { background: var(--color-chassis); padding: 1rem; border-radius: var(--border-radius); box-shadow: inset 0 2px 4px rgba(0,0,0,0.05); overflow-x: auto; }
+        .patch-panel-core { display: flex; flex-wrap: nowrap; justify-content: flex-start; align-items: center; min-width: max-content; padding-bottom: 1.5rem; }
+        .port {
+            flex-shrink: 0; width: var(--port-width); height: var(--port-height); margin: 0 var(--port-margin);
+            position: relative; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s;
+            animation: pop-in 0.5s ease-out forwards; animation-delay: calc(var(--i) * 0.02s);
+            opacity: 0; transform: translateY(15px);
+            display: flex; justify-content: center; align-items: center;
+        }
+        @keyframes pop-in { to { opacity: 1; transform: translateY(0); } }
+        .port:not(.disabled):hover { transform: translateY(-4px); }
+        .port.highlight { transform: translateY(-4px) scale(1.1); box-shadow: 0 0 15px var(--color-accent-glow); border-radius: 4px; z-index: 10; }
+        .port-img { width: 80%; height: 80%; object-fit: contain; transition: filter 0.3s ease-out; pointer-events: none; }
+        .port.occupied .port-img { filter: drop-shadow(0 0 8px var(--color-accent-glow)); }
+        .port.unpatched .port-img { filter: grayscale(80%) opacity(60%); }
+        .port-number { position: absolute; bottom: -20px; left: 50%; transform: translateX(-50%); font-family: 'Fira Code', monospace; font-size: 10px; color: var(--color-text-muted); background: var(--color-bg); padding: 1px 4px; border-radius: 4px;}
+        .group-divider { width: 2px; height: 30px; background: #cbd5e1; margin: 0 12px; flex-shrink: 0; }
+        .port-poe-indicator { position: absolute; top: -2px; right: -2px; width: 10px; height: 10px; border-radius: 50%; background-color: var(--color-warning); z-index: 5; box-shadow: 0 0 6px rgba(245, 158, 11, 0.7); display: none; }
+        .port.poe-enabled .port-poe-indicator { display: block; }
+        
+        /* --- Botones, Filtros, Tabla, etc. --- */
+        .controls-row, .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; }
+        .filter-group { display: inline-flex; background: var(--color-chassis); padding: 4px; border-radius: 8px; }
+        .filter-btn { border: none; background: transparent; padding: 0.5rem 1rem; border-radius: 6px; font-weight: 500; cursor: pointer; transition: all 0.2s; color: var(--color-text-muted); display: flex; align-items: center; gap: 0.5rem; }
+        .filter-btn.active { background: var(--color-surface); color: var(--color-accent); box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .filter-count { font-size: 0.75rem; background-color: rgba(0,0,0,0.05); padding: 2px 6px; border-radius: 10px; }
+        .filter-btn.active .filter-count { background-color: var(--color-accent-light); color: var(--color-accent); }
+        .btn { display: inline-flex; align-items: center; gap: 0.5rem; border: 1px solid transparent; padding: 0.6rem 1.25rem; border-radius: 8px; cursor: pointer; font-weight: 500; transition: all 0.2s; white-space: nowrap; font-size: 0.9rem;}
+        .btn-primary { background-color: var(--color-accent); color: white; border-color: var(--color-accent);}
+        .btn-primary:hover { background-color: #1d4ed8; border-color: #1d4ed8; }
+        .btn-secondary { background: var(--color-surface); color: var(--color-text-muted); border-color: var(--border-color); }
+        .btn-secondary:hover { border-color: #9ca3af; color: var(--color-text); }
+        .btn-danger { background-color: var(--color-unpatched); color: white; border-color: var(--color-unpatched); }
+        .btn-danger:hover { background-color: #b91c1c; border-color: #b91c1c; }
+        #search-input { flex-grow: 1; min-width: 250px; padding: 0.75rem; border: 1px solid var(--border-color); border-radius: 8px; font-size: 1rem; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 0.75rem; text-align: left; border-bottom: 1px solid var(--border-color); font-size: 0.9rem; vertical-align: middle; }
+        thead th { color: var(--color-text-muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px; }
+        tbody tr:hover, tbody tr.highlight { background-color: var(--color-accent-light); }
+        .status-indicator { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 0.5rem; }
+        .editable-cell:focus { background-color: var(--color-accent-light); outline: 1px solid var(--color-accent); border-radius: 4px; }
+        mark { background-color: #fef08a; padding: 0.1em; border-radius: 3px; }
+        .copy-button { background: none; border: none; padding: 0; margin-left: 0.5rem; cursor: pointer; opacity: 0.3; vertical-align: -0.1em; color: var(--color-text-muted); }
+        td:hover .copy-button { opacity: 1; color: var(--color-accent); }
+        .panel-manager { display: flex; align-items: center; gap: 0.5rem; }
+        .panel-selector { padding: 0.6rem 1rem; border: 1px solid var(--border-color); border-radius: 8px; font-size: 0.9rem; flex-grow: 1; }
+        .btn-group { display: inline-flex; gap: 0.5rem; }
+        .import-label { cursor: pointer; }
+        .rack-details, .client-details { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); }
+        .detail-item { display: flex; flex-direction: column; gap: 0.25rem; }
+        .detail-label { color: var(--color-text-muted); font-weight: 500; font-size: 0.8rem;}
+        .detail-value { color: var(--color-text); font-family: 'Fira Code', monospace; font-size: 0.95rem; }
+        .detail-input { padding: 0.4rem 0.7rem; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.9rem; }
+        .card-actions { display: flex; gap: 0.5rem; }
+        .btn-sm { padding: 0.4rem 0.8rem; font-size: 0.8rem; }
+        
+        /* --- Popover --- */
+        #popover { position: absolute; z-index: 1000; width: 340px; visibility: hidden; opacity: 0; transform: translateY(10px) scale(0.95); transition: all 0.3s; }
+        #popover.visible { visibility: visible; opacity: 1; transform: translateY(0) scale(1); }
+        .popover-content { background: var(--color-surface); padding: 1.5rem; border-radius: var(--border-radius); box-shadow: var(--shadow-lg); border: 1px solid var(--border-color); }
+        .popover-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem; }
+        .popover-title { margin: 0; font-size: 1.1rem; }
+        .popover-field { margin-bottom: 1rem; }
+        .popover-field label { display: block; font-size: 0.8rem; font-weight: 500; color: var(--color-text-muted); margin-bottom: 0.25rem; }
+        .popover-input, .custom-select { width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.9rem; }
+        .popover-actions { text-align: right; }
+
+        /* --- Modal Personalizado --- */
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.5); z-index: 2000; display: none; justify-content: center; align-items: center; backdrop-filter: blur(4px); }
+        .modal-overlay.visible { display: flex; }
+        .modal-content { background: var(--color-surface); border-radius: var(--border-radius); box-shadow: var(--shadow-lg); padding: 1.5rem; width: 90%; max-width: 450px; animation: modal-pop-in 0.3s ease-out; }
+        @keyframes modal-pop-in { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        .modal-header { margin-bottom: 1rem; }
+        .modal-title { margin: 0; font-size: 1.2rem; }
+        .modal-body { margin-bottom: 1.5rem; font-size: 0.95rem; color: var(--color-text-muted); }
+        .modal-input { width: 100%; padding: 0.75rem; border: 1px solid var(--border-color); border-radius: 8px; font-size: 1rem; }
+        .modal-actions { display: flex; justify-content: flex-end; gap: 0.75rem; }
+
+        /* --- Toast (Notificaciones) --- */
+        #toast-container { position: fixed; bottom: 1.5rem; right: 1.5rem; z-index: 3000; display: flex; flex-direction: column; gap: 0.5rem; }
+        .toast { padding: 0.75rem 1.25rem; border-radius: 8px; color: white; box-shadow: var(--shadow-lg); animation: slideIn 0.3s ease-out, fadeOut 0.3s ease-out 2.7s forwards; }
+        .toast.success { background-color: var(--color-success); } .toast.info { background-color: var(--color-accent); } .toast.warning { background-color: var(--color-unpatched); }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
+    </style>
+</head>
+<body>
+
+<svg style="display:none">
+  <symbol id="icon-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></symbol>
+  <symbol id="icon-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></symbol>
+  <symbol id="icon-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></symbol>
+  <symbol id="icon-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></symbol>
+  <symbol id="icon-pdf" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></symbol>
+  <symbol id="icon-excel" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><path d="M12 18h-1a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h1v8z"></path><path d="M17 18h-1a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h1v8z"></path></symbol>
+  <symbol id="icon-switch" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"></rect><rect x="6" y="8" width="4" height="4"></rect><rect x="14" y="8" width="4" height="4"></rect><rect x="6" y="14" width="4" height="4"></rect><rect x="14" y="14" width="4" height="4"></rect></symbol>
+  <symbol id="icon-server" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"></rect><rect x="6" y="8" width="4" height="12"></rect><rect x="14" y="8" width="4" height="12"></rect></symbol>
+  <symbol id="icon-camera" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 3a2 2 0 0 0-2-2H3a2 2 0 0 0-2 2v18a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zm-7 10a4 4 0 1 1-8 0 4 4 0 0 1 8 0z"></path></symbol>
+</svg>
+
+<div class="main-container">
+    <header class="main-header">
+        <h1>Consola de Patch Panel</h1>
+        <div class="actions">
+            <button id="reset-btn" class="btn btn-secondary" title="Vaciar Panel Actual">Vaciar Panel</button>
+            <div class="btn-group">
+                <button id="save-project-btn" class="btn btn-secondary" title="Guardar el estado actual del proyecto en un archivo .zip">
+                    <svg width="16" height="16"><use xlink:href="#icon-download"></use></svg> Guardar Proyecto
+                </button>
+                <label for="import-project-file" class="btn btn-secondary import-label" title="Importar un proyecto desde un archivo .zip">
+                    <svg width="16" height="16"><use xlink:href="#icon-upload"></use></svg> Importar Proyecto
+                </label>
+                <input type="file" id="import-project-file" accept=".zip" style="display: none;">
+            </div>
+            <div class="btn-group">
+                <button id="export-pdf-btn" class="btn btn-primary">
+                    <svg width="16" height="16"><use xlink:href="#icon-pdf"></use></svg> Exportar PDF
+                </button>
+                <button id="export-excel-btn" class="btn btn-success" style="background-color: #15803d; color:white; border-color:#15803d;">
+                    <svg width="16" height="16"><use xlink:href="#icon-excel"></use></svg> Exportar Excel
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <div class="top-info-layout">
+        <section class="card" id="client-info-card">
+            <div class="card-header">
+                <h2>Información del Cliente</h2>
+                <div class="card-actions">
+                    <button id="edit-client-btn" class="btn btn-secondary btn-sm">Editar</button>
+                    <button id="save-client-btn" class="btn btn-primary btn-sm" style="display: none;">Guardar</button>
+                </div>
+            </div>
+            <div class="client-details">
+                <div class="detail-item"><span class="detail-label">Cliente</span>
+                    <span class="detail-value" data-field="clientName"></span><input type="text" data-field="clientName" class="detail-input" style="display: none;"></div>
+                <div class="detail-item"><span class="detail-label">Proyecto</span>
+                    <span class="detail-value" data-field="projectName"></span><input type="text" data-field="projectName" class="detail-input" style="display: none;"></div>
+                <div class="detail-item"><span class="detail-label">Técnico</span>
+                    <span class="detail-value" data-field="technicianName"></span><input type="text" data-field="technicianName" class="detail-input" style="display: none;"></div>
+            </div>
+        </section>
+
+        <section class="card" id="rack-info-card">
+            <div class="card-header">
+                <h2>Detalles del Rack</h2>
+                <div class="card-actions">
+                    <button id="edit-rack-btn" class="btn btn-secondary btn-sm">Editar</button>
+                    <button id="save-rack-btn" class="btn btn-primary btn-sm" style="display: none;">Guardar</button>
+                </div>
+            </div>
+            <div class="rack-details">
+                 <div class="detail-item"><span class="detail-label">Nombre</span>
+                    <span class="detail-value" data-field="name"></span><input type="text" data-field="name" class="detail-input" style="display: none;"></div>
+                <div class="detail-item"><span class="detail-label">Altura (U)</span>
+                    <span class="detail-value" data-field="height"></span><select data-field="height" class="detail-input" style="display: none;">
+                        <option value="6">6U</option> <option value="12">12U</option> <option value="24">24U</option> <option value="32">32U</option> <option value="42">42U</option>
+                    </select></div>
+                <div class="detail-item"><span class="detail-label">U Inicial</span>
+                    <span class="detail-value" data-field="startU"></span><input type="number" data-field="startU" class="detail-input" style="display: none;"></div>
+            </div>
+        </section>
+    </div>
+
+    <div class="dashboard-layout">
+        <div class="card" id="patch-panel-card">
+            <div class="card-header">
+                <h2>Patch Panel Físico</h2>
+                <div class="panel-manager">
+                    <select id="panel-selector" class="panel-selector" title="Doble clic para renombrar"></select>
+                    <button id="add-panel-btn" class="btn btn-primary btn-sm" title="Añadir nuevo panel">+</button>
+                    <button id="delete-panel-btn" class="btn btn-danger btn-sm" title="Eliminar panel actual">
+                        <svg width="16" height="16" fill="currentColor"><use xlink:href="#icon-trash"></use></svg>
+                    </button>
+                </div>
+            </div>
+            <div class="patch-panel-chassis"><div class="patch-panel-core" id="patchPanelCore"></div></div>
+        </div>
+        <div class="card" id="config-card">
+            <div class="card-header"><h2>Tabla de Conexiones</h2></div>
+            <div class="controls-row">
+                <div class="filter-group" id="filter-controls"></div>
+                <input type="text" id="search-input" placeholder="Buscar en el panel actual...">
+            </div>
+            <div style="overflow-x: auto;">
+                <table>
+                    <thead><tr><th>P.</th><th>Estado</th><th>Conexión</th><th>MAC</th><th>Long.</th><th>Obs.</th><th>Cert.</th><th>PoE</th></tr></thead>
+                    <tbody id="portTableBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="popover">
+    <div class="popover-content">
+        <div class="popover-header">
+            <span id="popover-status-indicator" class="status-indicator"></span>
+            <h3 class="popover-title" id="popover-title"></h3>
+        </div>
+        <div class="popover-body">
+            <div class="popover-field">
+                <label for="popover-desc">Conexión</label>
+                <select id="popover-desc" class="custom-select"></select>
+            </div>
+            <div class="popover-field"><label for="popover-mac">MAC Address</label><input type="text" id="popover-mac" class="popover-input"></div>
+            <div class="popover-field"><label for="popover-length">Longitud (m)</label><input type="text" id="popover-length" class="popover-input"></div>
+            <div class="popover-field"><label for="popover-obs">Observaciones</label><input type="text" id="popover-obs" class="popover-input"></div>
+            <div style="display: flex; justify-content: space-between;">
+                <div class="popover-field" style="display: flex; align-items: center; gap: 0.5rem;"><input type="checkbox" id="popover-certified"><label for="popover-certified">Certificado</label></div>
+                <div class="popover-field" style="display: flex; align-items: center; gap: 0.5rem;"><input type="checkbox" id="popover-poe"><label for="popover-poe">PoE Habilitado</label></div>
+            </div>
+        </div>
+        <div class="popover-actions"><button id="popover-save-btn" class="btn btn-primary">Guardar</button></div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="custom-modal">
+    <div class="modal-content">
+        <div class="modal-header"><h3 class="modal-title" id="modal-title"></h3></div>
+        <div class="modal-body">
+            <p id="modal-message"></p>
+            <input type="text" id="modal-input" class="modal-input" style="display: none;">
+        </div>
+        <div class="modal-actions">
+            <button id="modal-cancel-btn" class="btn btn-secondary">Cancelar</button>
+            <button id="modal-confirm-btn" class="btn btn-primary">Confirmar</button>
+        </div>
+    </div>
+</div>
+
+<div id="toast-container"></div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    // --- ESTADO Y CONSTANTES ---
+    const APP_VERSION = 'patchPanelConsole_v9.2';
+    const UNPATCHED_STATE = 'Libre';
+    let appData = {};
+    let currentPanelName = null;
+    let currentFilter = 'all';
+    let activePopoverPortId = null;
+
+    const generateMAC = () => "00:1A:2B:" + Array(3).fill(0).map(() => Math.floor(Math.random() * 256).toString(16).padStart(2, '0').toUpperCase()).join(':');
+    const connectionTypes = {
+        [UNPATCHED_STATE]: '', 'Switch': '#icon-switch', 'Servidor': '#icon-server', 'Cámara': '#icon-camera',
+        'Router': '#icon-router', 'Teléfono IP': '#icon-phone', 'Modem': '#icon-modem', 
+        'PC': '#icon-pc', 'UPS': '#icon-ups'
+    };
+
+    const getDefaultPanelData = () => {
+        const data = {};
+        for (let i = 1; i <= 24; i++) {
+            data[i] = { desc: UNPATCHED_STATE, mac: '', length: '', obs: '', certified: false, poe: false };
+        }
+        return data;
+    };
+    
+    // --- CENTRALIZACIÓN DE ELEMENTOS DOM ---
+    const dom = {
+        patchPanelCore: document.getElementById('patchPanelCore'),
+        tableBody: document.getElementById('portTableBody'),
+        searchInput: document.getElementById('search-input'),
+        panelSelector: document.getElementById('panel-selector'),
+        filterControls: document.getElementById('filter-controls'),
+        rackCard: document.getElementById('rack-info-card'),
+        clientCard: document.getElementById('client-info-card'),
+        modal: {
+            overlay: document.getElementById('custom-modal'),
+            title: document.getElementById('modal-title'),
+            message: document.getElementById('modal-message'),
+            input: document.getElementById('modal-input'),
+            confirmBtn: document.getElementById('modal-confirm-btn'),
+            cancelBtn: document.getElementById('modal-cancel-btn'),
+        },
+        popover: {
+            el: document.getElementById('popover'),
+            title: document.getElementById('popover-title'),
+            status: document.getElementById('popover-status-indicator'),
+            desc: document.getElementById('popover-desc'),
+            mac: document.getElementById('popover-mac'),
+            length: document.getElementById('popover-length'),
+            obs: document.getElementById('popover-obs'),
+            certified: document.getElementById('popover-certified'),
+            poe: document.getElementById('popover-poe'),
+            saveBtn: document.getElementById('popover-save-btn'),
+        }
+    };
+    let modalConfirmCallback = null;
+
+    // --- LÓGICA DE DATOS Y ESTADO ---
+    const isPortUnpatched = (portInfo) => !portInfo || (portInfo.desc || '').toLowerCase().trim() === UNPATCHED_STATE.toLowerCase();
+    const getPanelData = () => appData.panels?.[currentPanelName] || {};
+    
+    const saveData = () => {
+        try {
+            const state = { appData, currentPanelName, currentFilter };
+            localStorage.setItem(APP_VERSION, JSON.stringify(state));
+        } catch (e) { console.error("Error al guardar:", e); showToast("Error al guardar los datos.", "warning"); }
+    };
+    
+    const loadData = () => {
+        try {
+            const savedState = localStorage.getItem(APP_VERSION);
+            const state = savedState ? JSON.parse(savedState) : {};
+            appData = state.appData || {};
+            currentPanelName = state.currentPanelName;
+            currentFilter = state.currentFilter || 'all';
+
+            if (!appData.clientInfo) appData.clientInfo = { clientName: "N/A", projectName: "N/A", technicianName: "N/A" };
+            if (!appData.rack) appData.rack = { name: "Rack Principal", height: 24, startU: 1 };
+            if (!appData.panels) appData.panels = {};
+            if (Object.keys(appData.panels).length === 0) {
+                appData.panels["Panel Principal"] = getDefaultPanelData();
+                showToast("Se ha creado un panel de ejemplo.", "info");
+            }
+            if (!currentPanelName || !appData.panels[currentPanelName]) {
+                currentPanelName = Object.keys(appData.panels)[0];
+            }
+        } catch (e) {
+            console.error("Error al cargar datos:", e);
+            appData = {
+                clientInfo: { clientName: "N/A", projectName: "N/A", technicianName: "N/A" },
+                rack: { name: "Rack Principal", height: 24, startU: 1 },
+                panels: { "Panel Principal": getDefaultPanelData() }
+            };
+            currentPanelName = "Panel Principal";
+            showToast("Datos corruptos. Se restauró la configuración.", "warning");
+        }
+    };
+
+    // --- LÓGICA DE RENDERIZADO ---
+    function renderAll() {
+        renderInfoCard(dom.clientCard, appData.clientInfo);
+        renderInfoCard(dom.rackCard, appData.rack);
+        renderPanelSelector();
+        renderPatchPanel();
+        renderTableAndFilters();
+    }
+    
+    function renderInfoCard(cardElement, data) {
+        cardElement.querySelectorAll('.detail-value').forEach(el => {
+            const field = el.dataset.field;
+            el.textContent = data[field] + (field === 'height' ? 'U' : '');
+        });
+        cardElement.querySelectorAll('.detail-input').forEach(el => {
+            const field = el.dataset.field;
+            el.value = data[field];
+        });
+    }
+
+    function renderPanelSelector() {
+        dom.panelSelector.innerHTML = Object.keys(appData.panels).map(name => 
+            `<option value="${name}" ${name === currentPanelName ? 'selected' : ''}>${name}</option>`
+        ).join('');
+        dom.panelSelector.disabled = Object.keys(appData.panels).length === 0;
+    }
+
+    function renderPatchPanel() {
+        dom.patchPanelCore.innerHTML = '';
+        const panelData = getPanelData();
+        for (let i = 1; i <= 24; i++) {
+            const portInfo = panelData[i] || { desc: UNPATCHED_STATE };
+            const unpatched = isPortUnpatched(portInfo);
+            const port = document.createElement('div');
+            port.className = `port ${unpatched ? 'unpatched' : 'occupied'} ${portInfo.poe ? 'poe-enabled' : ''}`;
+            port.dataset.portId = i;
+            port.style.setProperty('--i', i);
+            port.innerHTML = `<img src="rj45.png" alt="RJ45" class="port-img"><span class="port-number">${i}</span><div class="port-poe-indicator"></div>`;
+            dom.patchPanelCore.appendChild(port);
+            if (i % 8 === 0 && i < 24) dom.patchPanelCore.innerHTML += '<div class="group-divider"></div>';
+        }
+    }
+
+    function renderTableAndFilters() {
+        const panelData = Object.values(getPanelData());
+        const counts = {
+            all: panelData.length,
+            occupied: panelData.filter(p => !isPortUnpatched(p)).length,
+            unpatched: panelData.filter(p => isPortUnpatched(p)).length
+        };
+        dom.filterControls.innerHTML = `
+            <button class="filter-btn ${currentFilter === 'all' ? 'active' : ''}" data-filter="all">Todos <span class="filter-count">${counts.all}</span></button>
+            <button class="filter-btn ${currentFilter === 'occupied' ? 'active' : ''}" data-filter="occupied">Ocupados <span class="filter-count">${counts.occupied}</span></button>
+            <button class="filter-btn ${currentFilter === 'unpatched' ? 'active' : ''}" data-filter="unpatched">Libres <span class="filter-count">${counts.unpatched}</span></button>
+        `;
+        renderTable();
+    }
+
+    function renderTable() {
+        dom.tableBody.innerHTML = '';
+        const panelData = getPanelData();
+        const filterText = dom.searchInput.value.toLowerCase();
+        
+        Object.entries(panelData).forEach(([portId, portInfo]) => {
+            const unpatched = isPortUnpatched(portInfo);
+            if ((currentFilter === 'occupied' && unpatched) || (currentFilter === 'unpatched' && !unpatched)) return;
+            
+            const searchString = `${portId} ${Object.values(portInfo).join(' ')}`.toLowerCase();
+            if (filterText && !searchString.includes(filterText)) return;
+            
+            const row = dom.tableBody.insertRow();
+            row.dataset.portId = portId;
+            const statusColor = unpatched ? 'var(--color-unpatched)' : 'var(--color-success)';
+            const iconId = connectionTypes[portInfo.desc] || '';
+            const iconHTML = iconId ? `<svg class="icon-small"><use xlink:href="${iconId}"></use></svg>` : '';
+            const copyIcon = `<svg width="14" height="14"><use xlink:href="#icon-copy"></use></svg>`;
+            const applyMark = (text) => filterText ? String(text).replace(new RegExp(filterText, 'gi'), `<mark>${filterText}</mark>`) : text;
+
+            row.innerHTML = `
+                <td>${portId}</td>
+                <td><span class="status-indicator" style="background-color:${statusColor}"></span>${unpatched ? UNPATCHED_STATE : 'Ocupado'}</td>
+                <td data-field="desc" class="editable-cell" contenteditable="true" role="textbox">${iconHTML}${applyMark(portInfo.desc || '')}</td>
+                <td data-field="mac" class="editable-cell" contenteditable="true" role="textbox">${applyMark(portInfo.mac || '')} <button class="copy-button" title="Copiar MAC" data-copy="${portInfo.mac}">${copyIcon}</button></td>
+                <td data-field="length" class="editable-cell" contenteditable="true" role="textbox">${portInfo.length || ''}</td>
+                <td data-field="obs" class="editable-cell" contenteditable="true" role="textbox">${portInfo.obs || ''}</td>
+                <td style="text-align:center;"><input type="checkbox" class="cert-checkbox" ${portInfo.certified ? 'checked' : ''} title="Certificado"></td>
+                <td style="text-align:center;"><input type="checkbox" class="poe-checkbox" ${portInfo.poe ? 'checked' : ''} title="PoE Habilitado"></td>
+            `;
+        });
+    }
+
+    // --- LÓGICA DEL POPOVER ---
+    function showPopover(portId, targetEl) {
+        const portInfo = getPanelData()[portId];
+        if (!portInfo) return;
+
+        activePopoverPortId = portId;
+        const unpatched = isPortUnpatched(portInfo);
+        const pop = dom.popover;
+
+        pop.title.textContent = `Puerto ${portId}`;
+        pop.status.style.backgroundColor = unpatched ? 'var(--color-unpatched)' : 'var(--color-success)';
+        pop.desc.innerHTML = Object.keys(connectionTypes).map(type => `<option value="${type}" ${type === portInfo.desc ? 'selected' : ''}>${type}</option>`).join('');
+        pop.mac.value = portInfo.mac || '';
+        pop.length.value = portInfo.length || '';
+        pop.obs.value = portInfo.obs || '';
+        pop.certified.checked = portInfo.certified;
+        pop.poe.checked = portInfo.poe;
+
+        const rect = targetEl.getBoundingClientRect();
+        pop.el.style.top = `${rect.bottom + window.scrollY + 10}px`;
+        pop.el.style.left = `${rect.left + window.scrollX + (rect.width / 2) - (pop.el.offsetWidth / 2)}px`;
+        if (parseInt(pop.el.style.left) < 10) pop.el.style.left = '10px';
+        if ((parseInt(pop.el.style.left) + pop.el.offsetWidth) > window.innerWidth - 10) {
+            pop.el.style.left = `${window.innerWidth - pop.el.offsetWidth - 10}px`;
+        }
+        pop.el.classList.add('visible');
+    }
+
+    const hidePopover = () => { dom.popover.el.classList.remove('visible'); activePopoverPortId = null; };
+
+    function savePopoverChanges() {
+        if (!activePopoverPortId) return;
+        const portId = activePopoverPortId;
+        const portData = getPanelData()[portId];
+        const pop = dom.popover;
+
+        portData.desc = pop.desc.value;
+        portData.mac = pop.mac.value;
+        portData.length = pop.length.value;
+        portData.obs = pop.obs.value;
+        portData.certified = pop.certified.checked;
+        portData.poe = pop.poe.checked;
+        
+        if (isPortUnpatched(portData)) {
+            Object.assign(portData, { mac: '', length: '', obs: '', certified: false, poe: false });
+        }
+        saveData();
+        renderAll();
+        showToast(`Puerto ${portId} actualizado.`, 'success');
+        hidePopover();
+    }
+    
+    // --- LÓGICA DEL MODAL (para confirmaciones) ---
+    function showModal({ title, message, type = 'confirm', placeholder = '', onConfirm }) {
+        dom.modal.title.textContent = title;
+        dom.modal.message.textContent = message;
+        dom.modal.input.style.display = type === 'prompt' ? 'block' : 'none';
+        dom.modal.input.value = '';
+        dom.modal.input.placeholder = placeholder;
+        dom.modal.overlay.classList.add('visible');
+        modalConfirmCallback = onConfirm;
+    }
+    function hideModal() { dom.modal.overlay.classList.remove('visible'); modalConfirmCallback = null; }
+
+    // --- MANEJADORES DE EVENTOS ---
+    function setupInfoCardEditing(cardElement, dataObject, cardName) {
+        const editBtn = cardElement.querySelector('.btn-secondary');
+        const saveBtn = cardElement.querySelector('.btn-primary');
+        const toggleEditMode = (isEditing) => {
+            cardElement.querySelectorAll('.detail-value').forEach(el => el.style.display = isEditing ? 'none' : 'block');
+            cardElement.querySelectorAll('.detail-input').forEach(el => el.style.display = isEditing ? 'block' : 'none');
+            editBtn.style.display = isEditing ? 'none' : 'block';
+            saveBtn.style.display = isEditing ? 'block' : 'none';
+        };
+        editBtn.addEventListener('click', () => toggleEditMode(true));
+        saveBtn.addEventListener('click', () => {
+            cardElement.querySelectorAll('.detail-input').forEach(el => { dataObject[el.dataset.field] = el.value; });
+            saveData();
+            renderInfoCard(cardElement, dataObject);
+            toggleEditMode(false);
+            showToast(`${cardName} actualizado.`, 'success');
+        });
+        toggleEditMode(false);
+    }
+    
+    // ... (El resto de los manejadores de eventos se mantienen igual)
+
+    // --- Exportación a XLSX con Estilos ---
+    function exportToXLSX() {
+        showToast("Generando archivo Excel...", "info");
+        const { utils, writeFile } = XLSX;
+        const panelData = getPanelData();
+        const client = appData.clientInfo;
+        const rack = appData.rack;
+        const wb = utils.book_new();
+
+        const headerStyle = { font: { bold: true, color: { rgb: "FFFFFFFF" } }, fill: { fgColor: { rgb: "FF2563EB" } }, alignment: { horizontal: "center", vertical: "center" } };
+        const titleStyle = { font: { bold: true, sz: 14 } };
+        const labelStyle = { font: { bold: true } };
+
+        const sheetData = [
+            ["Informe de Patch Panel"], [],
+            ["Cliente:", client.clientName], ["Proyecto:", client.projectName], ["Técnico:", client.technicianName],
+            ["Rack:", `${rack.name} (${rack.height}U)`], ["Panel:", currentPanelName], [],
+            ["Puerto", "Estado", "Conexión", "MAC", "Longitud (m)", "Observaciones", "Certificado", "PoE"]
+        ];
+        
+        Object.entries(panelData).forEach(([portId, data]) => {
+            sheetData.push([ portId, isPortUnpatched(data) ? UNPATCHED_STATE : 'Ocupado', data.desc, data.mac, data.length, data.obs, data.certified ? 'Sí' : 'No', data.poe ? 'Sí' : 'No' ]);
+        });
+        
+        const ws = utils.aoa_to_sheet(sheetData);
+        ws['A1'].s = titleStyle;
+        ['A3', 'A4', 'A5', 'A6', 'A7'].forEach(c => { if(ws[c]) ws[c].s = labelStyle; });
+        ['A9', 'B9', 'C9', 'D9', 'E9', 'F9', 'G9', 'H9'].forEach(h => { if(ws[h]) ws[h].s = headerStyle; });
+        ws['!cols'] = [ { wch: 8 }, { wch: 12 }, { wch: 20 }, { wch: 20 }, { wch: 15 }, { wch: 40 }, { wch: 12 }, { wch: 8 } ];
+        
+        utils.book_append_sheet(wb, ws, `Panel ${currentPanelName}`);
+        const fileName = `Reporte_Panel_${currentPanelName.replace(/\s+/g, '_')}.xlsx`;
+        writeFile(wb, fileName);
+    }
+    
+    // --- INICIALIZACIÓN ---
+    function init() {
+        loadData();
+        setupInfoCardEditing(dom.clientCard, appData.clientInfo, 'Información del cliente');
+        setupInfoCardEditing(dom.rackCard, appData.rack, 'Detalles del rack');
+        renderAll();
+
+        // --- Event Listeners Globales ---
+        document.addEventListener('click', e => {
+            const portEl = e.target.closest('.port');
+            if (portEl) { showPopover(portEl.dataset.portId, portEl); } 
+            else if (dom.popover.el.classList.contains('visible') && !dom.popover.el.contains(e.target)) { hidePopover(); }
+        });
+        dom.popover.saveBtn.addEventListener('click', savePopoverChanges);
+        dom.modal.confirmBtn.addEventListener('click', () => { if (modalConfirmCallback) { modalConfirmCallback(dom.modal.input.style.display === 'block' ? dom.modal.input.value : true); } hideModal(); });
+        dom.modal.cancelBtn.addEventListener('click', hideModal);
+        dom.modal.overlay.addEventListener('click', e => { if(e.target === dom.modal.overlay) hideModal(); });
+        dom.searchInput.addEventListener('input', renderTable);
+        dom.filterControls.addEventListener('click', e => {
+            const filterBtn = e.target.closest('.filter-btn');
+            if (filterBtn) { currentFilter = filterBtn.dataset.filter; renderTableAndFilters(); }
+        });
+        dom.panelSelector.addEventListener('change', e => { currentPanelName = e.target.value; renderAll(); });
+        // ... (añadir el resto de listeners de botones aquí)
+        document.getElementById('add-panel-btn').addEventListener('click', () => showModal({ title: "Añadir Nuevo Panel", message: "Nombre para el nuevo patch panel:", type: 'prompt', onConfirm: (name) => { if (name && name.trim()) { if(appData.panels[name.trim()]) return showToast("Ya existe un panel con ese nombre.", "warning"); currentPanelName = name.trim(); appData.panels[currentPanelName] = getDefaultPanelData(); saveData(); renderAll(); showToast(`Panel "${currentPanelName}" añadido.`, 'success'); } } }));
+        document.getElementById('delete-panel-btn').addEventListener('click', () => { if (Object.keys(appData.panels).length <= 1) return showToast("No se puede eliminar el último panel.", "warning"); showModal({ title: "Confirmar Eliminación", message: `¿Eliminar el panel "${currentPanelName}"? Esta acción no se puede deshacer.`, onConfirm: () => { delete appData.panels[currentPanelName]; currentPanelName = Object.keys(appData.panels)[0]; saveData(); renderAll(); showToast(`Panel eliminado.`, 'warning'); } }); });
+        document.getElementById('reset-btn').addEventListener('click', () => showModal({ title: "Confirmar Vaciado", message: `¿Vaciar el panel "${currentPanelName}"?`, onConfirm: () => { appData.panels[currentPanelName] = getDefaultPanelData(); saveData(); renderAll(); showToast(`Panel "${currentPanelName}" reiniciado.`, 'warning'); } }));
+        document.getElementById('export-excel-btn').addEventListener('click', exportToXLSX);
+        
+        // Listeners tabla
+        dom.tableBody.addEventListener('input', e => { if (e.target.isContentEditable) { const row = e.target.closest('tr'); if (!row) return; const portId = row.dataset.portId, field = e.target.dataset.field, newValue = e.target.textContent.trim(), portData = getPanelData()[portId]; if (portData[field] === newValue) return; portData[field] = newValue; if (field === 'desc' && isPortUnpatched(portData)) { Object.assign(portData, { mac: '', length: '', obs: '', certified: false, poe: false }); renderAll(); } saveData(); } });
+        dom.tableBody.addEventListener('change', e => { if (e.target.matches('.cert-checkbox, .poe-checkbox')) { const row = e.target.closest('tr'); if (!row) return; const portId = row.dataset.portId, field = e.target.classList.contains('cert-checkbox') ? 'certified' : 'poe'; getPanelData()[portId][field] = e.target.checked; saveData(); renderPatchPanel(); showToast(`Puerto ${portId} actualizado.`, 'success'); } });
+        dom.tableBody.addEventListener('click', e => { const copyBtn = e.target.closest('.copy-button'); if (copyBtn && copyBtn.dataset.copy) { navigator.clipboard.writeText(copyBtn.dataset.copy).then(() => showToast(`'${copyBtn.dataset.copy}' copiado.`, 'info')); } });
+
+        // Highlight listeners
+        document.addEventListener('mouseover', e => { const portId = e.target.closest('[data-port-id]')?.dataset.portId; if(portId) document.querySelectorAll(`[data-port-id='${portId}']`).forEach(el => el.classList.add('highlight')); });
+        document.addEventListener('mouseout', () => document.querySelectorAll('.highlight').forEach(el => el.classList.remove('highlight')));
+    }
+
+    function showToast(message, type = 'info') {
+        const container = document.getElementById('toast-container');
+        const toast = document.createElement('div');
+        toast.className = `toast ${type}`;
+        toast.textContent = message;
+        container.appendChild(toast);
+        setTimeout(() => toast.remove(), 3000);
+    }
+    
+    init();
+});
+</script>
+</body>
+</html>

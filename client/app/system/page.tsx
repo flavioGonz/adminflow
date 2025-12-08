@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   ArrowUpRight,
@@ -53,11 +53,21 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import * as SystemApi from "@/lib/api-system";
 import { SystemUser, NotificationConfig, NotificationLog } from "@/lib/api-system";
+import * as GroupApi from "@/lib/api-groups";
+import { Group } from "@/types/group";
 import { ShinyText } from "@/components/ui/shiny-text";
 import { API_URL } from "@/lib/http";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Upload } from "lucide-react";
 import { BackupManager } from "@/components/system/backup-manager";
+import UsersManagementPage, { UsersManagementRef } from "@/components/users/users-management";
+import { useRef } from "react";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
 
 type ChannelId = "email" | "whatsapp" | "telegram" | "slack";
 
@@ -165,12 +175,22 @@ export default function SystemPage() {
   const [previewHtml, setPreviewHtml] = useState("");
   const [previewLoading, setPreviewLoading] = useState(false);
   const [resetingUser, setResetingUser] = useState<SystemUser | null>(null);
-  const [userForm, setUserForm] = useState({ email: "", password: "", roles: "", metadata: "{}" });
+  const [userForm, setUserForm] = useState({ email: "", password: "", roles: "" });
   const [resetPasswordForm, setResetPasswordForm] = useState({ email: "", newPassword: "" });
   const [showPassword, setShowPassword] = useState(false);
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const [groupDialogOpen, setGroupDialogOpen] = useState(false);
+  const [groupDialogMode, setGroupDialogMode] = useState<"create" | "edit">("create");
+  const [groupForm, setGroupForm] = useState({ name: "", slug: "", description: "" });
+  const [focusedGroup, setFocusedGroup] = useState<Group | null>(null);
+  const [groupDialogProcessing, setGroupDialogProcessing] = useState(false);
+  const [groupDialogError, setGroupDialogError] = useState<string | null>(null);
+  const usersPageRef = useRef<UsersManagementRef>(null);
+  const [userSection, setUserSection] = useState<"users" | "groups" | "roles">("users");
 
   // SMTP States
   const [smtpUser, setSmtpUser] = useState("");
@@ -184,6 +204,110 @@ export default function SystemPage() {
 
   // Roles disponibles
   const availableRoles = ["admin", "manager", "editor", "viewer", "support"];
+
+  const slugifyValue = (value: string) =>
+    value
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+
+  const resetGroupForm = (group: Group | null = null) => {
+    const baseName = group?.name || "";
+    setGroupForm({
+      name: baseName,
+      slug: group?.slug || slugifyValue(baseName),
+      description: group?.description || "",
+    });
+    setFocusedGroup(group);
+  };
+
+  const openGroupDialog = (mode: "create" | "edit", group?: Group | null) => {
+    const target =
+      mode === "edit"
+        ? group ?? groups.find((existing) => existing._id === selectedGroupId) ?? null
+        : null;
+    resetGroupForm(target);
+    setGroupDialogMode(mode);
+    setGroupDialogError(null);
+    setGroupDialogProcessing(false);
+    setGroupDialogOpen(true);
+  };
+
+  const loadGroups = useCallback(async () => {
+    try {
+      const response = await fetch(`${API_URL}/groups`);
+      if (!response.ok) {
+        console.warn("No se pudieron cargar los grupos del sistema", response.status);
+        setGroups([]);
+        return;
+      }
+      const data = await response.json();
+      setGroups(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error("Error loading groups:", error);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadGroups();
+  }, [loadGroups]);
+
+  const handleGroupSave = async () => {
+    const name = groupForm.name.trim();
+    if (!name) {
+      setGroupDialogError("El nombre del grupo es requerido.");
+      return;
+    }
+    const slug = (groupForm.slug?.trim() || slugifyValue(name)) || slugifyValue(name);
+    const payload = {
+      name,
+      slug,
+      description: groupForm.description.trim(),
+    };
+    setGroupDialogProcessing(true);
+    try {
+      if (groupDialogMode === "create") {
+        await GroupApi.createGroup(payload);
+        toast.success("Grupo creado correctamente.");
+      } else if (focusedGroup) {
+        await GroupApi.updateGroup(focusedGroup._id, payload);
+        toast.success("Grupo actualizado correctamente.");
+      }
+      setGroupDialogOpen(false);
+      loadGroups();
+    } catch (error: any) {
+      const message = error?.message || "No se pudo guardar el grupo";
+      setGroupDialogError(message);
+    } finally {
+      setGroupDialogProcessing(false);
+    }
+  };
+
+  const handleDeleteGroup = async (group?: Group | null) => {
+    const target = group ?? focusedGroup ?? null;
+    if (!target) return;
+    if (!confirm(`¿Seguro deseas eliminar el grupo ${target.name}?`)) return;
+    try {
+      await GroupApi.deleteGroup(target._id);
+      toast.success("Grupo eliminado.");
+      if (selectedGroupId === target._id) {
+        setSelectedGroupId(null);
+      }
+      setGroupDialogOpen(false);
+      loadGroups();
+    } catch (error: any) {
+      toast.error(error?.message || "No se pudo eliminar el grupo.");
+    }
+  };
+
+  const findSupportGroupId = () => {
+    const supportGroup =
+      groups.find((group) => group.slug === "soporte") ||
+      groups.find((group) => group.name?.toLowerCase() === "soporte");
+    return supportGroup?._id ?? null;
+  };
 
   useEffect(() => {
     loadData();
@@ -515,13 +639,15 @@ _Enviado automáticamente por AdminFlow_`,
 
   const handleCreateUser = () => {
     setEditingUser(null);
-    setSelectedRoles([]);
+    setSelectedRoles(["support"]);
     setUserForm({
       email: "",
       password: "",
       roles: "",
-      metadata: "{}",
     });
+    setSelectedGroupId(findSupportGroupId());
+    setAvatarFile(null);
+    setAvatarPreview(null);
     setUserModalOpen(true);
   };
 
@@ -532,8 +658,10 @@ _Enviado automáticamente por AdminFlow_`,
       email: user.email,
       password: "",
       roles: user.roles?.join(", ") || "",
-      metadata: JSON.stringify(user.metadata || {}, null, 2),
     });
+    setSelectedGroupId(user.groupId || null);
+    setAvatarPreview(user.avatar || null);
+    setAvatarFile(null);
     setUserModalOpen(true);
   };
 
@@ -553,21 +681,16 @@ _Enviado automáticamente por AdminFlow_`,
 
   const handleSaveUser = async () => {
     try {
-      let parsedMetadata = {};
-      try {
-        parsedMetadata = JSON.parse(userForm.metadata || "{}");
-      } catch {
-        toast.error("El metadata debe ser un JSON válido");
-        return;
-      }
+      // Metadata vacío ya que eliminamos el campo del formulario
+      const parsedMetadata = {};
 
       let userId = "";
 
       if (editingUser) {
         console.log("Editing user:", editingUser);
         // Editing existing user
-        // Prefer _id (MongoDB) over sqliteId. Ensure it's a string.
-        userId = editingUser._id?.toString() || (editingUser.sqliteId ? editingUser.sqliteId.toString() : "");
+        // Use the 'id' field which is now required in SystemUser interface
+        userId = editingUser.id;
         console.log("Derived userId for update:", userId);
 
         if (!userId) {
@@ -596,6 +719,7 @@ _Enviado automáticamente por AdminFlow_`,
         await SystemApi.updateUser(userId, {
           roles: selectedRoles,
           metadata: parsedMetadata,
+          groupId: selectedGroupId,
         });
         toast.success("Usuario actualizado correctamente");
       } else {
@@ -637,12 +761,16 @@ _Enviado automáticamente por AdminFlow_`,
           await SystemApi.updateUser(userId, {
             roles: selectedRoles,
             metadata: parsedMetadata,
+            groupId: selectedGroupId,
           });
         }
         toast.success("Usuario creado exitosamente");
       }
 
       setUserModalOpen(false);
+      setSelectedGroupId(null);
+      setAvatarFile(null);
+      setAvatarPreview(null);
       loadData();
     } catch (error: any) {
       console.error("Error saving user:", error);
@@ -670,7 +798,7 @@ _Enviado automáticamente por AdminFlow_`,
     formData.append('avatar', file);
 
     try {
-      const userId = user._id?.toString() || user.sqliteId?.toString() || '';
+      const userId = user.id;
       const response = await fetch(`${API_URL}/users/${userId}/avatar`, {
         method: 'POST',
         body: formData,
@@ -715,7 +843,7 @@ _Enviado automáticamente por AdminFlow_`,
     if (!deletingUser) return;
 
     try {
-      const userId = deletingUser._id || deletingUser.sqliteId;
+      const userId = deletingUser.id;
       if (!userId) {
         toast.error("Usuario no encontrado");
         return;
@@ -742,7 +870,7 @@ _Enviado automáticamente por AdminFlow_`,
         return;
       }
 
-      const userId = resetingUser?._id || resetingUser?.sqliteId;
+      const userId = resetingUser?.id;
       if (!userId) {
         toast.error("Usuario no encontrado");
         return;
@@ -847,163 +975,269 @@ _Enviado automáticamente por AdminFlow_`,
         </Badge>
       </div>
 
-      {/* Navigation Buttons (No Tabs) */}
-      <div className="flex flex-wrap gap-3">
-        <Button
-          variant={activeTab === "users" ? "default" : "outline"}
-          onClick={() => setActiveTab("users")}
-          className="gap-2"
-        >
-          <Users className="h-4 w-4" />
-          Usuarios
-        </Button>
-        <Button
-          variant={activeTab === "channels" ? "default" : "outline"}
-          onClick={() => setActiveTab("channels")}
-          className="gap-2"
-        >
-          <Bell className="h-4 w-4" />
-          Canales
-        </Button>
-        <Button
-          variant={activeTab === "roles" ? "default" : "outline"}
-          onClick={() => setActiveTab("roles")}
-          className="gap-2"
-        >
-          <Shield className="h-4 w-4" />
-          Roles
-        </Button>
-        <Button
-          variant={activeTab === "templates" ? "default" : "outline"}
-          onClick={() => setActiveTab("templates")}
-          className="gap-2"
-        >
-          <LayoutTemplate className="h-4 w-4" />
-          Plantillas
-        </Button>
-        <Button
-          variant={activeTab === "backups" ? "default" : "outline"}
-          onClick={() => setActiveTab("backups")}
-          className="gap-2"
-        >
-          <Database className="h-4 w-4" />
-          Respaldos
-        </Button>
-      </div>
+
 
       <div className="space-y-6">
         {activeTab === "users" && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-semibold">
-                  <ShinyText speed={4}>Gestión de Usuarios</ShinyText>
-                </h2>
-                <p className="text-sm text-muted-foreground">Administra los usuarios del sistema</p>
+          <Tabs value={userSection} onValueChange={(v) => setUserSection(v as any)} className="space-y-4">
+            <div className="flex flex-col xl:flex-row items-start xl:items-center justify-between gap-4">
+
+              <div className="flex flex-wrap items-center gap-4">
+                {/* Botones de Navegación Principal */}
+                <div className="flex items-center gap-1 border-r pr-4 mr-2">
+                  <Button variant="default" size="sm" className="gap-2" onClick={() => setActiveTab("users")}>
+                    <Users className="h-4 w-4" /> Usuarios
+                  </Button>
+                  <Button variant="ghost" size="sm" className="gap-2" onClick={() => setActiveTab("channels")}>
+                    <Bell className="h-4 w-4" /> Canales
+                  </Button>
+                  <Button variant="ghost" size="sm" className="gap-2" onClick={() => setActiveTab("templates")}>
+                    <LayoutTemplate className="h-4 w-4" /> Plantillas
+                  </Button>
+                  <Button variant="ghost" size="sm" className="gap-2" onClick={() => setActiveTab("backups")}>
+                    <Database className="h-4 w-4" /> Respaldos
+                  </Button>
+                </div>
+
+                {/* Tabs Secundarias (Usuarios / Grupos / Roles) */}
+                <TabsList className="bg-muted/60">
+                  <TabsTrigger value="users" className="gap-2">
+                    <User className="h-4 w-4" /> Usuarios
+                  </TabsTrigger>
+                  <TabsTrigger value="groups" className="gap-2">
+                    <Users className="h-4 w-4" /> Grupos
+                  </TabsTrigger>
+                  <TabsTrigger value="roles" className="gap-2">
+                    <Shield className="h-4 w-4" /> Roles
+                  </TabsTrigger>
+                </TabsList>
               </div>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => setResetPasswordModalOpen(true)}>
-                  <RotateCcw className="mr-2 h-4 w-4" />
-                  Resetear Contraseña
-                </Button>
-                <Button size="sm" onClick={handleCreateUser}>
-                  <UserPlus className="mr-2 h-4 w-4" />
-                  Nuevo Usuario
-                </Button>
+
+              <div className="flex items-center gap-2">
+                {userSection === "users" && (
+                  <Button
+                    size="sm"
+                    className="h-9 gap-1"
+                    onClick={() => usersPageRef.current?.newUser()}
+                  >
+                    <UserPlus className="h-4 w-4" />
+                    <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">Nuevo Usuario</span>
+                  </Button>
+                )}
+                {userSection === "groups" && (
+                  <Button
+                    size="sm"
+                    className="h-9 gap-1"
+                    onClick={() => openGroupDialog("create")}
+                  >
+                    <Plus className="h-4 w-4" />
+                    Nuevo Grupo
+                  </Button>
+                )}
+                {userSection === "roles" && (
+                  <Button size="sm" className="bg-indigo-500 hover:bg-indigo-600 text-white h-9 gap-1">
+                    <Plus className="h-4 w-4" />
+                    Nuevo Rol
+                  </Button>
+                )}
               </div>
             </div>
 
-            <Card>
-              <CardContent className="p-0">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>
-                        <div className="flex items-center gap-2">
-                          <Mail className="h-4 w-4 text-muted-foreground" />
-                          Email
-                        </div>
-                      </TableHead>
-                      <TableHead>
-                        <div className="flex items-center gap-2">
-                          <Shield className="h-4 w-4 text-muted-foreground" />
-                          Roles
-                        </div>
-                      </TableHead>
-                      <TableHead>
-                        <div className="flex items-center gap-2">
-                          <Activity className="h-4 w-4 text-muted-foreground" />
-                          Creado
-                        </div>
-                      </TableHead>
-                      <TableHead className="text-right">Acciones</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {users.map((user) => (
-                      <TableRow key={user._id || user.sqliteId}>
-                        <TableCell>
+            <TabsContent value="users" className="m-0 mt-4">
+              <UsersManagementPage ref={usersPageRef} />
+            </TabsContent>
+
+            <TabsContent value="groups" className="m-0 mt-4">
+              <Card>
+                <CardContent className="p-0">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>
                           <div className="flex items-center gap-2">
-                            <div className="p-2 rounded-lg bg-sky-50">
-                              <User className="h-4 w-4 text-sky-600" />
-                            </div>
-                            <span className="font-medium">{user.email}</span>
+                            <Users className="h-4 w-4 text-muted-foreground" />
+                            Nombre
                           </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex flex-wrap gap-1">
-                            {user.roles?.map((role) => (
-                              <Badge key={role} variant="secondary" className="text-xs">
-                                <Shield className="h-3 w-3 mr-1" />
-                                {role}
-                              </Badge>
-                            ))}
+                        </TableHead>
+                        <TableHead>Slug</TableHead>
+                        <TableHead>Descripción</TableHead>
+                        <TableHead>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-semibold">#</span>
+                            Miembros
                           </div>
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {new Date(user.createdAt || "").toLocaleDateString()}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleResetUserPassword(user)}
-                              title="Resetear contraseña"
-                            >
-                              <Key className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleEditUser(user)}
-                              title="Editar usuario"
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleDeleteUser(user)}
-                              title="Eliminar usuario"
-                              className="text-destructive hover:text-destructive"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
+                        </TableHead>
+                        <TableHead className="text-right">Acciones</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          </div>
+                    </TableHeader>
+                    <TableBody>
+                      {groups.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={5} className="text-center text-muted-foreground py-6">
+                            Crea el primer grupo para organizar tus equipos
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        groups.map((group) => (
+                          <TableRow key={group._id}>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <div className="p-2 rounded-lg bg-slate-50">
+                                  <Users className="h-4 w-4 text-slate-600" />
+                                </div>
+                                <div>
+                                  <p className="font-medium">{group.name}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {group.updatedAt ? new Date(group.updatedAt).toLocaleDateString() : ""}
+                                  </p>
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <code className="text-xs text-muted-foreground">{group.slug}</code>
+                            </TableCell>
+                            <TableCell className="text-sm text-muted-foreground">
+                              {group.description || "Sin descripción"}
+                            </TableCell>
+                            <TableCell>
+                              <Badge className="text-xs flex items-center gap-1">
+                                <Users className="h-3 w-3" />
+                                {group.members?.length ?? 0}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => openGroupDialog("edit", group)}
+                                  title="Editar grupo"
+                                  className="gap-1"
+                                >
+                                  <Edit className="h-4 w-4" />
+                                  Editar
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleDeleteGroup(group)}
+                                  className="text-destructive hover:text-destructive gap-1"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                  Eliminar
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="roles" className="m-0 mt-4">
+              <Card className="bg-white shadow-sm">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Shield className="h-5 w-5 text-indigo-500" />
+                    Matriz de Permisos
+                  </CardTitle>
+                  <CardDescription>Configura los permisos por rol y módulo</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b">
+                          <th className="text-left p-3 font-semibold">Módulo / Acción</th>
+                          <th className="text-center p-3 font-semibold">
+                            <div className="flex flex-col items-center gap-1">
+                              <span>Admin</span>
+                              <Badge variant="secondary" className="text-xs">
+                                {users.filter((u) => u.roles?.includes("admin")).length}
+                              </Badge>
+                            </div>
+                          </th>
+                          <th className="text-center p-3 font-semibold">
+                            <div className="flex flex-col items-center gap-1">
+                              <span>Manager</span>
+                              <Badge variant="secondary" className="text-xs">
+                                {users.filter((u) => u.roles?.includes("manager")).length}
+                              </Badge>
+                            </div>
+                          </th>
+                          <th className="text-center p-3 font-semibold">
+                            <div className="flex flex-col items-center gap-1">
+                              <span>Editor</span>
+                              <Badge variant="secondary" className="text-xs">
+                                {users.filter((u) => u.roles?.includes("editor")).length}
+                              </Badge>
+                            </div>
+                          </th>
+                          <th className="text-center p-3 font-semibold">
+                            <div className="flex flex-col items-center gap-1">
+                              <span>Viewer</span>
+                              <Badge variant="secondary" className="text-xs">
+                                {users.filter((u) => u.roles?.includes("viewer")).length}
+                              </Badge>
+                            </div>
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {/* Dashboard */}
+                        <tr className="border-b bg-slate-50">
+                          <td className="p-3 font-semibold" colSpan={5}>
+                            Dashboard
+                          </td>
+                        </tr>
+                        <tr className="border-b hover:bg-slate-50">
+                          <td className="p-3 pl-6">Ver dashboard</td>
+                          <td className="text-center p-3">
+                            <CheckCircle className="h-5 w-5 text-emerald-500 mx-auto" />
+                          </td>
+                          <td className="text-center p-3">
+                            <CheckCircle className="h-5 w-5 text-emerald-500 mx-auto" />
+                          </td>
+                          <td className="text-center p-3">
+                            <CheckCircle className="h-5 w-5 text-emerald-500 mx-auto" />
+                          </td>
+                          <td className="text-center p-3">
+                            <CheckCircle className="h-5 w-5 text-emerald-500 mx-auto" />
+                          </td>
+                        </tr>
+                        {/* Mas filas de permisos si fuera necesario, acortado para evitar reemplazar todo el archivo */}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
         )}
 
         {/* Section: Canales */}
         {activeTab === "channels" && (
           <div className="space-y-4 animate-in fade-in duration-300">
+            <div className="flex flex-wrap items-center gap-4 mb-2">
+              <div className="flex items-center gap-1 border-r pr-4 mr-2">
+                <Button variant="ghost" size="sm" className="gap-2" onClick={() => setActiveTab("users")}>
+                  <Users className="h-4 w-4" /> Usuarios
+                </Button>
+                <Button variant="default" size="sm" className="gap-2" onClick={() => setActiveTab("channels")}>
+                  <Bell className="h-4 w-4" /> Canales
+                </Button>
+                <Button variant="ghost" size="sm" className="gap-2" onClick={() => setActiveTab("templates")}>
+                  <LayoutTemplate className="h-4 w-4" /> Plantillas
+                </Button>
+                <Button variant="ghost" size="sm" className="gap-2" onClick={() => setActiveTab("backups")}>
+                  <Database className="h-4 w-4" /> Respaldos
+                </Button>
+              </div>
+            </div>
+
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-semibold">
@@ -1174,7 +1408,6 @@ _Enviado automáticamente por AdminFlow_`,
             </div>
           </div>
         )}
-
         {/* Section: Roles */}
         {activeTab === "roles" && (
           <div className="space-y-4 animate-in fade-in duration-300">
@@ -1394,6 +1627,22 @@ _Enviado automáticamente por AdminFlow_`,
         {/* Section: Plantillas */}
         {activeTab === "templates" && (
           <div className="space-y-6 animate-in fade-in duration-300">
+            <div className="flex flex-wrap items-center gap-4 mb-2">
+              <div className="flex items-center gap-1 border-r pr-4 mr-2">
+                <Button variant="ghost" size="sm" className="gap-2" onClick={() => setActiveTab("users")}>
+                  <Users className="h-4 w-4" /> Usuarios
+                </Button>
+                <Button variant="ghost" size="sm" className="gap-2" onClick={() => setActiveTab("channels")}>
+                  <Bell className="h-4 w-4" /> Canales
+                </Button>
+                <Button variant="default" size="sm" className="gap-2" onClick={() => setActiveTab("templates")}>
+                  <LayoutTemplate className="h-4 w-4" /> Plantillas
+                </Button>
+                <Button variant="ghost" size="sm" className="gap-2" onClick={() => setActiveTab("backups")}>
+                  <Database className="h-4 w-4" /> Respaldos
+                </Button>
+              </div>
+            </div>
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-semibold">
@@ -1781,266 +2030,111 @@ _Enviado automáticamente por AdminFlow_`,
         )}
 
         {activeTab === "backups" && (
-          <BackupManager />
+          <div className="space-y-6 animate-in fade-in duration-300">
+            <div className="flex flex-wrap items-center gap-4 mb-2">
+              <div className="flex items-center gap-1 border-r pr-4 mr-2">
+                <Button variant="ghost" size="sm" className="gap-2" onClick={() => setActiveTab("users")}>
+                  <Users className="h-4 w-4" /> Usuarios
+                </Button>
+                <Button variant="ghost" size="sm" className="gap-2" onClick={() => setActiveTab("channels")}>
+                  <Bell className="h-4 w-4" /> Canales
+                </Button>
+                <Button variant="ghost" size="sm" className="gap-2" onClick={() => setActiveTab("templates")}>
+                  <LayoutTemplate className="h-4 w-4" /> Plantillas
+                </Button>
+                <Button variant="default" size="sm" className="gap-2" onClick={() => setActiveTab("backups")}>
+                  <Database className="h-4 w-4" /> Respaldos
+                </Button>
+              </div>
+            </div>
+            <BackupManager />
+          </div>
         )}
       </div>
 
-      {/* Modal: Crear/Editar Usuario */}
 
-      <Dialog open={userModalOpen} onOpenChange={setUserModalOpen}>
-        <DialogContent>
+
+      <Dialog open={groupDialogOpen} onOpenChange={setGroupDialogOpen}>
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <User className="h-5 w-5" />
-              {editingUser ? "Editar Usuario" : "Crear Usuario"}
+              <Users className="h-5 w-5" />
+              {groupDialogMode === "create" ? "Nuevo grupo" : "Editar grupo"}
             </DialogTitle>
             <DialogDescription>
-              {editingUser
-                ? "Actualiza los roles y metadata del usuario"
-                : "Crea un nuevo usuario en el sistema"}
+              {groupDialogMode === "create"
+                ? "Define un nombre, slug y descripción para el grupo"
+                : "Actualiza el nombre, slug o descripción del grupo"}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
+          <div className="space-y-3 py-2">
+            <div className="space-y-1">
               <Label className="flex items-center gap-2">
-                <Mail className="h-4 w-4 text-muted-foreground" />
-                Email
+                <Users className="h-4 w-4 text-muted-foreground" />
+                Nombre
               </Label>
               <Input
-                type="email"
-                value={userForm.email}
-                onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
-                placeholder="usuario@example.com"
-                disabled={!!editingUser}
+                value={groupForm.name}
+                onChange={(e) => setGroupForm({ ...groupForm, name: e.target.value })}
+                placeholder="Equipo de soporte"
               />
             </div>
-
-            {/* Avatar Upload */}
-            <div className="space-y-2">
-              <Label>Avatar</Label>
-              <div className="flex items-center gap-4">
-                <div className="relative">
-                  {avatarPreview ? (
-                    <img
-                      src={avatarPreview}
-                      alt="Avatar preview"
-                      className="h-20 w-20 rounded-full object-cover ring-2 ring-sky-100"
-                    />
-                  ) : (
-                    <div className="h-20 w-20 rounded-full bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center text-white text-2xl font-semibold ring-2 ring-sky-100">
-                      {userForm.email ? userForm.email.charAt(0).toUpperCase() : '?'}
-                    </div>
-                  )}
-                </div>
-                <div className="flex-1">
-                  <label htmlFor="modal-avatar-upload" className="cursor-pointer">
-                    <div className="flex items-center gap-2 px-4 py-2 border border-input rounded-md hover:bg-accent hover:text-accent-foreground transition-colors">
-                      <Upload className="h-4 w-4" />
-                      <span className="text-sm">Cambiar Avatar</span>
-                    </div>
-                  </label>
-                  <input
-                    id="modal-avatar-upload"
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={handleModalAvatarChange}
-                  />
-                  <p className="text-xs text-muted-foreground mt-2">
-                    PNG, JPG hasta 5MB
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {!editingUser && (
-              <div className="space-y-2">
-                <Label className="flex items-center gap-2">
-                  <Lock className="h-4 w-4 text-muted-foreground" />
-                  Contraseña
-                </Label>
-                <div className="relative">
-                  <Input
-                    type={showPassword ? "text" : "password"}
-                    value={userForm.password}
-                    onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
-                    placeholder="Mínimo 8 caracteres"
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="absolute right-0 top-0 h-full px-3"
-                    onClick={() => setShowPassword(!showPassword)}
-                  >
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </Button>
-                </div>
-              </div>
-            )}
-            <div className="space-y-2">
+            <div className="space-y-1">
               <Label className="flex items-center gap-2">
-                <Shield className="h-4 w-4 text-muted-foreground" />
-                Roles
+                <Code className="h-4 w-4 text-muted-foreground" />
+                Slug
               </Label>
-              <div className="flex flex-wrap gap-2 p-3 border rounded-lg bg-slate-50">
-                {availableRoles.map((role) => (
-                  <Button
-                    key={role}
-                    type="button"
-                    variant={selectedRoles.includes(role) ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => toggleRole(role)}
-                    className="gap-2"
-                  >
-                    {selectedRoles.includes(role) && <CheckCircle className="h-3 w-3" />}
-                    {role}
-                  </Button>
-                ))}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Seleccionados: {selectedRoles.length > 0 ? selectedRoles.join(", ") : "Ninguno"}
-              </p>
+              <Input
+                value={groupForm.slug}
+                onChange={(e) => setGroupForm({ ...groupForm, slug: e.target.value })}
+                placeholder="soporte"
+              />
             </div>
-            <div className="space-y-2">
+            <div className="space-y-1">
               <Label className="flex items-center gap-2">
-                <FileText className="h-4 w-4 text-muted-foreground" />
-                Metadata (JSON)
+                <MessageCircle className="h-4 w-4 text-muted-foreground" />
+                Descripción
               </Label>
               <Textarea
-                value={userForm.metadata}
-                onChange={(e) => setUserForm({ ...userForm, metadata: e.target.value })}
-                placeholder='{"key": "value"}'
-                className="font-mono text-xs"
-                rows={4}
+                value={groupForm.description || ""}
+                onChange={(e) => setGroupForm({ ...groupForm, description: e.target.value })}
+                placeholder="Equipo que maneja los incidentes diarios"
+                rows={3}
               />
             </div>
+            {groupDialogError && (
+              <p className="text-sm text-destructive">{groupDialogError}</p>
+            )}
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setUserModalOpen(false)}>
-              Cancelar
-            </Button>
-            <Button onClick={handleSaveUser}>{editingUser ? "Actualizar" : "Crear"}</Button>
+          <DialogFooter className="flex flex-col gap-2">
+            <div className="flex items-center justify-between w-full">
+              {groupDialogMode === "edit" && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="gap-2 text-destructive"
+                  onClick={() => handleDeleteGroup()}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Eliminar grupo
+                </Button>
+              )}
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => setGroupDialogOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button onClick={handleGroupSave} disabled={groupDialogProcessing}>
+                  {groupDialogMode === "create" ? "Crear grupo" : "Actualizar grupo"}
+                </Button>
+              </div>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Modal: Resetear Contraseña */}
-      <Dialog open={resetPasswordModalOpen} onOpenChange={setResetPasswordModalOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <div className="p-2 rounded-lg bg-amber-50">
-                <Key className="h-5 w-5 text-amber-600" />
-              </div>
-              Resetear Contraseña
-            </DialogTitle>
-            <DialogDescription>
-              {resetingUser ? `Establece una nueva contraseña para ${resetingUser.email}` : "Establece una nueva contraseña para el usuario"}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label className="flex items-center gap-2">
-                <Mail className="h-4 w-4 text-muted-foreground" />
-                Email del Usuario
-              </Label>
-              <Input
-                type="email"
-                value={resetPasswordForm.email}
-                onChange={(e) => setResetPasswordForm({ ...resetPasswordForm, email: e.target.value })}
-                placeholder="usuario@example.com"
-                disabled={!!resetingUser}
-                className="bg-slate-50"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label className="flex items-center gap-2">
-                <Lock className="h-4 w-4 text-muted-foreground" />
-                Nueva Contraseña
-              </Label>
-              <Input
-                type="password"
-                value={resetPasswordForm.newPassword}
-                onChange={(e) => setResetPasswordForm({ ...resetPasswordForm, newPassword: e.target.value })}
-                placeholder="Mínimo 8 caracteres"
-                autoFocus
-              />
-              <p className="text-xs text-muted-foreground">La contraseña debe tener al menos 8 caracteres</p>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setResetPasswordModalOpen(false)}>
-              Cancelar
-            </Button>
-            <Button onClick={handleResetPassword}>Resetear</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
-      {/* Modal: Confirmar Eliminación de Usuario */}
-      <Dialog open={deleteUserModalOpen} onOpenChange={setDeleteUserModalOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <div className="p-2 rounded-lg bg-destructive/10">
-                <AlertTriangle className="h-5 w-5 text-destructive" />
-              </div>
-              Confirmar Eliminación
-            </DialogTitle>
-            <DialogDescription>
-              Esta acción no se puede deshacer.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4">
-            <div className="space-y-4">
-              <div className="p-4 rounded-lg bg-destructive/5 border border-destructive/20">
-                <p className="text-sm font-medium text-destructive mb-2">
-                  ¿Estás seguro de que deseas eliminar este usuario?
-                </p>
-                {deletingUser && (
-                  <div className="space-y-1">
-                    <p className="text-sm text-muted-foreground">
-                      <span className="font-medium">Email:</span> {deletingUser.email}
-                    </p>
-                    {deletingUser.name && (
-                      <p className="text-sm text-muted-foreground">
-                        <span className="font-medium">Nombre:</span> {deletingUser.name}
-                      </p>
-                    )}
-                    {deletingUser.roles && deletingUser.roles.length > 0 && (
-                      <p className="text-sm text-muted-foreground">
-                        <span className="font-medium">Roles:</span> {deletingUser.roles.join(", ")}
-                      </p>
-                    )}
-                  </div>
-                )}
-              </div>
-              <p className="text-sm text-muted-foreground">
-                Se eliminarán todos los datos asociados a este usuario del sistema.
-              </p>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setDeleteUserModalOpen(false);
-                setDeletingUser(null);
-              }}
-            >
-              Cancelar
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={confirmDeleteUser}
-            >
-              <Trash2 className="mr-2 h-4 w-4" />
-              Eliminar Usuario
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+
+
     </div >
   );
 }

@@ -13,14 +13,16 @@ import {
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { FileDown, FileSpreadsheet, Ticket as TicketIcon } from "lucide-react";
+import { FileDown, FileSpreadsheet, Ticket as TicketIcon, Clock, Banknote, CheckCircle } from "lucide-react";
 import { toast } from "sonner";
 import { ShinyText } from "@/components/ui/shiny-text";
+import { PageTransition } from "@/components/ui/page-transition";
 import {
   Ticket,
   TicketAttachment,
   TicketAudioNote,
 } from "@/types/ticket";
+import { Group } from "@/types/group";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
@@ -91,6 +93,7 @@ const normalizeTicket = (raw: ApiTicket): Ticket => {
       ? (raw.audioNotes as TicketAudioNote[])
       : [],
     assignedTo: raw.assignedTo || null,
+    assignedGroupId: raw.assignedGroupId || null,
   };
 };
 
@@ -128,6 +131,7 @@ export default function TicketsPage() {
     "all"
   );
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [groups, setGroups] = useState<Group[]>([]);
   const fetchTickets = useCallback(async () => {
     setIsLoading(true);
     try {
@@ -172,6 +176,29 @@ export default function TicketsPage() {
     window.addEventListener("tickets:refresh", handleRefresh);
     return () => window.removeEventListener("tickets:refresh", handleRefresh);
   }, [fetchTickets]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const loadGroups = async () => {
+      try {
+        const response = await fetch(`${API_URL}/groups`, {
+          signal: controller.signal,
+        });
+        if (!response.ok) {
+          console.warn("No se pudieron cargar los grupos:", response.status);
+          setGroups([]);
+          return;
+        }
+        const data = await response.json();
+        setGroups(Array.isArray(data) ? data : []);
+      } catch (error) {
+        if ((error as DOMException)?.name === "AbortError") return;
+        console.error("Error loading groups:", error);
+      }
+    };
+    loadGroups();
+    return () => controller.abort();
+  }, []);
 
   const handleTicketDeleted = (ticketId: string) => {
     setTickets((prevTickets) =>
@@ -272,122 +299,129 @@ export default function TicketsPage() {
 
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-gradient-to-br from-amber-500 to-orange-600">
-            <TicketIcon className="h-6 w-6 text-white" />
-          </div>
-          <div>
-            <h1 className="text-3xl font-bold">
-              <ShinyText size="3xl" weight="bold">Gestión de Tickets</ShinyText>
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              Visualiza el estado de los casos y actúa de forma rápida.
-            </p>
+    <PageTransition>
+      <div className="flex flex-col gap-6">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-gradient-to-br from-amber-500 to-orange-600">
+              <TicketIcon className="h-6 w-6 text-white" />
+            </div>
+            <div>
+              <h1 className="text-3xl font-bold">
+                <ShinyText size="3xl" weight="bold">Gestión de Tickets</ShinyText>
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                Visualiza el estado de los casos y actúa de forma rápida.
+              </p>
+            </div>
           </div>
         </div>
-      </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader>
-            <CardTitle>Tickets totales</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-3xl font-semibold">{metrics.total}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>En curso</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-3xl font-semibold">{metrics.inProgress}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Para facturar</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-3xl font-semibold">{metrics.toBill}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Resueltos</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-3xl font-semibold">{metrics.resolved}</p>
-          </CardContent>
-        </Card>
-      </div>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Tickets totales</CardTitle>
+              <TicketIcon className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{metrics.total}</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">En curso</CardTitle>
+              <Clock className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{metrics.inProgress}</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Para facturar</CardTitle>
+              <Banknote className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{metrics.toBill}</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Resueltos</CardTitle>
+              <CheckCircle className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{metrics.resolved}</div>
+            </CardContent>
+          </Card>
+        </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b pb-4">
-        <div className="flex-1 min-w-[260px]">
-          <Input
-            placeholder="Buscar por cliente, título o ID..."
-            value={searchTerm}
-            onChange={(event) => setSearchTerm(event.target.value)}
+        <div className="flex flex-wrap items-center justify-between gap-4 border-b pb-4">
+          <div className="flex-1 min-w-[260px]">
+            <Input
+              placeholder="Buscar por cliente, título o ID..."
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+            />
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Select
+              value={statusFilter}
+              onValueChange={(value: "all" | Ticket["status"]) =>
+                setStatusFilter(value)
+              }
+            >
+              <SelectTrigger className="w-40">
+                <SelectValue placeholder="Estado" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos</SelectItem>
+                <SelectItem value="Nuevo">Nuevo</SelectItem>
+                <SelectItem value="Abierto">Abierto</SelectItem>
+                <SelectItem value="En proceso">En proceso</SelectItem>
+                <SelectItem value="Visita">Visita</SelectItem>
+                <SelectItem value="Resuelto">Resuelto</SelectItem>
+                <SelectItem value="Facturar">Facturar</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1"
+              onClick={handleExportExcel}
+            >
+              <FileSpreadsheet className="h-4 w-4 text-green-500" />
+              Excel
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1"
+              onClick={handleExportPdf}
+            >
+              <FileDown className="h-4 w-4 text-red-500" />
+              PDF
+            </Button>
+            <Button asChild>
+              <Link href="/tickets/new">Nuevo ticket</Link>
+            </Button>
+          </div>
+        </div>
+
+        {isLoading ? (
+          <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
+            Cargando tickets...
+          </div>
+        ) : (
+          <TicketTable
+            tickets={filteredTickets}
+            onTicketDeleted={handleTicketDeleted}
+            onReopenTicket={handleReopenTicket}
+            actionLoadingTicketId={actionLoading}
+            groups={groups}
           />
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Select
-            value={statusFilter}
-            onValueChange={(value: "all" | Ticket["status"]) =>
-              setStatusFilter(value)
-            }
-          >
-            <SelectTrigger className="w-40">
-              <SelectValue placeholder="Estado" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos</SelectItem>
-              <SelectItem value="Nuevo">Nuevo</SelectItem>
-              <SelectItem value="Abierto">Abierto</SelectItem>
-              <SelectItem value="En proceso">En proceso</SelectItem>
-              <SelectItem value="Visita">Visita</SelectItem>
-              <SelectItem value="Resuelto">Resuelto</SelectItem>
-              <SelectItem value="Facturar">Facturar</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-1"
-            onClick={handleExportExcel}
-          >
-            <FileSpreadsheet className="h-4 w-4 text-green-500" />
-            Excel
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-1"
-            onClick={handleExportPdf}
-          >
-            <FileDown className="h-4 w-4 text-red-500" />
-            PDF
-          </Button>
-          <Button asChild>
-            <Link href="/tickets/new">Nuevo ticket</Link>
-          </Button>
-        </div>
+        )}
       </div>
-
-      {isLoading ? (
-        <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-          Cargando tickets...
-        </div>
-      ) : (
-        <TicketTable
-          tickets={filteredTickets}
-          onTicketDeleted={handleTicketDeleted}
-          onReopenTicket={handleReopenTicket}
-          actionLoadingTicketId={actionLoading}
-        />
-      )}
-    </div>
+    </PageTransition>
   );
 }

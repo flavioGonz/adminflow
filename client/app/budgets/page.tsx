@@ -207,6 +207,7 @@ export default function BudgetsPage() {
             <BudgetTable
               budgets={budgets}
               onBudgetDeleted={handleBudgetDeleted}
+              onBudgetUpdated={loadBudgets}
               searchTerm={searchTerm}
             />
           )}

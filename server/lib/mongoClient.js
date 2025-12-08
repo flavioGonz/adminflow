@@ -33,6 +33,7 @@ const initMongo = async ({ uri, dbName } = {}) => {
   await cachedDb.createCollection("configurations").catch(() => {});
   await cachedDb.createCollection("notifications").catch(() => {});
   await cachedDb.createCollection("users").catch(() => {});
+  await cachedDb.createCollection("groups").catch(() => {});
   console.log(`Conectado a MongoDB (${connectionUri}/${databaseName}).`);
   return cachedDb;
 };
