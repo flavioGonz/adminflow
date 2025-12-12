@@ -8,6 +8,8 @@ export interface Product {
   priceUSD: number;
   badge: "Servicio" | "Producto";
   imageUrl?: string;
+  stock?: number;
+  manufacturerLogoUrl?: string;
   createdAt?: string;
   updatedAt?: string;
 }

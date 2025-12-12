@@ -3,6 +3,7 @@
 import { ChangeEvent, DragEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import {
   ArrowLeft,
   Clock4,
@@ -32,6 +33,7 @@ import {
 import { PageHeader } from "@/components/layout/page-header";
 import ReactCountryFlag from "react-country-flag";
 import { toast } from "sonner";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -87,6 +89,14 @@ const formatBytes = (value?: number) => {
   return `${Math.round(size)} ${units[index]}`;
 };
 
+const resolveAvatarUrl = (avatarPath?: string | null) => {
+  if (!avatarPath) return undefined;
+  if (avatarPath.startsWith("http")) return avatarPath;
+  const base = API_URL.replace(/\/api\/?$/, "");
+  const normalized = avatarPath.startsWith("/") ? avatarPath : `/${avatarPath}`;
+  return `${base}${normalized}`;
+};
+
 type TicketAnnotation = NonNullable<Ticket["annotations"]>[number];
 
 const getStatusBadgeVariant = (value: TicketStatus) => {
@@ -136,6 +146,7 @@ const priorityMeta: Record<
 export default function TicketDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
+  const { data: session } = useSession();
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -170,6 +181,16 @@ export default function TicketDetailPage() {
   const [groups, setGroups] = useState<Group[]>([]);
   const [formAssignedTo, setFormAssignedTo] = useState<string | null>(null);
   const [formAssignedGroupId, setFormAssignedGroupId] = useState<string | null>(null);
+  const currentUserProfile = useMemo(() => {
+    const email = session?.user?.email?.toLowerCase();
+    if (!email) return null;
+    const matched = users.find((user) => user.email?.toLowerCase() === email);
+    if (!matched) return null;
+    return {
+      ...matched,
+      avatar: resolveAvatarUrl(matched.avatar),
+    };
+  }, [session?.user?.email, users]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -387,7 +408,6 @@ export default function TicketDetailPage() {
       try {
         let annotationsToSend = overrides?.annotations ?? formAnnotations ?? [];
 
-        // Solo crear log automático si no viene un override específico (ej. registrar nota)
         if (!overrides?.annotations) {
           const changes: string[] = [];
           if (ticket.status !== formStatus) {
@@ -420,13 +440,35 @@ export default function TicketDetailPage() {
             changes.push(`Grupo: <strong>${oldGroup}</strong> → <strong>${newGroup}</strong>`);
           }
 
-          if (changes.length) {
-            const changeNote = {
-              text: `<p><strong>Cambios del ticket</strong></p><ul>${changes.map((c) => `<li>${c}</li>`).join("")}</ul>`,
+          const normalizedNote = noteDraft.trim();
+          const isNoteEmpty = !normalizedNote || normalizedNote === "<p><br></p>";
+          const hasEditorNote = !isNoteEmpty;
+          const hasMedia = pendingAttachments.length > 0 || pendingAudioNotes.length > 0;
+          const shouldAddLog = changes.length > 0 || hasEditorNote || hasMedia;
+
+          if (shouldAddLog) {
+            const userName = currentUserProfile?.name ?? session?.user?.name ?? "Usuario";
+            const userAvatar = currentUserProfile?.avatar ?? session?.user?.image ?? undefined;
+            const segments: string[] = [];
+            if (changes.length) {
+              segments.push(`<p><strong>Cambios del ticket</strong></p><ul>${changes.map((c) => `<li>${c}</li>`).join("")}</ul>`);
+            }
+            if (hasEditorNote) {
+              segments.push(
+                `<p class="mt-3 text-[0.7rem] uppercase tracking-[0.3em] text-slate-500">Detalle técnico</p>${noteDraft}`
+              );
+            }
+            if (!segments.length) {
+              segments.push("<p>Cambios registrados</p>");
+            }
+
+            const changeNote: TicketAnnotation = {
+              text: segments.join("<hr class='my-2 border-t border-slate-200/60' />"),
               createdAt: new Date().toISOString(),
-              user: "Sistema",
-              attachments: [],
-              audioNotes: [],
+              user: userName,
+              avatar: userAvatar,
+              attachments: pendingAttachments.length ? [...pendingAttachments] : undefined,
+              audioNotes: pendingAudioNotes.length ? [...pendingAudioNotes] : undefined,
             };
             annotationsToSend = [changeNote, ...annotationsToSend];
             setFormAnnotations(annotationsToSend);
@@ -466,6 +508,11 @@ export default function TicketDetailPage() {
         setFormDescription(updated.description ?? "");
         setFormAssignedTo(updated.assignedTo ?? null);
         setFormAssignedGroupId(updated.assignedGroupId ?? null);
+        if (!overrides?.annotations) {
+          setNoteDraft("");
+          setPendingAttachments([]);
+          setPendingAudioNotes([]);
+        }
         toast.success("Ficha actualizada correctamente.");
       } catch (err) {
         const message =
@@ -491,45 +538,13 @@ export default function TicketDetailPage() {
       formAssignedGroupId,
       groupsMap,
       notifyClient,
+      noteDraft,
+      pendingAttachments,
+      pendingAudioNotes,
+      currentUserProfile,
+      session,
     ]
   );
-
-  const handleRegisterNote = useCallback(() => {
-    const cleaned = noteDraft.replace(/<[^>]+>/g, "").trim();
-    const hasContent =
-      Boolean(cleaned) ||
-      pendingAttachments.length > 0 ||
-      pendingAudioNotes.length > 0;
-
-    if (!hasContent) {
-      toast.error(
-        "Agrega texto, archivos o notas de voz antes de registrar la actividad."
-      );
-      return;
-    }
-
-    const newAnnotation = {
-      text: noteDraft,
-      createdAt: new Date().toISOString(),
-      user: "Técnico Admin",
-      attachments: pendingAttachments,
-      audioNotes: pendingAudioNotes,
-    };
-
-    const updatedAnnotations = [newAnnotation, ...(formAnnotations ?? [])];
-    setFormAnnotations(updatedAnnotations);
-    void handleSave({ annotations: updatedAnnotations }).then(() => {
-      setNoteDraft("");
-      setPendingAttachments([]);
-      setPendingAudioNotes([]);
-    });
-  }, [
-    noteDraft,
-    pendingAttachments,
-    pendingAudioNotes,
-    formAnnotations,
-    handleSave,
-  ]);
 
   const handleOpenEditDialog = useCallback(
     (note: TicketAnnotation) => {
@@ -613,6 +628,23 @@ export default function TicketDetailPage() {
     }
     event.target.value = "";
   };
+
+  const handleEditorImagePaste = useCallback(
+    ({ file, dataUrl }: { file: File; dataUrl: string }) => {
+      const attachment: TicketAttachment = {
+        id:
+          typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+            ? crypto.randomUUID()
+            : `clipboard-${Date.now()}`,
+        name: file.name || `clipboard-image-${Date.now()}`,
+        size: file.size,
+        type: file.type || "image/png",
+        dataUrl,
+      };
+      setPendingAttachments((prev) => [...prev, attachment]);
+    },
+    []
+  );
 
   const handleDrop = (event: DragEvent<HTMLLabelElement>) => {
     event.preventDefault();
@@ -799,16 +831,16 @@ export default function TicketDetailPage() {
         <section className="space-y-5 rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-semibold">Registrar actividad</p>
+              <p className="text-sm font-semibold">Documenta la intervención</p>
               <p className="text-xs text-muted-foreground">
-                Documenta cada paso del técnico en el ticket.
+                Todo lo que escribas, los archivos adjuntos y las notas de audio se registrarán cuando guardes los cambios.
               </p>
             </div>
             <span className="text-[11px] text-muted-foreground">
               Último registro {sortedAnnotations[0] ? formatDateTime(sortedAnnotations[0].createdAt) : "--"}
             </span>
           </div>
-          <div className="flex items-center justify-between gap-4 text-xs font-semibold text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-4 text-xs font-semibold text-muted-foreground">
             <div className="flex items-center gap-3">
               <button
                 type="button"
@@ -852,13 +884,6 @@ export default function TicketDetailPage() {
                 {notifyClient ? "Notificación activa" : "Sin notificación"}
               </span>
             </div>
-            <Button
-              className="ml-auto"
-              onClick={handleRegisterNote}
-              disabled={isSaving || isRecording}
-            >
-              Registrar actividad
-            </Button>
           </div>
           <RichTextEditor
             value={noteDraft}
@@ -866,6 +891,7 @@ export default function TicketDetailPage() {
             placeholder="Describe la intervención, acciones, resultados o bloqueos."
             direction="ltr"
             className="min-h-[220px]"
+            onImagePaste={handleEditorImagePaste}
           />
         </section>
 
@@ -1197,8 +1223,24 @@ export default function TicketDetailPage() {
                 className="flex gap-3 border-b border-slate-200/70 py-3 last:border-b-0"
               >
                 <div className="flex flex-col items-center text-[11px] text-slate-400">
-                  <div className="h-6 w-[2px] bg-slate-200" />
-                  <span>Paso {sortedAnnotations.length - index}</span>
+                  <Avatar
+                    className="h-10 w-10 rounded-full border border-slate-200/70 bg-white shadow-sm"
+                  >
+                    {annotation.avatar ? (
+                      <AvatarImage src={annotation.avatar} alt={annotation.user ?? "Usuario"} />
+                    ) : (
+                      <AvatarFallback>
+                        {(annotation.user ?? "Usuario")
+                          .split(" ")
+                          .map((part) => part.charAt(0))
+                          .join("")
+                          .slice(0, 2)
+                          .toUpperCase()}
+                      </AvatarFallback>
+                    )}
+                  </Avatar>
+                  <span className="mt-2 text-[11px]">{`Paso ${sortedAnnotations.length - index}`}</span>
+                  <div className="mt-2 h-6 w-[2px] bg-slate-200" />
                 </div>
                 <div className="flex-1 space-y-2 text-sm text-slate-700">
                   <div className="flex items-center justify-between text-[11px] text-slate-500">

@@ -2,12 +2,19 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import type EditorJS from "@editorjs/editorjs";
 
 type KybanEditorProps = {
   ticketTitle?: string;
   initialText?: string;
   placeholder?: string;
   onSave?: (text: string) => void;
+};
+
+type TextBlock = {
+  data?: {
+    text?: string;
+  };
 };
 
 export default function KybanEditor({
@@ -20,17 +27,16 @@ export default function KybanEditor({
     () => `editorjs-${Math.random().toString(36).slice(2, 8)}`,
     []
   );
-  const editorRef = useRef<any>(null);
+  const editorRef = useRef<EditorJS | null>(null);
   const [ready, setReady] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     let active = true;
-    let EditorJS: any;
-    import("@editorjs/editorjs").then((module) => {
+    const loadEditor = async () => {
+      const { default: EditorJSModule } = await import("@editorjs/editorjs");
       if (!active) return;
-      EditorJS = module.default;
-      editorRef.current = new EditorJS({
+      editorRef.current = new EditorJSModule({
         holder: holderId,
         placeholder,
         data: {
@@ -47,7 +53,10 @@ export default function KybanEditor({
         },
         onReady: () => setReady(true),
       });
-    });
+    };
+
+    loadEditor();
+
     return () => {
       active = false;
       if (editorRef.current?.destroy) {
@@ -62,8 +71,8 @@ export default function KybanEditor({
     setSaving(true);
     try {
       const output = await editorRef.current.save();
-      const text = output.blocks
-        .map((block: any) => block.data?.text ?? "")
+      const text = (output.blocks as TextBlock[])
+        .map((block) => block.data?.text ?? "")
         .filter(Boolean)
         .join("\n");
       onSave?.(text);
@@ -78,7 +87,9 @@ export default function KybanEditor({
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-xs uppercase tracking-[0.4em] text-muted-foreground">Kyban Zero</p>
+          <p className="text-xs uppercase tracking-[0.4em] text-muted-foreground">
+            Kyban Zero
+          </p>
           <h3 className="text-lg font-semibold">
             Editando ticket: {ticketTitle || "selecciona uno en el tablero"}
           </h3>

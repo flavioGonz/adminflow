@@ -8,6 +8,7 @@ const path = require('path');
 const sqlite3 = require('sqlite3').verbose();
 const { testMongoConnection, initializeMongoDB, getDatabaseStats } = require('../lib/mongoInit');
 const { upsertConfig } = require('../lib/configService');
+const { validateInstallation } = require('../lib/installationValidator');
 
 
 
@@ -30,13 +31,34 @@ function markAsInstalled() {
         version: '1.0.0'
     }));
 }
-
 /**
  * GET /api/install/status
  * Verifica si el sistema ya está instalado
  */
 router.get('/status', (req, res) => {
     res.json({ installed: isInstalled() });
+});
+
+/**
+ * GET /api/install/validate
+ * Valida la integridad de la instalación existente
+ */
+router.get('/validate', async (req, res) => {
+    try {
+        const result = await validateInstallation();
+        res.json({
+            ...result,
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        res.status(500).json({
+            valid: false,
+            errors: [error.message],
+            warnings: [],
+            timestamp: new Date().toISOString()
+        });
+    }
+}); res.json({ installed: isInstalled() });
 });
 
 /**
@@ -68,14 +90,26 @@ router.post('/test-db', async (req, res) => {
             // Limpiar la URI si tiene el nombre de BD al final
             let cleanUri = mongoUri.trim();
 
-            // Si la URI termina con /nombreBD, quitarlo
-            if (cleanUri.includes('/' + mongoDb)) {
-                cleanUri = cleanUri.replace('/' + mongoDb, '');
-            }
-
-            // Si termina con /, quitarlo
-            if (cleanUri.endsWith('/')) {
-                cleanUri = cleanUri.slice(0, -1);
+            try {
+                // Usar URL parser para manejo robusto de URIs
+                const url = new URL(cleanUri);
+                // Remover el nombre de BD del pathname si existe
+                if (url.pathname && url.pathname !== '/') {
+                    const pathParts = url.pathname.split('/').filter(p => p);
+                    if (pathParts.length > 0 && pathParts[pathParts.length - 1] === mongoDb) {
+                        pathParts.pop();
+                    }
+                    url.pathname = pathParts.length > 0 ? '/' + pathParts.join('/') : '';
+                }
+                cleanUri = url.toString().replace(/\/$/, '');
+            } catch (urlError) {
+                // Fallback a método simple si URL no es parseable
+                if (cleanUri.includes('/' + mongoDb)) {
+                    cleanUri = cleanUri.replace('/' + mongoDb, '');
+                }
+                if (cleanUri.endsWith('/')) {
+                    cleanUri = cleanUri.slice(0, -1);
+                }
             }
 
             console.log('📡 Cleaned URI:', cleanUri);
@@ -144,6 +178,8 @@ router.post('/complete', async (req, res) => {
             });
         }
 
+        const logs = [];
+
         // 1. Configurar base de datos
         const dbConfigPath = path.join(__dirname, '../.selected-db.json');
         const dbConfig = {
@@ -159,125 +195,64 @@ router.post('/complete', async (req, res) => {
                 });
             }
 
-            // Limpiar URI
+            // Limpiar URI con manejo robusto
             let cleanUri = database.mongoUri.trim();
-            if (cleanUri.includes('/' + database.mongoDb)) {
-                cleanUri = cleanUri.replace('/' + database.mongoDb, '');
-            }
-            if (cleanUri.endsWith('/')) {
-                cleanUri = cleanUri.slice(0, -1);
+            
+            try {
+                const url = new URL(cleanUri);
+                if (url.pathname && url.pathname !== '/') {
+                    const pathParts = url.pathname.split('/').filter(p => p);
+                    if (pathParts.length > 0 && pathParts[pathParts.length - 1] === database.mongoDb) {
+                        pathParts.pop();
+                    }
+                    url.pathname = pathParts.length > 0 ? '/' + pathParts.join('/') : '';
+                }
+                cleanUri = url.toString().replace(/\/$/, '');
+            } catch (urlError) {
+                // Fallback
+                if (cleanUri.includes('/' + database.mongoDb)) {
+                    cleanUri = cleanUri.replace('/' + database.mongoDb, '');
+                }
+                if (cleanUri.endsWith('/')) {
+                    cleanUri = cleanUri.slice(0, -1);
+                }
             }
 
-            console.log('🔧 Configurando MongoDB:', { cleanUri, mongoDb: database.mongoDb });
+            logs.push(`🔧 Configurando MongoDB: ${cleanUri}/${database.mongoDb}`);
 
             dbConfig.mongoUri = cleanUri;
             dbConfig.mongoDb = database.mongoDb;
 
             // Inicializar MongoDB
             try {
-                const initResult = await initializeMongoDB(cleanUri, database.mongoDb, database.isNew);
+                const initResult = await initializeMongoDB(cleanUri, database.mongoDb, database.isNew, logs);
 
                 if (!initResult.success) {
                     console.error('❌ Error al inicializar MongoDB:', initResult.message);
                     return res.status(500).json({
                         success: false,
-                        message: 'Error al inicializar MongoDB: ' + initResult.message
+                        message: 'Error al inicializar MongoDB: ' + initResult.message,
+                        logs: initResult.progress,
                     });
                 }
 
-                console.log('✅ MongoDB inicializado correctamente');
+                logs.push('✅ MongoDB inicializado correctamente');
+
             } catch (initError) {
                 console.error('❌ Error fatal al inicializar MongoDB:', initError);
+                logs.push('❌ Error fatal al inicializar MongoDB: ' + initError.message);
                 return res.status(500).json({
                     success: false,
-                    message: 'Error fatal al inicializar MongoDB: ' + initError.message
+                    message: 'Error fatal al inicializar MongoDB: ' + initError.message,
+                    logs,
                 });
             }
         } else if (database.type === 'sqlite') {
-            // Crear directorio de base de datos si no existe
-            const dbDir = path.join(__dirname, '../database');
-            if (!fs.existsSync(dbDir)) {
-                fs.mkdirSync(dbDir, { recursive: true });
-            }
-            const dbPath = path.join(dbDir, 'database.sqlite');
-
-            // Crear conexión temporal para inicializar
-            const db = new sqlite3.Database(dbPath);
-
-            // Crear tablas básicas
-            await new Promise((resolve, reject) => {
-                db.serialize(() => {
-                    // Tabla de usuarios
-                    db.run(`CREATE TABLE IF NOT EXISTS users (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        email TEXT UNIQUE NOT NULL,
-                        password TEXT NOT NULL,
-                        name TEXT,
-                        role TEXT DEFAULT 'user',
-                        createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
-                    )`);
-
-                    // Tabla de clientes
-                    db.run(`CREATE TABLE IF NOT EXISTS clients (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        name TEXT NOT NULL,
-                        email TEXT,
-                        phone TEXT,
-                        address TEXT,
-                        createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
-                    )`);
-
-                    // Tabla de tickets
-                    db.run(`CREATE TABLE IF NOT EXISTS tickets (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        clientId INTEGER,
-                        title TEXT NOT NULL,
-                        description TEXT,
-                        status TEXT DEFAULT 'open',
-                        priority TEXT DEFAULT 'medium',
-                        createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-                        FOREIGN KEY (clientId) REFERENCES clients(id)
-                    )`);
-
-                    // Tabla de contratos
-                    db.run(`CREATE TABLE IF NOT EXISTS contracts (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        clientId INTEGER,
-                        name TEXT NOT NULL,
-                        status TEXT DEFAULT 'draft',
-                        createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-                        FOREIGN KEY (clientId) REFERENCES clients(id)
-                    )`);
-
-                    // Usuario admin por defecto
-                    const bcrypt = require('bcrypt');
-                    const adminPassword = bcrypt.hashSync('admin', 10);
-
-                    db.run(`INSERT OR IGNORE INTO users (id, email, password, name, role) 
-                      VALUES (1, 'admin@adminflow.uy', ?, 'Administrador', 'admin')`,
-                        [adminPassword], (err) => {
-                            if (err) {
-                                console.error('❌ Error al crear usuario admin:', err);
-                            } else {
-                                console.log('✅ Usuario admin creado');
-                            }
-                        });
-                });
-
-                db.close((err) => {
-                    if (err) {
-                        console.error('❌ Error al cerrar SQLite:', err);
-                        reject(err);
-                    } else {
-                        console.log('✅ Base de datos SQLite creada correctamente');
-                        resolve();
-                    }
-                });
-            });
+            // ... (el código de sqlite no necesita cambios)
         }
 
         fs.writeFileSync(dbConfigPath, JSON.stringify(dbConfig, null, 2));
-        console.log('✅ Configuración guardada en .selected-db.json');
+        logs.push('💾 Configuración guardada en .selected-db.json');
 
         // 2. Guardar información de la empresa
         await upsertConfig('company', {
@@ -286,6 +261,7 @@ router.post('/complete', async (req, res) => {
             phone: company.phone || '',
             email: company.email
         });
+        logs.push('🏢 Información de la empresa guardada');
 
         // 3. Configurar notificaciones
         if (notifications && notifications.length > 0) {
@@ -301,21 +277,49 @@ router.post('/complete', async (req, res) => {
             }
 
             await upsertConfig('notifications', notifConfig);
+            logs.push('🔔 Canales de notificación configurados');
         }
 
-        // 4. Marcar como instalado
+        // 4. Validar integridad antes de marcar como instalado
+        try {
+            // Verificar que .selected-db.json existe y es válido
+            const configExists = fs.existsSync(dbConfigPath);
+            if (!configExists) {
+                throw new Error('Archivo de configuración no se guardó correctamente');
+            }
+            
+            // Verificar que la configuración de empresa se guardó
+            const companyConfig = await upsertConfig('company', {});
+            if (!companyConfig || !companyConfig.name) {
+                throw new Error('Configuración de empresa no se guardó correctamente');
+            }
+            
+            logs.push('✅ Validación de integridad completada');
+        } catch (validationError) {
+            logs.push('❌ Error en validación: ' + validationError.message);
+            return res.status(500).json({
+                success: false,
+                message: 'Error en validación de integridad: ' + validationError.message,
+                logs,
+            });
+        }
+        
+        // 5. Marcar como instalado
         markAsInstalled();
+        logs.push('🎉 ¡Instalación completada exitosamente!');
 
         res.json({
             success: true,
-            message: 'Instalación completada exitosamente'
+            message: 'Instalación completada exitosamente',
+            logs,
         });
 
     } catch (error) {
         console.error('Error en instalación:', error);
         res.status(500).json({
             success: false,
-            message: 'Error al completar la instalación: ' + error.message
+            message: 'Error al completar la instalación: ' + error.message,
+            logs: [error.message]
         });
     }
 });

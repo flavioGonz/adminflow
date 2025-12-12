@@ -28,6 +28,12 @@ function checkInstallation(req, res, next) {
     // Si no está instalado, retornar error 503
     if (!isInstalled()) {
         console.warn(`⚠️  Petición bloqueada: ${req.method} ${req.path} - Sistema no instalado`);
+        
+        // Agregar headers para evitar caching de este error
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+        
         return res.status(503).json({
             success: false,
             error: 'Sistema no instalado',

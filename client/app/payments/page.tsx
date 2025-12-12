@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import DashboardLayout from "@/components/layout/dashboard-layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -97,9 +97,26 @@ const statusVariant: Record<PaymentStatus, "default" | "secondary" | "destructiv
   "A confirmar": "secondary",
   "Emitir Factura": "default",
   Pagado: "default",
+  "Pagado Facturado": "default",
 };
 
-const statusOrder: PaymentStatus[] = ["Pendiente", "Enviado", "A confirmar", "Emitir Factura", "Pagado"];
+const statusBadgeClasses: Record<PaymentStatus, string> = {
+  Pendiente: "bg-red-500 hover:bg-red-600 text-white border-red-600",
+  Enviado: "bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-300",
+  "A confirmar": "bg-orange-50 hover:bg-orange-100 text-orange-700 border-orange-300",
+  "Emitir Factura": "bg-amber-500 hover:bg-amber-600 text-white border-amber-600",
+  Pagado: "bg-emerald-500 hover:bg-emerald-600 text-white border-emerald-600",
+  "Pagado Facturado": "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-700",
+};
+
+const statusOrder: PaymentStatus[] = [
+  "Pendiente",
+  "Enviado",
+  "A confirmar",
+  "Emitir Factura",
+  "Pagado",
+  "Pagado Facturado",
+];
 
 interface PaymentFormState {
   invoice: string;
@@ -112,6 +129,7 @@ interface PaymentFormState {
   currency: "UYU" | "USD";
   concept: string;
   date: Date | undefined;
+  invoiceEnabled: boolean;
 }
 
 const getDefaultFormState = (): PaymentFormState => ({
@@ -125,6 +143,7 @@ const getDefaultFormState = (): PaymentFormState => ({
   currency: "UYU",
   concept: "",
   date: new Date(),
+  invoiceEnabled: false,
 });
 
 interface PaymentDialogProps {
@@ -150,7 +169,6 @@ function PaymentDialog({
   const ticketDatalistId = "payments-ticket-list";
   const clientDatalistId = "payments-client-list";
   const [ticketQuery, setTicketQuery] = useState("");
-  const [enableInvoice, setEnableInvoice] = useState(false);
   const [enableTicket, setEnableTicket] = useState(false);
 
   useEffect(() => {
@@ -180,22 +198,34 @@ function PaymentDialog({
   }, []);
 
   const filteredClients = useMemo(() => {
-    if (!formState.client) {
+    const query = formState.client.trim().toLowerCase();
+    if (!query) {
       return clientOptions;
     }
-    const query = formState.client.toLowerCase();
     return clientOptions.filter((client) => {
+      const normalizedAlias = (client.alias ?? "").toLowerCase();
+      const normalizedEmail = (client.email ?? "").toLowerCase();
+      const normalizedName = client.name.toLowerCase();
       return (
-        client.name.toLowerCase().includes(query) ||
-        (client.alias ?? "").toLowerCase().includes(query)
+        normalizedName.includes(query) ||
+        normalizedAlias.includes(query) ||
+        normalizedEmail.includes(query)
       );
     });
   }, [clientOptions, formState.client]);
 
   const handleClientInputChange = (value: string) => {
-    const match = clientOptions.find(
-      (client) => client.name.toLowerCase() === value.toLowerCase()
-    );
+    const normalizedValue = value.trim().toLowerCase();
+    const match = clientOptions.find((client) => {
+      const alias = (client.alias ?? "").toLowerCase();
+      const email = (client.email ?? "").toLowerCase();
+      const name = client.name.toLowerCase();
+      return (
+        name === normalizedValue ||
+        alias === normalizedValue ||
+        email === normalizedValue
+      );
+    });
     if (match) {
       onFormChange({
         ...formState,
@@ -248,6 +278,10 @@ function PaymentDialog({
     onFormChange(nextState);
   };
 
+  const isoPaymentDate = formState.date
+    ? formState.date.toISOString().split("T")[0]
+    : "";
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
@@ -275,8 +309,10 @@ function PaymentDialog({
               <div className="flex items-center gap-2">
                 <span className="text-xs text-muted-foreground">Facturar</span>
                 <Switch
-                  checked={enableInvoice}
-                  onCheckedChange={setEnableInvoice}
+                  checked={formState.invoiceEnabled}
+                  onCheckedChange={(value) =>
+                    onFormChange({ ...formState, invoiceEnabled: value })
+                  }
                 />
               </div>
             </div>
@@ -286,7 +322,7 @@ function PaymentDialog({
                 onFormChange({ ...formState, invoice: event.target.value })
               }
               placeholder="FAC-T123"
-              disabled={!enableInvoice}
+              disabled={!formState.invoiceEnabled}
             />
           </div>
 
@@ -295,32 +331,45 @@ function PaymentDialog({
               <CalendarIcon className="h-4 w-4 text-muted-foreground" />
               Fecha del pago
             </label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant={"outline"}
-                  className={cn(
-                    "w-full justify-start text-left font-normal",
-                    !formState.date && "text-muted-foreground"
-                  )}
-                >
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {formState.date ? (
-                    format(formState.date, "PPP", { locale: es })
-                  ) : (
-                    <span>Seleccionar fecha</span>
-                  )}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0">
-                <Calendar
-                  mode="single"
-                  selected={formState.date}
-                  onSelect={(date) => onFormChange({ ...formState, date })}
-                  initialFocus
-                />
-              </PopoverContent>
-            </Popover>
+            <div className="flex flex-col gap-2 md:flex-row md:items-center">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant={"outline"}
+                    className={cn(
+                      "w-full justify-start text-left font-normal",
+                      !formState.date && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {formState.date ? (
+                      format(formState.date, "PPP", { locale: es })
+                    ) : (
+                      <span>Seleccionar fecha</span>
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0">
+                  <Calendar
+                    mode="single"
+                    selected={formState.date}
+                    onSelect={(date) => onFormChange({ ...formState, date })}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+              <Input
+                type="date"
+                value={isoPaymentDate}
+                onChange={(event) => {
+                  const nextDate = event.target.value
+                    ? new Date(event.target.value)
+                    : undefined;
+                  onFormChange({ ...formState, date: nextDate });
+                }}
+                className="max-w-[200px]"
+              />
+            </div>
           </div>
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-1">
@@ -407,7 +456,11 @@ function PaymentDialog({
             />
             <datalist id={clientDatalistId}>
               {filteredClients.slice(0, 15).map((client) => (
-                <option key={client.id} value={client.name} />
+                <Fragment key={client.id}>
+                  <option value={client.name} />
+                  {client.alias && <option value={client.alias} />}
+                  {client.email && <option value={client.email} />}
+                </Fragment>
               ))}
             </datalist>
           </div>
@@ -482,6 +535,12 @@ function PaymentDialog({
                     <div className="flex items-center gap-2">
                       <CheckCircle className="h-4 w-4 text-emerald-500" />
                       Pagado
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="Pagado Facturado">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle className="h-4 w-4 text-green-700" />
+                      Pagado Facturado
                     </div>
                   </SelectItem>
                 </SelectContent>
@@ -863,8 +922,12 @@ export default function PaymentsPage() {
   };
 
   const handleDialogSave = async () => {
-    if (!formState.invoice.trim() || !formState.client.trim()) {
-      toast.error("Complete el cliente y la factura.");
+    if (!formState.client.trim()) {
+      toast.error("Selecciona un cliente antes de guardar.");
+      return;
+    }
+    if (formState.invoiceEnabled && !formState.invoice.trim()) {
+      toast.error("Completa el número de factura antes de guardar.");
       return;
     }
     if (!(formState.amount > 0)) {
@@ -885,6 +948,7 @@ export default function PaymentsPage() {
       ticketTitle: formState.ticketTitle || undefined,
       currency: formState.currency ?? "UYU",
       concept: formState.concept,
+      invoiceEnabled: formState.invoiceEnabled,
     };
 
     await handleSavePayment(payment);
@@ -905,6 +969,7 @@ export default function PaymentsPage() {
       currency: payment.currency ?? "UYU",
       concept: payment.concept || "",
       date: payment.createdAt ? new Date(payment.createdAt) : new Date(),
+      invoiceEnabled: !!payment.invoice,
     });
     setIsDialogOpen(true);
   };
@@ -933,9 +998,11 @@ export default function PaymentsPage() {
     if (!confirmingPayment) {
       return;
     }
+    const hasInvoice = confirmingPayment.invoice.trim().length > 0;
+    const nextStatus: PaymentStatus = hasInvoice ? "Pagado Facturado" : "Pagado";
     const updatedPayment: Payment = {
       ...confirmingPayment,
-      status: "Pagado",
+      status: nextStatus,
       method: confirmForm.method,
       note: confirmForm.note,
       createdAt: confirmForm.date,
@@ -1320,19 +1387,7 @@ export default function PaymentsPage() {
                       <TableCell>
                         <Badge
                           variant={statusVariant[payment.status]}
-                          className={
-                            payment.status === "Pagado"
-                              ? "bg-emerald-500 hover:bg-emerald-600 text-white border-emerald-600"
-                              : payment.status === "Enviado"
-                                ? "bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-300"
-                                : payment.status === "Emitir Factura"
-                                  ? "bg-amber-500 hover:bg-amber-600 text-white border-amber-600"
-                                  : payment.status === "A confirmar"
-                                    ? "bg-orange-50 hover:bg-orange-100 text-orange-700 border-orange-300"
-                                    : payment.status === "Pendiente"
-                                      ? "bg-red-500 hover:bg-red-600 text-white border-red-600"
-                                      : undefined
-                          }
+                          className={statusBadgeClasses[payment.status]}
                         >
                           {payment.status}
                         </Badge>
@@ -1371,7 +1426,7 @@ export default function PaymentsPage() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-2">
-                          {payment.status !== "Pagado" && (
+                          {payment.status !== "Pagado" && payment.status !== "Pagado Facturado" && (
                             <Button
                               variant="outline"
                               size="sm"

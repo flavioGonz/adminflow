@@ -113,14 +113,22 @@ export default function InstallPage() {
     const testDatabaseConnection = async () => {
         setTesting(true);
         setTestResult(null);
+        
+        const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Timeout: La conexión tardó demasiado (30s)')), 30000)
+        );
+        
         try {
-            const res = await apiFetch('/install/test-db', {
+            const fetchPromise = apiFetch('/install/test-db', {
                 method: 'POST',
                 body: JSON.stringify(databaseData),
                 headers: { 'Content-Type': 'application/json' }
             });
+            
+            const res = await Promise.race([fetchPromise, timeoutPromise]) as Response;
             const response = await res.json();
             setTestResult(response);
+            
             if (!response.success) {
                 setErrorMessage(response.message || 'Error desconocido al conectar con la base de datos');
                 setShowErrorModal(true);
@@ -175,9 +183,12 @@ export default function InstallPage() {
             const response = await res.json();
 
             if (response.success) {
-                // Redirect to login after short delay
+                // Show success message before redirect
+                console.log('✅ Instalación completada:', response.logs);
+                
+                // Redirect to dashboard after short delay
                 setTimeout(() => {
-                    router.push('/');
+                    window.location.href = '/';
                 }, 2000);
             } else {
                 setErrorMessage(response.message || response.error || 'Error al completar la instalación');

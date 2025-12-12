@@ -177,23 +177,25 @@ export default function MapPage() {
     return () => controller.abort();
   }, []);
 
+  const normalizedQuery = query.trim().toLowerCase();
   const filteredClients = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
-    if (!normalized) return clients;
+    if (!normalizedQuery) return clients;
     return clients.filter((client) => {
       const rut = client.rut ?? "";
       const alias = client.alias ?? "";
       const email = client.email ?? "";
       const phone = client.phone ?? "";
       return (
-        client.name.toLowerCase().includes(normalized) ||
-        email.toLowerCase().includes(normalized) ||
-        phone.toLowerCase().includes(normalized) ||
-        alias.toLowerCase().includes(normalized) ||
-        rut.toLowerCase().includes(normalized)
+        client.name.toLowerCase().includes(normalizedQuery) ||
+        email.toLowerCase().includes(normalizedQuery) ||
+        phone.toLowerCase().includes(normalizedQuery) ||
+        alias.toLowerCase().includes(normalizedQuery) ||
+        rut.toLowerCase().includes(normalizedQuery)
       );
     });
-  }, [clients, query]);
+  }, [clients, normalizedQuery]);
+
+  const clientSearchResults = normalizedQuery ? filteredClients : [];
 
   const markers = useMemo(() => {
     if (!leafletModule) return [];
@@ -397,7 +399,7 @@ export default function MapPage() {
   };
 
   return (
-    <div className="relative min-h-screen bg-slate-950 text-white">
+    <div className="relative flex-1 min-h-0 w-full overflow-hidden bg-transparent text-white">
       <MapContainer
         center={highlightLocation ? [highlightLocation.lat, highlightLocation.lng] : [-34.9, -56.2]}
         zoom={6}
@@ -485,7 +487,7 @@ export default function MapPage() {
           </Marker>
         ))}
       </MapContainer>
-      <div className="fixed inset-0 pointer-events-none bg-gradient-to-br from-slate-950/80 via-slate-950/30 to-slate-950/70" />
+      <div className="absolute inset-0 pointer-events-none bg-gradient-to-br from-slate-950/80 via-slate-950/30 to-slate-950/70" />
       <div className="absolute top-6 left-6 z-30">
         <Button
           variant="ghost"
@@ -495,28 +497,7 @@ export default function MapPage() {
           Volver
         </Button>
       </div>
-      <div className="absolute top-6 right-6 z-30 w-full max-w-lg space-y-5 p-4 lg:p-6 pointer-events-auto">
-        <div className="rounded-3xl border border-white/10 bg-gradient-to-br from-slate-900/90 to-slate-900/70 p-6 text-white shadow-2xl backdrop-blur">
-          <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-[0.3em] text-white/70">
-            <span>Ubicación inteligente</span>
-            <span className="rounded-full border border-white/40 px-2 py-0.5 text-[0.6rem]">Live</span>
-          </div>
-          <h2 className="mt-2 text-xl font-semibold">Clientes cerca tuyo</h2>
-          <p className="mt-1 text-sm text-white/70">
-            Gestiona tus cuentas sin salir del mapa; arrastra los pines y guarda los cambios.
-          </p>
-          <div className="mt-3 flex flex-wrap gap-2 text-[0.75rem] text-white/70">
-            {["Activo", "Cobranzas", "Soporte", "Contabilidad"].map((tag) => (
-              <Badge
-                key={tag}
-                variant="outline"
-                className="bg-white/10 text-white/80"
-              >
-                {tag}
-              </Badge>
-            ))}
-          </div>
-        </div>
+      <div className="absolute top-6 right-6 z-30 w-full max-w-lg space-y-4 p-4 lg:p-6 pointer-events-auto">
         <div className="rounded-3xl border border-white/10 bg-white/10 p-6 text-white shadow-2xl backdrop-blur">
           <div className="flex items-center justify-between">
             <p className="text-xs font-semibold uppercase tracking-[0.3em] text-white/80">
@@ -536,12 +517,16 @@ export default function MapPage() {
             className="mt-3 bg-white/10 text-white placeholder:text-white/60"
           />
           <div className="mt-4 space-y-2 text-sm text-white/80">
-            {filteredClients.length === 0 ? (
+            {!normalizedQuery ? (
+              <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/60">
+                Escribe un término para ver resultados
+              </div>
+            ) : clientSearchResults.length === 0 ? (
               <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/60">
                 Sin coincidencias
               </div>
             ) : (
-              filteredClients.slice(0, 6).map((client) => (
+              clientSearchResults.slice(0, 6).map((client) => (
                 <button
                   key={client.id}
                   className={`flex w-full items-center justify-between rounded-2xl border px-3 py-2 text-left text-white transition ${

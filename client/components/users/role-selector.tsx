@@ -1,6 +1,7 @@
 "use client";
 
 import { Check } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -42,7 +43,8 @@ export function RoleSelector({
             <div className="grid gap-3">
                 {Object.values(ROLE_DEFINITIONS).map((role) => {
                     const isSelected = selectedRoles.includes(role.value);
-                    const IconComponent = (Icons as any)[role.icon] || Icons.Shield;
+                    const iconsMap = Icons as Record<string, LucideIcon>;
+                    const IconComponent = iconsMap[role.icon] ?? Icons.Shield;
 
                     return (
                         <Card

@@ -43,9 +43,10 @@ export interface Ticket {
     text: string;
     createdAt: string;
     user?: string;
-    attachments?: TicketAttachment[];
-    audioNotes?: TicketAudioNote[];
-  }[];
+      attachments?: TicketAttachment[];
+      audioNotes?: TicketAudioNote[];
+      avatar?: string | null;
+    }[];
   hasActiveContract?: boolean;
   description?: string;
   amountCurrency?: "UYU" | "USD";

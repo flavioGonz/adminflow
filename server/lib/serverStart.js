@@ -6,6 +6,7 @@ const path = require('path');
 const { initDB } = require('../db');
 const { ensureTicketSchema } = require('./ticketSchema');
 const { ensureBudgetSchema } = require('./budgetSchema');
+const { ensureProductSchema } = require('./productSchema');
 const { ensureDefaultGroups } = require('./groupService');
 
 const INSTALL_LOCK_FILE = path.join(__dirname, '../.installed');
@@ -79,6 +80,13 @@ async function startServer(app, PORT) {
         console.log('╨Yo. Esquema de presupuestos asegurado');
     } catch (schemaError) {
         console.error('╨?O Error asegurando el esquema de presupuestos:', schemaError);
+    }
+
+    try {
+        await ensureProductSchema();
+        console.log('Esquema de productos asegurado');
+    } catch (schemaError) {
+        console.error('Error asegurando el esquema de productos:', schemaError);
     }
 
     try {

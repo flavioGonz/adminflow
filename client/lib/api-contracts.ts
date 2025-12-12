@@ -46,7 +46,7 @@ export const deleteContract = async (contractId: string): Promise<void> => {
   }
 };
 
-export const importContracts = async (contractsToImport: Contract[]): Promise<any> => {
+export const importContracts = async (contractsToImport: Contract[]): Promise<Record<string, unknown>> => {
   const response = await fetch(`${API_URL}/contracts/import`, {
     method: "POST",
     headers: {

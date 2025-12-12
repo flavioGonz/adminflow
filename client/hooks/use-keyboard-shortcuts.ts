@@ -72,9 +72,9 @@ export function useKeyboardShortcuts() {
                 key: "n",
                 ctrl: true,
                 action: () => {
-                    toast.info("Usa Ctrl+K para abrir el Command Palette y crear registros");
+                    toast.info("Usa el botón 'Nuevo' en la sección activa para crear registros");
                 },
-                description: "Nuevo registro (abre Command Palette)",
+                description: "Nuevo registro",
             },
             // Utility shortcuts
             {
@@ -93,11 +93,11 @@ export function useKeyboardShortcuts() {
         ];
 
         const handleKeyDown = (e: KeyboardEvent) => {
-            // Don't trigger shortcuts when typing in inputs (except Ctrl+K which is handled by CommandPalette)
+            // Don't trigger shortcuts when typing in inputs
             const target = e.target as HTMLElement;
             const isInput = target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
 
-            if (isInput && e.key !== "k") {
+            if (isInput) {
                 return;
             }
 
@@ -132,7 +132,6 @@ export function useShowKeyboardHelp() {
                 e.preventDefault();
                 toast.info(
                     "Atajos de teclado disponibles:\n" +
-                    "• Ctrl+K: Command Palette\n" +
                     "• Ctrl+H: Dashboard\n" +
                     "• Ctrl+Shift+C: Clientes\n" +
                     "• Ctrl+Shift+T: Tickets\n" +

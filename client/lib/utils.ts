@@ -50,11 +50,11 @@ export function parseCsv<T>(csvString: string): T[] {
 
   for (let i = 1; i < lines.length; i++) {
     const values = lines[i].split(',');
-    const item: any = {};
+    const item: Record<string, string> = {};
     for (let j = 0; j < headers.length; j++) {
       item[headers[j]] = values[j] ? values[j].trim() : '';
     }
-    result.push(item as T);
+    result.push(item as unknown as T);
   }
   return result;
 }

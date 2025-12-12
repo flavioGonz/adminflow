@@ -133,7 +133,7 @@ export function CreateAccessDialog({
                       <Type className="h-4 w-4 text-slate-500" />
                       Tipo *
                     </FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select value={field.value} onValueChange={field.onChange}>
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Seleccionar..." />

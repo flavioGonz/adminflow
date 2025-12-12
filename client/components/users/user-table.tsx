@@ -101,7 +101,10 @@ export function UserTable({ users, onEdit, onDelete, onResetPassword, loading }:
                 </div>
 
                 <div className="flex gap-2">
-                    <Select value={roleFilter} onValueChange={(value: any) => setRoleFilter(value)}>
+                    <Select
+                        value={roleFilter}
+                        onValueChange={(value) => setRoleFilter(value as UserRole | "all")}
+                    >
                         <SelectTrigger className="w-[180px] h-11">
                             <Filter className="mr-2 h-4 w-4" />
                             <SelectValue placeholder="Filtrar por rol" />
@@ -116,7 +119,10 @@ export function UserTable({ users, onEdit, onDelete, onResetPassword, loading }:
                         </SelectContent>
                     </Select>
 
-                    <Select value={statusFilter} onValueChange={(value: any) => setStatusFilter(value)}>
+                    <Select
+                        value={statusFilter}
+                        onValueChange={(value) => setStatusFilter(value as UserStatus | "all")}
+                    >
                         <SelectTrigger className="w-[180px] h-11">
                             <Filter className="mr-2 h-4 w-4" />
                             <SelectValue placeholder="Filtrar por estado" />

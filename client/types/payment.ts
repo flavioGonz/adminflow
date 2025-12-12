@@ -1,4 +1,10 @@
-export type PaymentStatus = "Pendiente" | "Enviado" | "A confirmar" | "Emitir Factura" | "Pagado";
+export type PaymentStatus =
+  | "Pendiente"
+  | "Enviado"
+  | "A confirmar"
+  | "Emitir Factura"
+  | "Pagado"
+  | "Pagado Facturado";
 
 export type Currency = "UYU" | "USD";
 
@@ -16,4 +22,5 @@ export interface Payment {
   concept?: string;
   createdAt: string;
   currency: Currency;
+  invoiceEnabled?: boolean;
 }

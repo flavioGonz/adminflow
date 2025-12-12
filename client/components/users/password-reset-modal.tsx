@@ -48,8 +48,9 @@ export function PasswordResetModal({ open, onClose, onSave, user }: PasswordRese
             setPassword("");
             setConfirmPassword("");
             onClose();
-        } catch (err: any) {
-            setError(err.message || "Error al cambiar la contraseña");
+        } catch (err) {
+            const message = err instanceof Error ? err.message : "Error al cambiar la contraseña";
+            setError(message);
         } finally {
             setLoading(false);
         }

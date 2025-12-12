@@ -1,14 +1,14 @@
 import { apiFetch } from "./http";
 
 export interface SystemUser {
-  id: string; // Campo requerido para identificación consistente
+  id: string; // Campo requerido para identificaciИn consistente
   _id?: string;
   sqliteId?: number;
   email: string;
   name?: string;
   avatar?: string;
   roles?: string[];
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
   createdAt?: string;
   updatedAt?: string;
   groupId?: string | null;
@@ -36,11 +36,13 @@ export interface NotificationConfig {
 export interface NotificationLog {
   _id?: string;
   event: string;
-  results: any[];
+  results: unknown[];
   createdAt: string;
 }
 
-const apiCall = async (url: string, options?: RequestInit) => {
+export type AuditLogEntry = Record<string, unknown>;
+
+const apiCall = async <T = unknown>(url: string, options?: RequestInit): Promise<T> => {
   const response = await apiFetch(url, {
     ...options,
     headers: {
@@ -55,18 +57,18 @@ const apiCall = async (url: string, options?: RequestInit) => {
 };
 
 export const getRegisteredUsers = async (): Promise<SystemUser[]> => {
-  return apiCall("/users/registered");
+  return apiCall<SystemUser[]>("/users/registered");
 };
 
 export const updateUser = async (id: string, data: Partial<SystemUser>): Promise<SystemUser> => {
-  return apiCall(`/users/registered/${id}`, {
+  return apiCall<SystemUser>(`/users/registered/${id}`, {
     method: "PATCH",
     body: JSON.stringify(data),
   });
 };
 
 export const createUser = async (email: string, password: string): Promise<SystemUser> => {
-  return apiCall("/users/register", {
+  return apiCall<SystemUser>("/users/register", {
     method: "POST",
     body: JSON.stringify({ email, password }),
   });
@@ -74,10 +76,10 @@ export const createUser = async (email: string, password: string): Promise<Syste
 
 export const uploadUserAvatar = async (userId: string, file: File): Promise<{ avatarUrl: string }> => {
   const formData = new FormData();
-  formData.append('avatar', file);
+  formData.append("avatar", file);
 
   const response = await apiFetch(`/users/${userId}/avatar`, {
-    method: 'POST',
+    method: "POST",
     body: formData,
   });
 
@@ -88,40 +90,41 @@ export const uploadUserAvatar = async (userId: string, file: File): Promise<{ av
   return response.json();
 };
 
-export const resetUserPassword = async (userId: string, newPassword: string): Promise<any> => {
-  return apiCall(`/users/${userId}/password`, {
+export const resetUserPassword = async (userId: string, newPassword: string): Promise<void> => {
+  await apiCall<void>(`/users/${userId}/password`, {
     method: "PATCH",
     body: JSON.stringify({ newPassword }),
   });
 };
 
-export const deleteUser = async (userId: string): Promise<any> => {
-  return apiCall(`/users/${userId}`, {
+export const deleteUser = async (userId: string): Promise<void> => {
+  await apiCall<void>(`/users/${userId}`, {
     method: "DELETE",
   });
 };
 
-// Configuración de Notificaciones
 export const getNotificationConfig = async (): Promise<NotificationConfig> => {
-  const response = await apiCall("/config/notifications");
-  // Retornar data o estructura default si está vacío
+  const response = await apiCall<{ data?: NotificationConfig }>("/config/notifications");
   return response.data || { channels: {}, templates: {} };
 };
 
-export const saveNotificationConfig = async (config: NotificationConfig): Promise<any> => {
-  return apiCall("/config/notifications", {
+export const saveNotificationConfig = async (config: NotificationConfig): Promise<NotificationConfig> => {
+  return apiCall<NotificationConfig>("/config/notifications", {
     method: "POST",
     body: JSON.stringify(config),
   });
 };
 
-// Historial y Pruebas
 export const getNotificationHistory = async (limit = 20): Promise<NotificationLog[]> => {
-  return apiCall(`/notifications/history?limit=${limit}`);
+  return apiCall<NotificationLog[]>(`/notifications/history?limit=${limit}`);
 };
 
-export const sendTestNotification = async (channel: string, message: string, recipients?: string[]) => {
-  return apiCall("/notifications/send", {
+export const sendTestNotification = async (
+  channel: string,
+  message: string,
+  recipients?: string[]
+): Promise<void> => {
+  await apiCall("/notifications/send", {
     method: "POST",
     body: JSON.stringify({
       event: "test_event",
@@ -132,7 +135,12 @@ export const sendTestNotification = async (channel: string, message: string, rec
   });
 };
 
-export const verifySmtpConnection = async (host: string, port: string, user: string, pass: string) => {
+export const verifySmtpConnection = async (
+  host: string,
+  port: string,
+  user: string,
+  pass: string
+): Promise<{ success: boolean; message?: string; detail?: string }> => {
   const response = await apiFetch("/notifications/verify-smtp", {
     method: "POST",
     headers: {
@@ -149,20 +157,24 @@ export const verifySmtpConnection = async (host: string, port: string, user: str
   const data = await response.json();
 
   if (!response.ok) {
-    // Lanzar error con el mensaje detallado del servidor
     throw new Error(data.detail || data.message || "Error al verificar SMTP");
   }
 
   return data;
 };
 
-export const getAuditLogs = async (limit = 50, type?: string, status?: string, search?: string): Promise<any[]> => {
+export const getAuditLogs = async (
+  limit = 50,
+  type?: string,
+  status?: string,
+  search?: string
+): Promise<AuditLogEntry[]> => {
   const params = new URLSearchParams();
   if (limit) params.append("limit", limit.toString());
   if (type && type !== "all") params.append("type", type);
   if (status && status !== "all") params.append("status", status);
   if (search) params.append("search", search);
-  return apiCall(`/system/audit?${params.toString()}`);
+  return apiCall<AuditLogEntry[]>(`/system/audit?${params.toString()}`);
 };
 
 export interface Backup {
@@ -172,7 +184,7 @@ export interface Backup {
 }
 
 export const getBackups = async (): Promise<Backup[]> => {
-  return apiCall("/system/backups");
+  return apiCall<Backup[]>("/system/backups");
 };
 
 export const createBackup = async (): Promise<{ success: boolean; backupName: string; path: string; timestamp: string }> => {

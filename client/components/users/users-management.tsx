@@ -1,11 +1,6 @@
 "use client";
 
 import { useState, useEffect, forwardRef, useImperativeHandle } from "react";
-import { UserPlus, Users as UsersIcon, Shield, RefreshCw } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { ShinyText } from "@/components/ui/shiny-text";
 import { UserTable } from "@/components/users/user-table";
 import { UserModal } from "@/components/users/user-modal";
 import { PasswordResetModal } from "@/components/users/password-reset-modal";
@@ -24,7 +19,6 @@ const UsersManagementPage = forwardRef<UsersManagementRef>((props, ref) => {
     const [users, setUsers] = useState<User[]>([]);
     const [groups, setGroups] = useState<Group[]>([]);
     const [loading, setLoading] = useState(true);
-    const [refreshing, setRefreshing] = useState(false);
 
     // Estados de modales
     const [userModalOpen, setUserModalOpen] = useState(false);
@@ -41,12 +35,12 @@ const UsersManagementPage = forwardRef<UsersManagementRef>((props, ref) => {
             ]);
             setUsers(usersData);
             setGroups(groupsData);
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error("Error loading data:", error);
-            toast.error(error.message || "Error al cargar datos");
+            const message = error instanceof Error ? error.message : "Error al cargar datos";
+            toast.error(message);
         } finally {
             setLoading(false);
-            setRefreshing(false);
         }
     };
 
@@ -66,18 +60,7 @@ const UsersManagementPage = forwardRef<UsersManagementRef>((props, ref) => {
         }
     }));
 
-    const handleRefresh = () => {
-        setRefreshing(true);
-        loadData();
-    };
-
     // Crear usuario
-    const handleCreateUser = () => {
-        setSelectedUser(null);
-        setModalMode("create");
-        setUserModalOpen(true);
-    };
-
     // Editar usuario
     const handleEditUser = (user: User) => {
         setSelectedUser(user);
@@ -110,9 +93,10 @@ const UsersManagementPage = forwardRef<UsersManagementRef>((props, ref) => {
 
             loadData();
             setUserModalOpen(false);
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error("Error saving user:", error);
-            toast.error(error.message || "Error al guardar usuario");
+            const message = error instanceof Error ? error.message : "Error al guardar usuario";
+            toast.error(message);
             throw error;
         }
     };
@@ -127,9 +111,10 @@ const UsersManagementPage = forwardRef<UsersManagementRef>((props, ref) => {
             await UsersAPI.delete(user.id);
             toast.success("Usuario eliminado exitosamente");
             loadData();
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error("Error deleting user:", error);
-            toast.error(error.message || "Error al eliminar usuario");
+            const message = error instanceof Error ? error.message : "Error al eliminar usuario";
+            toast.error(message);
         }
     };
 
@@ -145,20 +130,13 @@ const UsersManagementPage = forwardRef<UsersManagementRef>((props, ref) => {
         try {
             await UsersAPI.updatePassword(selectedUser.id, newPassword);
             toast.success("Contraseña actualizada exitosamente");
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error("Error updating password:", error);
             throw error;
         }
     };
 
     // Estadísticas
-    const stats = {
-        total: users.length,
-        active: users.filter(u => u.status === 'active').length,
-        admins: users.filter(u => u.roles.includes('admin')).length,
-        withGroup: users.filter(u => u.groupId).length
-    };
-
     return (
         <div className="space-y-4">
             {/* Tabla de usuarios */}
@@ -185,7 +163,7 @@ const UsersManagementPage = forwardRef<UsersManagementRef>((props, ref) => {
                 open={passwordModalOpen}
                 onClose={() => setPasswordModalOpen(false)}
                 onSave={handleSavePassword}
-                userName={selectedUser?.name || ""}
+                user={selectedUser}
             />
         </div>
     );

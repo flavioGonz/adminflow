@@ -11,25 +11,25 @@ const path = require('path');
  * @param {string} dbName - Nombre de la base de datos
  * @returns {Promise<{success: boolean, message: string, collections: string[]}>}
  */
-async function initializeMongoDB(mongoUri, dbName = 'adminflow', isNew = false) {
+async function initializeMongoDB(mongoUri, dbName = 'adminflow', isNew = false, progress = []) {
     let client;
 
     try {
-        console.log('🔄 Conectando a MongoDB...');
+        progress.push('🔄 Conectando a MongoDB...');
         client = new MongoClient(mongoUri);
         await client.connect();
 
         const db = client.db(dbName);
-        console.log(`✅ Conectado a base de datos: ${dbName}`);
+        progress.push(`✅ Conectado a base de datos: ${dbName}`);
 
         // Si es una instalación nueva, eliminar la base de datos existente
         if (isNew) {
-            console.log('⚠️  Modo "Nueva Base de Datos" seleccionado. Eliminando base de datos existente...');
+            progress.push('⚠️  Modo "Nueva Base de Datos" seleccionado. Eliminando base de datos existente...');
             try {
                 await db.dropDatabase();
-                console.log('✅ Base de datos eliminada correctamente.');
+                progress.push('✅ Base de datos eliminada correctamente.');
             } catch (dropError) {
-                console.warn('⚠️  No se pudo eliminar la base de datos (puede que no existiera):', dropError.message);
+                progress.push(`⚠️  No se pudo eliminar la base de datos (puede que no existiera): ${dropError.message}`);
             }
         }
 
@@ -41,7 +41,7 @@ async function initializeMongoDB(mongoUri, dbName = 'adminflow', isNew = false) 
             const diagramContent = fs.readFileSync(diagramPath, 'utf8');
             diagram = JSON.parse(diagramContent);
         } catch (error) {
-            console.warn('⚠️  No se pudo leer el diagrama MongoDB, usando esquemas por defecto');
+            progress.push('⚠️  No se pudo leer el diagrama MongoDB, usando esquemas por defecto');
             diagram = getDefaultSchema();
         }
 
@@ -52,7 +52,7 @@ async function initializeMongoDB(mongoUri, dbName = 'adminflow', isNew = false) 
         const existingCollections = await db.listCollections().toArray();
         const existingNames = existingCollections.map(c => c.name);
 
-        console.log('📋 Inicializando colecciones...');
+        progress.push('📋 Inicializando colecciones...');
 
         for (const [collectionKey, collectionData] of Object.entries(collections)) {
             const collectionName = collectionKey.split('.').pop(); // adminflow.clients -> clients
@@ -69,41 +69,44 @@ async function initializeMongoDB(mongoUri, dbName = 'adminflow', isNew = false) 
                         validationLevel: 'moderate', // 'strict' | 'moderate' | 'off'
                         validationAction: 'warn' // 'error' | 'warn'
                     });
-                    console.log(`  ✅ Colección creada: ${collectionName}`);
+                    progress.push(`  ✅ Colección creada: ${collectionName}`);
                     createdCollections.push(collectionName);
                 } else {
-                    console.log(`  ℹ️  Colección ya existe: ${collectionName}`);
+                    progress.push(`  ℹ️  Colección ya existe: ${collectionName}`);
                 }
 
                 // Crear índices recomendados
                 await createIndexes(db, collectionName);
 
             } catch (error) {
-                console.error(`  ❌ Error en colección ${collectionName}:`, error.message);
+                progress.push(`  ❌ Error en colección ${collectionName}: ${error.message}`);
             }
         }
 
         // Crear usuario admin si no existe
-        await createDefaultAdmin(db);
+        await createDefaultAdmin(db, progress);
 
         // Crear configuraciones por defecto
-        await createDefaultConfigurations(db);
+        await createDefaultConfigurations(db, progress);
 
-        console.log('✅ Inicialización de MongoDB completada');
+        progress.push('✅ Inicialización de MongoDB completada');
 
         return {
             success: true,
             message: 'MongoDB inicializado correctamente',
             collections: createdCollections,
-            totalCollections: Object.keys(collections).length - 1 // -1 por 'adminflow.adminflow'
+            totalCollections: Object.keys(collections).length - 1, // -1 por 'adminflow.adminflow'
+            progress,
         };
 
     } catch (error) {
+        progress.push(`❌ Error al inicializar MongoDB: ${error.message}`);
         console.error('❌ Error al inicializar MongoDB:', error);
         return {
             success: false,
             message: error.message,
-            collections: []
+            collections: [],
+            progress,
         };
     } finally {
         if (client) {
@@ -211,7 +214,7 @@ async function createIndexes(db, collectionName) {
 /**
  * Crea el usuario admin por defecto
  */
-async function createDefaultAdmin(db) {
+async function createDefaultAdmin(db, progress = []) {
     const bcrypt = require('bcrypt');
     const usersCollection = db.collection('users');
 
@@ -230,16 +233,16 @@ async function createDefaultAdmin(db) {
             createdAt: new Date(),
             updatedAt: new Date()
         });
-        console.log(`  ✅ Usuario admin creado: ${adminEmail}`);
+        progress.push(`  ✅ Usuario admin creado: ${adminEmail}`);
     } else {
-        console.log(`  ℹ️  Usuario admin ya existe: ${adminEmail}`);
+        progress.push(`  ℹ️  Usuario admin ya existe: ${adminEmail}`);
     }
 }
 
 /**
  * Crea configuraciones por defecto
  */
-async function createDefaultConfigurations(db) {
+async function createDefaultConfigurations(db, progress = []) {
     const configurationsCollection = db.collection('configurations');
 
     const defaultConfigs = [
@@ -289,7 +292,7 @@ async function createDefaultConfigurations(db) {
                 createdAt: new Date(),
                 updatedAt: new Date()
             });
-            console.log(`  ✅ Configuración creada: ${config.module}`);
+            progress.push(`  ✅ Configuración creada: ${config.module}`);
         }
     }
 }
@@ -300,40 +303,20 @@ async function createDefaultConfigurations(db) {
 function getDefaultSchema() {
     return {
         collections: {
-            'adminflow.users': {
-                jsonSchema: {
-                    bsonType: 'object',
-                    required: ['_id', 'email', 'password'],
-                    properties: {
-                        _id: { bsonType: 'int' },
-                        email: { bsonType: 'string' },
-                        password: { bsonType: 'string' },
-                        role: { bsonType: 'string' },
-                        createdAt: { bsonType: 'date' },
-                        updatedAt: { bsonType: 'date' }
-                    }
-                }
-            },
-            'adminflow.clients': {
-                jsonSchema: {
-                    bsonType: 'object',
-                    required: ['_id', 'name'],
-                    properties: {
-                        _id: { bsonType: 'int' },
-                        name: { bsonType: 'string' },
-                        alias: { bsonType: 'string' },
-                        email: { bsonType: ['string', 'null'] },
-                        phone: { bsonType: ['string', 'null'] },
-                        address: { bsonType: ['string', 'null'] },
-                        contract: { bsonType: 'bool' },
-                        latitude: { bsonType: ['double', 'null'] },
-                        longitude: { bsonType: ['double', 'null'] },
-                        createdAt: { bsonType: 'date' },
-                        updatedAt: { bsonType: 'date' }
-                    }
-                }
-            }
-            // ... más colecciones básicas
+            'adminflow.users': { jsonSchema: {} },
+            'adminflow.clients': { jsonSchema: {} },
+            'adminflow.tickets': { jsonSchema: {} },
+            'adminflow.budgets': { jsonSchema: {} },
+            'adminflow.budget_items': { jsonSchema: {} },
+            'adminflow.contracts': { jsonSchema: {} },
+            'adminflow.payments': { jsonSchema: {} },
+            'adminflow.products': { jsonSchema: {} },
+            'adminflow.client_accesses': { jsonSchema: {} },
+            'adminflow.calendar_events': { jsonSchema: {} },
+            'adminflow.groups': { jsonSchema: {} },
+            'adminflow.notifications': { jsonSchema: {} },
+            'adminflow.configurations': { jsonSchema: {} },
+            'adminflow.audit_logs': { jsonSchema: {} }
         }
     };
 }

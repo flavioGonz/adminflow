@@ -6,10 +6,10 @@ interface ApiResponse {
   success: boolean;
   message: string;
   detail?: string;
-  summary?: any;
+  summary?: Record<string, unknown>;
 }
 
-const parseResponse = async (response: Response) => {
+const parseResponse = async <T extends ApiResponse = ApiResponse>(response: Response): Promise<T> => {
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
     throw new Error(payload?.message || "An unknown error occurred");
@@ -17,15 +17,15 @@ const parseResponse = async (response: Response) => {
   return payload;
 };
 
-export const getDatabaseConfig = async () => {
+export const getDatabaseConfig = async (): Promise<Record<string, unknown>> => {
   const response = await fetch(`${API_URL}/system/database`);
   if (!response.ok) {
-    throw new Error("No se pudo obtener la configuración de base.");
+    throw new Error("No se pudo obtener la configuracion de base.");
   }
-  return response.json();
+  return response.json<Record<string, unknown>>();
 };
 
-export const updateDatabaseConfig = async (payload: Record<string, any>) => {
+export const updateDatabaseConfig = async (payload: Record<string, unknown>) => {
   const response = await fetch(`${API_URL}/system/database`, {
     method: "POST",
     headers: {
@@ -95,10 +95,10 @@ export const verifyDatabaseConnection = async (payload: {
   return parseResponse(response);
 };
 
-export const getDatabaseOverview = async () => {
+export const getDatabaseOverview = async (): Promise<Record<string, unknown>> => {
   const response = await fetch(`${API_URL}/system/database/overview`);
   if (!response.ok) {
     throw new Error("No se pudo obtener el resumen de bases de datos.");
   }
-  return response.json();
+  return response.json<Record<string, unknown>>();
 };

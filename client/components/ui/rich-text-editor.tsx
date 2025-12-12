@@ -52,6 +52,7 @@ interface RichTextEditorProps {
   placeholder?: string;
   className?: string;
   direction?: "ltr" | "rtl" | "auto";
+  onImagePaste?: (payload: { file: File; dataUrl: string }) => void;
 }
 
 const toolbarGroups: ToolbarAction[][] = [
@@ -94,6 +95,7 @@ export function RichTextEditor({
   placeholder,
   className,
   direction = "ltr",
+  onImagePaste,
 }: RichTextEditorProps) {
   const editorRef = useRef<HTMLDivElement>(null);
   const lastHtml = useRef(value);
@@ -131,8 +133,30 @@ export function RichTextEditor({
   };
 
   const handlePaste = (event: React.ClipboardEvent<HTMLDivElement>) => {
+    const clipboard = event.clipboardData;
+    if (!clipboard) {
+      return;
+    }
+    const imageItems = Array.from(clipboard.items || []).filter((item) =>
+      item.type.startsWith("image/")
+    );
+    if (imageItems.length) {
+      event.preventDefault();
+      imageItems.forEach((item) => {
+        const file = item.getAsFile();
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          const dataUrl = reader.result as string;
+          document.execCommand("insertImage", false, dataUrl);
+          onImagePaste?.({ file, dataUrl });
+        };
+        reader.readAsDataURL(file);
+      });
+      return;
+    }
     event.preventDefault();
-    const text = event.clipboardData.getData("text/plain");
+    const text = clipboard.getData("text/plain");
     document.execCommand("insertText", false, text);
   };
 

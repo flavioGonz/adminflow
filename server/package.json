@@ -11,7 +11,8 @@
     "init-mongo": "node scripts/init-mongodb.js",
     "migrate-to-mongo": "node scripts/migrate-sqlite-to-mongo.js",
     "db:init": "node scripts/init-mongodb.js",
-    "db:migrate": "node scripts/migrate-sqlite-to-mongo.js"
+    "db:migrate": "node scripts/migrate-sqlite-to-mongo.js",
+    "validate:install": "node scripts/validate-installation.js"
   },
   "keywords": [],
   "author": "",

@@ -13,7 +13,7 @@ export interface User {
     groupId: string | null;
     groupName: string | null;
     status: UserStatus;
-    metadata: Record<string, any>;
+    metadata: Record<string, unknown>;
     createdAt: string;
     updatedAt: string;
     lastLogin: string | null;
@@ -39,7 +39,7 @@ export interface UpdateUserPayload {
     roles?: UserRole[];
     groupId?: string | null;
     status?: UserStatus;
-    metadata?: Record<string, any>;
+    metadata?: Record<string, unknown>;
 }
 
 export interface RoleDefinition {

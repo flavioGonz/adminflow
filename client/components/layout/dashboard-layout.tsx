@@ -4,9 +4,8 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
-import Sidebar from "./sidebar";
+import { SidebarContent, SidebarProvider, useSidebar } from "./sidebar";
 import { cn } from "@/lib/utils";
-import { CommandPalette } from "@/components/command-palette";
 import { useKeyboardShortcuts, useShowKeyboardHelp } from "@/hooks/use-keyboard-shortcuts";
 
 interface DashboardLayoutProps {
@@ -15,11 +14,12 @@ interface DashboardLayoutProps {
   className?: string;
 }
 
-export default function DashboardLayout({
+function DashboardLayoutShell({
   children,
   mainClassName,
   className,
 }: DashboardLayoutProps) {
+  const { collapsed } = useSidebar();
   const { status } = useSession();
   const router = useRouter();
 
@@ -33,22 +33,24 @@ export default function DashboardLayout({
     }
   }, [status, router]);
 
-
+  const defaultMainClass =
+    "relative flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6 overflow-y-auto min-w-0";
+  const gridColsClass = collapsed
+    ? "lg:grid-cols-[80px_minmax(0,1fr)]"
+    : "lg:grid-cols-[280px_minmax(0,1fr)]";
 
   return (
-    <div className="h-screen w-full lg:grid lg:grid-cols-[280px_1fr]">
-      <CommandPalette />
-      <Sidebar />
-      <div className="flex flex-col overflow-hidden">
-        <main
-          className={cn(
-            "flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6 overflow-y-auto",
-            mainClassName ?? className
-          )}
-        >
-          {children}
-        </main>
-      </div>
+    <div className={`h-screen w-full lg:grid ${gridColsClass}`}>
+      <SidebarContent />
+      <main className={cn(mainClassName ?? defaultMainClass, className)}>{children}</main>
     </div>
+  );
+}
+
+export default function DashboardLayout(props: DashboardLayoutProps) {
+  return (
+    <SidebarProvider>
+      <DashboardLayoutShell {...props} />
+    </SidebarProvider>
   );
 }

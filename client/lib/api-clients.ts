@@ -54,7 +54,7 @@ export const deleteClient = async (clientId: string): Promise<void> => {
   }
 };
 
-export const importClients = async (clientsToImport: Client[]): Promise<any> => {
+export const importClients = async (clientsToImport: Client[]): Promise<Record<string, unknown>> => {
   const response = await fetch(`${API_URL}/clients/import`, {
     method: "POST",
     headers: {

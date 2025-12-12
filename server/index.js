@@ -1941,10 +1941,15 @@ app.post('/api/payments', (req, res) => {
         concept,
         currency = 'UYU',
         createdAt = new Date().toISOString(),
+        invoiceEnabled = false,
     } = req.body;
     const numericAmount = Number(amount);
-    if (!invoice || !client || Number.isNaN(numericAmount)) {
-        return res.status(400).json({ message: 'invoice, client and amount are required' });
+    if (!client || Number.isNaN(numericAmount)) {
+        return res.status(400).json({ message: 'client and amount are required' });
+    }
+    const requiresInvoice = Boolean(invoiceEnabled) || ['Emitir Factura', 'Pagado Facturado'].includes(status);
+    if (requiresInvoice && !invoice) {
+        return res.status(400).json({ message: 'invoice is required when invoice mode is enabled' });
     }
     if (!(numericAmount > 0)) {
         return res.status(400).json({ message: 'amount must be greater than zero' });
@@ -2639,6 +2644,8 @@ const mapProductRow = (row) => ({
     priceUSD: row.price_usd ?? 0,
     badge: row.badge || "Servicio",
     imageUrl: row.image_url || "",
+    stock: row.stock ?? 0,
+    manufacturerLogoUrl: row.manufacturer_logo_url || row.manufacturerLogo || "",
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
 });
@@ -2723,6 +2730,8 @@ app.post('/api/products', (req, res) => {
         priceUYU = 0,
         priceUSD = 0,
         imageUrl,
+        stock = 0,
+        manufacturerLogoUrl = "",
     } = req.body;
 
     if (!name || !manufacturer) {
@@ -2730,8 +2739,8 @@ app.post('/api/products', (req, res) => {
     }
 
     db.run(
-        `INSERT INTO products (name, description, manufacturer, category, badge, price_uyu, price_usd, image_url)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO products (name, description, manufacturer, category, badge, price_uyu, price_usd, image_url, stock, manufacturer_logo_url)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
             name,
             description || null,
@@ -2741,6 +2750,8 @@ app.post('/api/products', (req, res) => {
             priceUYU,
             priceUSD,
             imageUrl || null,
+            Number.isNaN(Number(stock)) ? 0 : Number(stock),
+            manufacturerLogoUrl || null,
         ],
         function (err) {
             if (err) return res.status(500).json({ message: err.message });
@@ -2776,11 +2787,23 @@ app.put('/api/products/:id', (req, res) => {
             priceUYU: req.body.priceUYU ?? existing.price_uyu,
             priceUSD: req.body.priceUSD ?? existing.price_usd,
             imageUrl: req.body.imageUrl ?? existing.image_url,
+            stock:
+                req.body.stock !== undefined
+                    ? Number.isNaN(Number(req.body.stock))
+                        ? existing.stock ?? 0
+                        : Number(req.body.stock)
+                    : existing.stock ?? 0,
+            manufacturerLogoUrl:
+                req.body.manufacturerLogoUrl ??
+                req.body.manufacturer_logo_url ??
+                existing.manufacturer_logo_url ??
+                existing.manufacturerLogo ??
+                "",
         };
 
         db.run(
-            `UPDATE products
-       SET name = ?, description = ?, manufacturer = ?, category = ?, badge = ?, price_uyu = ?, price_usd = ?, image_url = ?, updatedAt = CURRENT_TIMESTAMP
+        `UPDATE products
+       SET name = ?, description = ?, manufacturer = ?, category = ?, badge = ?, price_uyu = ?, price_usd = ?, image_url = ?, stock = ?, manufacturer_logo_url = ?, updatedAt = CURRENT_TIMESTAMP
        WHERE id = ?`,
             [
                 payload.name,
@@ -2791,6 +2814,8 @@ app.put('/api/products/:id', (req, res) => {
                 payload.priceUYU,
                 payload.priceUSD,
                 payload.imageUrl,
+                payload.stock,
+                payload.manufacturerLogoUrl,
                 req.params.id,
             ],
             function (updateErr) {
