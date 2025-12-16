@@ -175,6 +175,7 @@ const databaseRoutes = require('./routes/database');
 const implementationRoutes = require('./routes/implementation');
 const mongoServersRoutes = require('./routes/mongo-servers');
 const statusRoutes = require('./routes/status');
+const supportArticlesRoutes = require('./routes/support/articles');
 const { checkInstallation } = require('./middleware/checkInstallation');
 
 // Installation routes (always accessible)
@@ -191,6 +192,7 @@ app.use('/api/system', systemBackupRoutes);
 app.use('/api/database', databaseRoutes);
 app.use('/api/mongo-servers', mongoServersRoutes);
 app.use('/api/status', statusRoutes);
+app.use('/api/support', supportArticlesRoutes);
 
 
 const MongoStore = require('connect-mongo');

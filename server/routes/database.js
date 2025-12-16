@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const { getMongoDb } = require('../lib/mongoClient');
+const { getMongoServerManager } = require('../lib/mongoServerManager');
+const { MongoClient } = require('mongodb');
 const fs = require('fs');
 const path = require('path');
 
@@ -466,6 +468,87 @@ router.delete('/backup/delete/:backupName', async (req, res) => {
             message: 'Error al eliminar respaldo',
             error: error.message 
         });
+    }
+});
+
+/**
+ * POST /api/database/sync
+ * Copia colecciones desde la base primaria (o sourceId) hacia una o más secundarias
+ * Body: { sourceId?: string, targetIds: string[], collections?: string[], dropBeforeInsert?: boolean }
+ */
+router.post('/sync', async (req, res) => {
+    const { sourceId, targetIds, collections, dropBeforeInsert = true } = req.body || {};
+
+    if (!targetIds || !Array.isArray(targetIds) || targetIds.length === 0) {
+        return res.status(400).json({ success: false, error: 'targetIds es requerido' });
+    }
+
+    try {
+        const manager = getMongoServerManager();
+        const sourceServer = sourceId ? manager.getServer(sourceId) : manager.getCurrentServer();
+        if (!sourceServer) {
+            return res.status(404).json({ success: false, error: 'Servidor origen no encontrado' });
+        }
+
+        const targetServers = targetIds
+            .map((id) => manager.getServer(id))
+            .filter(Boolean);
+
+        if (targetServers.length === 0) {
+            return res.status(404).json({ success: false, error: 'No se encontraron servidores destino' });
+        }
+
+        const sourceClient = new MongoClient(sourceServer.uri, { serverSelectionTimeoutMS: 15000 });
+        await sourceClient.connect();
+        const sourceDb = sourceClient.db(sourceServer.database);
+
+        // Obtener colecciones a sincronizar
+        let collectionNames = collections;
+        if (!collectionNames || collectionNames.length === 0) {
+            const colList = await sourceDb.listCollections().toArray();
+            collectionNames = colList.map((c) => c.name);
+        }
+
+        const report = [];
+
+        for (const target of targetServers) {
+            const targetClient = new MongoClient(target.uri, { serverSelectionTimeoutMS: 15000 });
+            const targetLog = { target: target.id, ok: true, details: [] };
+
+            try {
+                await targetClient.connect();
+                const targetDb = targetClient.db(target.database);
+
+                for (const col of collectionNames) {
+                    try {
+                        const docs = await sourceDb.collection(col).find({}).toArray();
+                        if (dropBeforeInsert) {
+                            await targetDb.collection(col).deleteMany({});
+                        }
+                        if (docs.length > 0) {
+                            await targetDb.collection(col).insertMany(docs, { ordered: false });
+                        }
+                        targetLog.details.push({ collection: col, count: docs.length });
+                    } catch (err) {
+                        targetLog.ok = false;
+                        targetLog.details.push({ collection: col, error: err.message });
+                    }
+                }
+            } catch (err) {
+                targetLog.ok = false;
+                targetLog.error = err.message;
+            } finally {
+                await targetClient.close().catch(() => {});
+                report.push(targetLog);
+            }
+        }
+
+        await sourceClient.close();
+
+        res.json({ success: true, source: sourceServer.id, report });
+    } catch (error) {
+        console.error('Error syncing databases:', error);
+        res.status(500).json({ success: false, error: error.message });
     }
 });
 

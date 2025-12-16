@@ -1,5 +1,13 @@
-import DashboardLayout from "@/components/layout/dashboard-layout";
+import SupportLayout from "@/components/layout/support-layout";
 
 export default function Layout({ children }: { children: React.ReactNode }) {
-  return <DashboardLayout>{children}</DashboardLayout>;
+  return (
+    <SupportLayout
+      title="Centro de Ayuda"
+      showBackButton={true}
+      backHref="/dashboard"
+    >
+      {children}
+    </SupportLayout>
+  );
 }

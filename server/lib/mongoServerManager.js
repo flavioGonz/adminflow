@@ -153,7 +153,8 @@ class MongoServerManager {
                     database: 'adminflow',
                     uri: process.env.MONGODB_URI || 'mongodb://localhost:27017',
                     active: true,
-                    description: 'Servidor MongoDB local'
+                    description: 'Servidor MongoDB local',
+                    role: 'primary'
                 }
             ]
         };
@@ -243,8 +244,15 @@ class MongoServerManager {
             username: serverConfig.username,
             password: serverConfig.password,
             active: serverConfig.active !== false,
-            description: serverConfig.description || ''
+            description: serverConfig.description || '',
+            role: serverConfig.role || 'secondary'
         };
+
+        // If no other primary exists, promote this one
+        const hasPrimary = Array.from(this.servers.values()).some((s) => s.role === 'primary');
+        if (!hasPrimary) {
+            server.role = 'primary';
+        }
 
         // Construir URI si no se proporciona
         if (!server.uri) {
@@ -281,8 +289,35 @@ class MongoServerManager {
             }
         }
 
+        // If a role is set to primary, demote others
+        if (updates.role === 'primary') {
+            for (const [, s] of this.servers) {
+                if (s.id !== serverId) {
+                    s.role = 'secondary';
+                }
+            }
+        }
+
         this.saveConfig();
         return server;
+    }
+
+    /**
+     * Establece un servidor como primario y actual
+     */
+    setPrimary(serverId) {
+        if (!this.servers.has(serverId)) {
+            throw new Error('Servidor no encontrado');
+        }
+
+        for (const [id, srv] of this.servers) {
+            srv.role = id === serverId ? 'primary' : 'secondary';
+        }
+
+        this.currentServer = serverId;
+        this.saveConfig();
+
+        return this.servers.get(serverId);
     }
 
     /**
@@ -484,8 +519,7 @@ class MongoServerManager {
             }
 
             // Todo correcto, cambiar servidor actual
-            this.currentServer = serverId;
-            this.saveConfig();
+            this.setPrimary(serverId);
             
             log.push(`✅ Servidor cambiado exitosamente a: ${server.name}`);
 
@@ -551,6 +585,7 @@ class MongoServerManager {
                 port: server.port,
                 database: server.database,
                 active: server.active,
+                role: server.role || (isCurrent ? 'primary' : 'secondary'),
                 current: isCurrent,
                 connectionStatus: connectionStatus,
                 collections: collections,

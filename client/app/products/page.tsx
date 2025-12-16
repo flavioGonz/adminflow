@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { AnimatedTableBody, AnimatedRow } from "@/hooks/use-table-animation";
 import {
   Table,
   TableBody,
@@ -1173,7 +1174,7 @@ export default function ProductsPage() {
                         <TableHead className="w-24 text-right">Acciones</TableHead>
                       </TableRow>
                     </TableHeader>
-                    <TableBody>
+                    <AnimatedTableBody staggerDelay={0.03}>
                       {manufacturers.length === 0 ? (
                         <TableRow>
                           <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
@@ -1181,11 +1182,11 @@ export default function ProductsPage() {
                           </TableCell>
                         </TableRow>
                       ) : (
-                        manufacturers.map((manufacturer) => {
+                        manufacturers.map((manufacturer, index) => {
                           const manufacturerProducts = products.filter(p => p.manufacturer === manufacturer.name);
                           const logoUrl = manufacturer.logoUrl || manufacturerProducts.find(p => p.manufacturerLogoUrl)?.manufacturerLogoUrl;
                           return (
-                            <TableRow key={manufacturer.id}>
+                            <AnimatedRow key={manufacturer.id} delay={index * 0.03}>
                               <TableCell>
                                 {logoUrl ? (
                                   <div className="h-10 w-10 rounded-full border bg-white/80 overflow-hidden">
@@ -1211,11 +1212,11 @@ export default function ProductsPage() {
                                   </Button>
                                 </div>
                               </TableCell>
-                            </TableRow>
+                            </AnimatedRow>
                           );
                         })
                       )}
-                    </TableBody>
+                    </AnimatedTableBody>
                   </Table>
                 </div>
               </CardContent>

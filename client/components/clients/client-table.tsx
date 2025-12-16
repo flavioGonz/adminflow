@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { updateClient } from "@/lib/api-clients";
+import { AnimatedTableBody, AnimatedRow } from "@/hooks/use-table-animation";
 import {
   Pagination,
   PaginationContent,
@@ -287,14 +288,10 @@ export function ClientTable({
               </TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody>
+          <AnimatedTableBody staggerDelay={0.03}>
             {currentClients.length > 0 ? (
-              currentClients.map((client) => (
-                <TableRow
-                  key={client.id}
-                  onClick={() => router.push(`/clients/${client.id}`)}
-                  className="cursor-pointer"
-                >
+              currentClients.map((client, index) => (
+                <AnimatedRow key={client.id} delay={index * 0.03}>
                   <TableCell className="font-medium">
                     <div className="flex items-center gap-3">
                       <Avatar className="h-10 w-10">
@@ -461,7 +458,7 @@ export function ClientTable({
                       </DeleteClientDialog>
                     </div>
                   </TableCell>
-                </TableRow>
+                </AnimatedRow>
               ))
             ) : (
               <TableRow>
@@ -470,7 +467,7 @@ export function ClientTable({
                 </TableCell>
               </TableRow>
             )}
-          </TableBody>
+          </AnimatedTableBody>
         </Table>
       </div>
       <div className="flex items-center justify-between px-2 py-4">

@@ -199,6 +199,13 @@ router.post('/:id/switch', async (req, res) => {
             return res.status(400).json(result);
         }
 
+        // Asegurar que queda marcado como primario
+        try {
+            manager.setPrimary(req.params.id);
+        } catch (err) {
+            console.warn('No se pudo marcar como primario:', err.message);
+        }
+
         // Reconectar el cliente de MongoDB con el nuevo servidor
         const server = result.server;
         await closeMongoConnection();

@@ -13,6 +13,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { CurrentDatabaseInfo } from './mongo-servers/current-database-info';
+import { CopyDataModal } from './mongo-servers/copy-data-modal';
 import {
   Dialog,
   DialogContent,
@@ -86,6 +88,9 @@ export default function MongoServersManager() {
   const [switchLog, setSwitchLog] = useState<string[]>([]);
   const [showSwitchLog, setShowSwitchLog] = useState(false);
   const [selectedServer, setSelectedServer] = useState<MongoServer | null>(null);
+  const [isCopyModalOpen, setIsCopyModalOpen] = useState(false);
+  const [mirrorEnabled, setMirrorEnabled] = useState(false);
+  const [backupEnabled, setBackupEnabled] = useState(false);
   
   const [formData, setFormData] = useState({
     id: '',
@@ -460,13 +465,37 @@ export default function MongoServersManager() {
         </Dialog>
       </div>
 
+      {/* Información de la Base de Datos Actual */}
+      {currentServerId && (
+        <CurrentDatabaseInfo
+          currentServer={servers.find(s => s.id === currentServerId) || null}
+          currentStatus={serverStatus.find(s => s.id === currentServerId) || null}
+          onMirrorToggle={setMirrorEnabled}
+          onBackupToggle={setBackupEnabled}
+          onCopyData={() => setIsCopyModalOpen(true)}
+          mirrorEnabled={mirrorEnabled}
+          backupEnabled={backupEnabled}
+          isLoading={loading}
+        />
+      )}
+
+      {/* Modal para Copiar Datos */}
+      <CopyDataModal
+        isOpen={isCopyModalOpen}
+        onClose={() => setIsCopyModalOpen(false)}
+        sourceServer={servers.find(s => s.id === currentServerId) || null}
+        availableServers={servers}
+        currentServer={servers.find(s => s.id === currentServerId) || null}
+      />
+
       {error && (
         <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
+          <AlertCircle className="w-4 h-4" />
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
 
+      {/* Tabla de Servidores */}
       <Card>
         <CardHeader>
           <div className="flex justify-between items-center">
