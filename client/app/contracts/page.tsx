@@ -16,6 +16,7 @@ import { jsPDF } from "jspdf";
 import * as XLSX from "xlsx";
 import { BarChart3, FileDown, FileSpreadsheet, PlusCircle, FileSignature } from "lucide-react";
 import { ShinyText } from "@/components/ui/shiny-text";
+import { TableSkeleton } from "@/components/skeletons/table-skeleton";
 import { PageTransition } from "@/components/ui/page-transition";
 
 const DEFAULT_ERROR = "No se pudieron cargar los contratos. Verifica que el backend este disponible.";
@@ -228,7 +229,9 @@ export default function ContractsPage() {
 
           <div className="rounded-xl bg-background shadow-sm">
             {loading ? (
-              <div className="p-8 text-center text-sm text-muted-foreground">Cargando contratos...</div>
+              <div className="p-8">
+                <TableSkeleton rows={6} columns={5} />
+              </div>
             ) : (
               <ContractTable
                 contracts={contracts}

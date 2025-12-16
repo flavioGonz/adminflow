@@ -22,9 +22,9 @@ import { Label } from "@/components/ui/label";
 import { Product } from "@/types/product";
 import { fetchAllProducts, createProduct, updateProduct, deleteProduct } from "@/lib/api-products";
 import { toast } from "sonner";
-import { Activity, Banknote, ImageIcon, Layers, Search, Star, Tag, Edit3, Trash2, Package, Filter, Calendar, Coins, Factory, FolderTree, Plus, Truck } from "lucide-react";
-import { DNA } from "react-loader-spinner";
+import { Activity, Banknote, ImageIcon, Layers, Search, Star, Tag, Edit3, Trash2, Package, Filter, Calendar, Coins, Factory, FolderTree, Plus, Truck, Loader2 } from "lucide-react";
 import { ShinyText } from "@/components/ui/shiny-text";
+import { TableSkeleton } from "@/components/skeletons/table-skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   DropdownMenu,
@@ -869,7 +869,7 @@ export default function ProductsPage() {
                 </DropdownMenu>
                 <Button onClick={openModal} variant="outline" disabled={loading}>
                   {loading ? (
-                    <DNA visible height={18} width={18} ariaLabel="Cargando productos" />
+                    <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
                     <Layers className="h-4 w-4" />
                   )}
@@ -1088,14 +1088,19 @@ export default function ProductsPage() {
                     </TableRow>
                   )}
                   {loading && (
-                    <TableRow>
-                      <TableCell
-                        colSpan={visibleColumnCount + 1}
-                        className="text-center text-xs text-muted-foreground"
-                      >
-                        Cargando productos...
-                      </TableCell>
-                    </TableRow>
+                    <>
+                      {Array.from({ length: 5 }).map((_, idx) => (
+                        <TableRow key={idx}>
+                          <TableCell colSpan={visibleColumnCount + 1}>
+                            <div className="flex gap-2">
+                              {Array.from({ length: visibleColumnCount + 1 }).map((_, i) => (
+                                <div key={i} className="flex-1 h-8 bg-slate-200 rounded animate-pulse" />
+                              ))}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </>
                   )}
                 </TableBody>
               </Table>

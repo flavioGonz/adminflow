@@ -10,6 +10,7 @@ import {
   Calculator,
 } from "lucide-react";
 import { ShinyText } from "@/components/ui/shiny-text";
+import { TableSkeleton } from "@/components/skeletons/table-skeleton";
 import DashboardLayout from "@/components/layout/dashboard-layout";
 import { BudgetTable } from "@/components/budgets/budget-table";
 import { CreateBudgetDialog } from "@/components/budgets/create-budget-dialog";
@@ -200,8 +201,8 @@ export default function BudgetsPage() {
 
         <div className="rounded-lg border bg-background">
           {loading ? (
-            <div className="p-8 text-center text-sm text-muted-foreground">
-              Cargando presupuestos...
+            <div className="p-8">
+              <TableSkeleton rows={6} columns={5} />
             </div>
           ) : (
             <BudgetTable

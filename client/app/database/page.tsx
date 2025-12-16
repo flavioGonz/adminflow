@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { DNA } from "react-loader-spinner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -47,6 +46,7 @@ import {
   Upload,
   Eye,
   GitCompare,
+  Loader2,
 } from "lucide-react";
 import { ShinyText } from "@/components/ui/shiny-text";
 import { cn } from "@/lib/utils";
@@ -54,6 +54,7 @@ import { ImportBackupDialog } from "@/components/database/import-backup-dialog";
 import { CollectionViewerDialog } from "@/components/database/collection-viewer-dialog";
 import { SwitchDatabaseModal } from "@/components/database/switch-database-modal";
 import { SyncStatusModal } from "@/components/database/sync-status-modal";
+import { BackupModal } from "@/components/database/backup-modal";
 import { TableRowAnimation, TableListAnimation } from "@/components/animations/table-row-animation";
 
 type CollectionInfo = {
@@ -105,6 +106,7 @@ export default function DatabasePage() {
   const [backups, setBackups] = useState<any[]>([]);
   const [showRestoreModal, setShowRestoreModal] = useState(false);
   const [selectedBackup, setSelectedBackup] = useState<any>(null);
+  const [backupModalOpen, setBackupModalOpen] = useState(false);
   const [viewingCollection, setViewingCollection] = useState<string | null>(null);
 
   // Load data on mount
@@ -233,8 +235,7 @@ export default function DatabasePage() {
     }
   };
 
-  const handleCreateBackup = async () => {
-    setActionLoading("backup");
+  const handleCreateBackup = async (): Promise<{success: boolean; location?: string; error?: string}> => {
     try {
       const response = await fetch("/api/system/backups", {
         method: "POST",
@@ -243,12 +244,18 @@ export default function DatabasePage() {
 
       if (!response.ok) throw new Error("Error al crear respaldo");
 
-      toast.success("Respaldo creado exitosamente");
-      loadBackups();
+      const data = await response.json();
+      await loadBackups();
+      
+      return {
+        success: true,
+        location: data.location || "/backups/" + new Date().toISOString().split('T')[0]
+      };
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Error al crear respaldo");
-    } finally {
-      setActionLoading(null);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Error al crear respaldo"
+      };
     }
   };
 
@@ -626,19 +633,14 @@ export default function DatabasePage() {
           <CardContent className="pt-4 space-y-4">
             <div className="grid grid-cols-2 gap-3">
               <Button
-                onClick={handleCreateBackup}
-                disabled={actionLoading === "backup"}
+                onClick={() => setBackupModalOpen(true)}
                 className="w-full bg-sky-600 hover:bg-sky-700 text-white shadow-sm shadow-sky-200"
                 size="sm"
               >
-                {actionLoading === "backup" ? (
-                  <DNA visible height={16} width={16} ariaLabel="Creando respaldo" />
-                ) : (
-                  <>
-                    <Download className="mr-2 h-4 w-4" />
-                    Crear
-                  </>
-                )}
+                <>
+                  <Download className="mr-2 h-4 w-4" />
+                  Crear
+                </>
               </Button>
 
               <ImportBackupDialog
@@ -746,7 +748,7 @@ export default function DatabasePage() {
                   >
                     {syncing ? (
                       <>
-                        <DNA visible height={16} width={16} ariaLabel="Sincronizando" />
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                         Sincronizando...
                       </>
                     ) : (
@@ -787,6 +789,12 @@ export default function DatabasePage() {
         syncing={syncing}
         syncProgress={syncProgress}
         onConfirm={handleSyncNow}
+      />
+
+      <BackupModal
+        open={backupModalOpen}
+        onOpenChange={setBackupModalOpen}
+        onConfirm={handleCreateBackup}
       />
     </div>
   );

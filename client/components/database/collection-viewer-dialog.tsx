@@ -123,7 +123,7 @@ export function CollectionViewerDialog({
 
     return (
         <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-            <DialogContent className="max-w-4xl h-[80vh] flex flex-col p-0 gap-0 overflow-hidden">
+            <DialogContent className="max-w-6xl h-[85vh] flex flex-col p-0 gap-0 overflow-hidden">
                 <DialogHeader className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex-shrink-0">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
@@ -235,9 +235,11 @@ export function CollectionViewerDialog({
                                             >
                                                 <Copy className="h-3 w-3" />
                                             </Button>
-                                            <pre className="whitespace-pre-wrap break-all text-slate-700">
-                                                {JSON.stringify(doc, null, 2)}
-                                            </pre>
+                                            <div className="overflow-auto max-h-[300px]">
+                                                <pre className="whitespace-pre-wrap break-all text-slate-700 pr-4">
+                                                    {JSON.stringify(doc, null, 2)}
+                                                </pre>
+                                            </div>
                                         </div>
                                     ))}
                                 </div>

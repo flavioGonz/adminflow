@@ -18,6 +18,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { CardSkeleton } from '@/components/skeletons/table-skeleton';
 
 interface Article {
   id: string;
@@ -135,8 +136,10 @@ export default function ArticlesPage() {
 
       {/* Articles Grid */}
       {loading ? (
-        <div className="flex items-center justify-center py-12">
-          <p className="text-slate-500">Cargando artículos...</p>
+        <div className="grid gap-4">
+          {Array.from({ length: 4 }).map((_, idx) => (
+            <CardSkeleton key={idx} />
+          ))}
         </div>
       ) : filteredArticles.length === 0 ? (
         <Card>
