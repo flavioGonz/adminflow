@@ -224,8 +224,8 @@ export function BudgetTable({
         const bValue = b[sortConfig.key];
 
         if (aValue === undefined && bValue === undefined) return 0;
-        if (aValue === undefined) return sortConfig.direction === "ascending" ? 1 : -1;
-        if (bValue === undefined) return sortConfig.direction === "ascending" ? -1 : 1;
+        if (aValue === undefined || aValue === null) return sortConfig.direction === "ascending" ? 1 : -1;
+        if (bValue === undefined || bValue === null) return sortConfig.direction === "ascending" ? -1 : 1;
 
         if (aValue < bValue) {
           return sortConfig.direction === "ascending" ? -1 : 1;
@@ -539,7 +539,7 @@ export function BudgetTable({
                                       return (
                                         <img
                                           src={avatarUrl}
-                                          alt={budget.assignedTo}
+                                          alt={budget.assignedTo || 'User'}
                                           className="h-8 w-8 rounded-full object-cover"
                                         />
                                       );

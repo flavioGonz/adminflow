@@ -12,11 +12,9 @@ import { Client } from "@/types/client";
 
 export default function ClientsPage() {
   const [clients, setClients] = useState<Client[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
   const loadClients = useCallback(async () => {
-    setLoading(true);
     setError(null);
     try {
       const clientsResponse = await fetch(`${API_URL}/clients`);
@@ -48,8 +46,6 @@ export default function ClientsPage() {
     } catch (err: any) {
       setError(err.message || "Failed to fetch clients.");
       console.error("Error fetching clients:", err);
-    } finally {
-      setLoading(false);
     }
   }, []);
 
@@ -73,10 +69,6 @@ export default function ClientsPage() {
     console.log("Importación de clientes completada. Refrescando lista...");
     loadClients();
   };
-
-  if (loading) {
-    return <div className="p-6">Cargando clientes...</div>;
-  }
 
   if (error) {
     return <div className="p-6 text-red-500">Error: {error}</div>;

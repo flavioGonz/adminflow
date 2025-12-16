@@ -288,7 +288,10 @@ export function ImportBackupDialog({
                                         <Tooltip
                                             cursor={{ fill: 'transparent' }}
                                             contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-                                            formatter={(value: number) => [formatBytes(value), 'Tamaño']}
+                                            formatter={(value) => {
+                                                const numeric = typeof value === 'number' ? value : Number(value ?? 0);
+                                                return [formatBytes(Number.isFinite(numeric) ? numeric : 0), 'Tamaño'];
+                                            }}
                                         />
                                         <Bar dataKey="size" radius={[0, 4, 4, 0]} barSize={32}>
                                             {chartData.map((entry, index) => (

@@ -57,8 +57,8 @@ export function ImportContractsDialog({ onImportComplete, children }: ImportCont
           amount: item['Monto'] || 0,
         }));
 
-        const result = await importContracts(contractsToImport);
-        toast.success(`Importación completada: ${result.stats.imported} contratos importados, ${result.stats.failed} fallidos.`);
+        const result = await importContracts(contractsToImport) as any;
+        toast.success(`Importación completada: ${result.stats?.imported || 0} contratos importados, ${result.stats?.failed || 0} fallidos.`);
         setIsOpen(false);
         onImportComplete();
         setFile(null);

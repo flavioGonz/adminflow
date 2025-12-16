@@ -125,7 +125,6 @@ const formatTime = (iso: string) =>
 
 export default function TicketsPage() {
   const [tickets, setTickets] = useState<Ticket[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | Ticket["status"]>(
     "all"
@@ -133,7 +132,6 @@ export default function TicketsPage() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [groups, setGroups] = useState<Group[]>([]);
   const fetchTickets = useCallback(async () => {
-    setIsLoading(true);
     try {
       const response = await fetch(`${API_URL}/tickets`);
       if (!response.ok) {
@@ -162,8 +160,6 @@ export default function TicketsPage() {
         `${message} Mostramos datos locales para que sigas trabajando.`
       );
       setTickets((prev) => (prev.length > 0 ? prev : fallbackTickets));
-    } finally {
-      setIsLoading(false);
     }
   }, []);
 
@@ -238,7 +234,7 @@ export default function TicketsPage() {
 
   const filteredTickets = useMemo(() => {
     const normalizedSearch = searchTerm.toLowerCase();
-    return tickets.filter((ticket) => {
+    const filtered = tickets.filter((ticket) => {
       const matchesStatus =
         statusFilter === "all" || ticket.status === statusFilter;
       const title = (ticket.title ?? "").toLowerCase();
@@ -250,6 +246,19 @@ export default function TicketsPage() {
         client.includes(normalizedSearch) ||
         id.includes(normalizedSearch);
       return matchesStatus && matchesSearch;
+    });
+
+    const isResolved = (status: Ticket["status"]) => status === "Resuelto";
+
+    return filtered.sort((a, b) => {
+      const aResolved = isResolved(a.status);
+      const bResolved = isResolved(b.status);
+      if (aResolved !== bResolved) {
+        return aResolved ? 1 : -1;
+      }
+      const aTime = new Date(a.createdAt).getTime();
+      const bTime = new Date(b.createdAt).getTime();
+      return bTime - aTime;
     });
   }, [tickets, searchTerm, statusFilter]);
 
@@ -408,19 +417,13 @@ export default function TicketsPage() {
           </div>
         </div>
 
-        {isLoading ? (
-          <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-            Cargando tickets...
-          </div>
-        ) : (
-          <TicketTable
-            tickets={filteredTickets}
-            onTicketDeleted={handleTicketDeleted}
-            onReopenTicket={handleReopenTicket}
-            actionLoadingTicketId={actionLoading}
-            groups={groups}
-          />
-        )}
+        <TicketTable
+          tickets={filteredTickets}
+          onTicketDeleted={handleTicketDeleted}
+          onReopenTicket={handleReopenTicket}
+          actionLoadingTicketId={actionLoading}
+          groups={groups}
+        />
       </div>
     </PageTransition>
   );

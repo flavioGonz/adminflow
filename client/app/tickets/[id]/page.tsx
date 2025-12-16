@@ -1000,12 +1000,11 @@ export default function TicketDetailPage() {
             <div className="space-y-2">
               <Label htmlFor="assignment">Asignación</Label>
               <Select
-                id="assignment"
                 value={assignmentValue}
                 onValueChange={handleAssignmentChange}
                 disabled={isLocked}
               >
-                <SelectTrigger className="w-full">
+                <SelectTrigger id="assignment" className="w-full">
                   <SelectValue>{(() => {
                     if (assignedUser) {
                       return (

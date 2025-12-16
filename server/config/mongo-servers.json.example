@@ -1,0 +1,47 @@
+{
+  "currentServer": "local",
+  "servers": [
+    {
+      "id": "local",
+      "name": "Local Development",
+      "host": "localhost",
+      "port": 27017,
+      "database": "adminflow",
+      "uri": "mongodb://localhost:27017",
+      "active": true,
+      "description": "Servidor MongoDB local para desarrollo"
+    },
+    {
+      "id": "produccion",
+      "name": "Servidor de Producción",
+      "host": "192.168.1.100",
+      "port": 27017,
+      "database": "adminflow_prod",
+      "username": "admin",
+      "password": "your_password_here",
+      "active": true,
+      "description": "Servidor principal de producción"
+    },
+    {
+      "id": "desarrollo-remoto",
+      "name": "Desarrollo Remoto",
+      "host": "dev.example.com",
+      "port": 27017,
+      "database": "adminflow_dev",
+      "uri": "mongodb://user:pass@dev.example.com:27017",
+      "active": true,
+      "description": "Servidor de desarrollo remoto"
+    },
+    {
+      "id": "cliente-a",
+      "name": "Cliente A - Producción",
+      "host": "cliente-a.example.com",
+      "port": 27017,
+      "database": "adminflow_clienteA",
+      "username": "clienteA_user",
+      "password": "clienteA_password",
+      "active": true,
+      "description": "Base de datos del Cliente A"
+    }
+  ]
+}

@@ -3,6 +3,8 @@ const { db } = require("../db");
 const PRODUCT_COLUMNS = [
   { name: "stock", definition: "INTEGER DEFAULT 0" },
   { name: "manufacturer_logo_url", definition: "TEXT" },
+  { name: "quoted_at", definition: "TEXT" },
+  { name: "suppliers", definition: "TEXT" },
 ];
 
 const ensureProductSchema = () =>

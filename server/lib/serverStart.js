@@ -7,6 +7,7 @@ const { initDB } = require('../db');
 const { ensureTicketSchema } = require('./ticketSchema');
 const { ensureBudgetSchema } = require('./budgetSchema');
 const { ensureProductSchema } = require('./productSchema');
+const { ensureSupplierSchema } = require('./supplierSchema');
 const { ensureDefaultGroups } = require('./groupService');
 
 const INSTALL_LOCK_FILE = path.join(__dirname, '../.installed');
@@ -30,11 +31,11 @@ async function startServer(app, PORT) {
         console.log('⏭️  El servidor está listo, esperando instalación...\n');
 
         // Iniciar servidor sin inicializar BD
-        app.listen(PORT, () => {
+        app.listen(PORT, '0.0.0.0', () => {
             console.log('╔════════════════════════════════════════════════════════╗');
             console.log('║              🎉 SERVIDOR INICIADO                      ║');
             console.log('╚════════════════════════════════════════════════════════╝');
-            console.log(`\n🌐 Servidor corriendo en: http://localhost:${PORT}`);
+            console.log(`\n🌐 Servidor corriendo en: http://0.0.0.0:${PORT}`);
             console.log(`📦 Estado: Esperando instalación`);
             console.log(`🔧 Instalador: http://localhost:3000/install\n`);
         });
@@ -90,6 +91,13 @@ async function startServer(app, PORT) {
     }
 
     try {
+        await ensureSupplierSchema();
+        console.log('Esquema de proveedores asegurado');
+    } catch (schemaError) {
+        console.error('Error asegurando el esquema de proveedores:', schemaError);
+    }
+
+    try {
         await ensureDefaultGroups();
         console.log('╨Yo. Grupos predeterminados verificados');
     } catch (groupError) {
@@ -101,11 +109,11 @@ async function startServer(app, PORT) {
     console.log(`🗄️  Motor de BD: ${engine}\n`);
 
     // Iniciar servidor HTTP
-    app.listen(PORT, () => {
+    app.listen(PORT, '0.0.0.0', () => {
         console.log('╔════════════════════════════════════════════════════════╗');
         console.log('║              🎉 SERVIDOR INICIADO                      ║');
         console.log('╚════════════════════════════════════════════════════════╝');
-        console.log(`\n🌐 Servidor corriendo en: http://localhost:${PORT}`);
+        console.log(`\n🌐 Servidor corriendo en: http://0.0.0.0:${PORT}`);
         console.log(`📊 MongoDB: ${global.mongoInitialized ? '✅ Conectado' : '❌ No disponible'}`);
         console.log(`🔐 Credenciales por defecto: admin@adminflow.uy / admin\n`);
     });

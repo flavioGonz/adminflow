@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from "react";
 import {
   Table,
+  TableBody,
   TableHeader,
   TableRow,
   TableHead,
@@ -51,7 +52,6 @@ import * as XLSX from 'xlsx';
 import { CreateClientDialog } from "./create-client-dialog";
 import { Client } from "@/types/client";
 import { API_URL } from "@/lib/http";
-import { TablePageTransition } from "@/components/ui/page-transition";
 
 interface ClientTableProps {
   clients: Client[];
@@ -287,7 +287,7 @@ export function ClientTable({
               </TableHead>
             </TableRow>
           </TableHeader>
-          <TablePageTransition pageKey={currentPage}>
+          <TableBody>
             {currentClients.length > 0 ? (
               currentClients.map((client) => (
                 <TableRow
@@ -470,7 +470,7 @@ export function ClientTable({
                 </TableCell>
               </TableRow>
             )}
-          </TablePageTransition>
+          </TableBody>
         </Table>
       </div>
       <div className="flex items-center justify-between px-2 py-4">

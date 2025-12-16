@@ -8,7 +8,19 @@ export async function fetchAllProducts(): Promise<Product[]> {
   if (!response.ok) {
     throw new Error("Failed to fetch products");
   }
-  return response.json();
+
+  const data = await response.json();
+  if (!Array.isArray(data)) return [];
+
+  return data.map((raw: any) => {
+    const rawId = typeof raw?.id === "string" ? raw.id : "";
+    const rawMongoId = typeof raw?._id === "string" ? raw._id : "";
+    const fallbackId = rawId.trim() || rawMongoId.trim();
+    return {
+      ...raw,
+      id: fallbackId,
+    } as Product;
+  });
 }
 
 export async function createProduct(productData: Partial<Product>): Promise<Product> {

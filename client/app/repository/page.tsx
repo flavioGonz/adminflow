@@ -220,8 +220,9 @@ function EntryModal({
 }
 
 import { useSearchParams } from "next/navigation";
+import { Suspense } from "react";
 
-export default function RepositoryPage() {
+function RepositoryContent() {
   const searchParams = useSearchParams();
   const initialQuery = searchParams?.get("search") || "";
 
@@ -520,5 +521,13 @@ export default function RepositoryPage() {
         </div>
       </div>
     </DashboardLayout>
+  );
+}
+
+export default function RepositoryPage() {
+  return (
+    <Suspense fallback={<div>Cargando...</div>}>
+      <RepositoryContent />
+    </Suspense>
   );
 }

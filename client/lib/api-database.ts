@@ -22,7 +22,7 @@ export const getDatabaseConfig = async (): Promise<Record<string, unknown>> => {
   if (!response.ok) {
     throw new Error("No se pudo obtener la configuracion de base.");
   }
-  return response.json<Record<string, unknown>>();
+  return response.json() as Promise<Record<string, unknown>>;
 };
 
 export const updateDatabaseConfig = async (payload: Record<string, unknown>) => {
@@ -100,5 +100,5 @@ export const getDatabaseOverview = async (): Promise<Record<string, unknown>> =>
   if (!response.ok) {
     throw new Error("No se pudo obtener el resumen de bases de datos.");
   }
-  return response.json<Record<string, unknown>>();
+  return response.json() as Promise<Record<string, unknown>>;
 };

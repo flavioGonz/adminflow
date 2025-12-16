@@ -274,6 +274,14 @@ export function CommandPalette() {
             keywords: ["base de datos", "db", "mongodb"],
             group: "navigation",
         },
+        {
+            id: "nav-mongo-servers",
+            label: "Servidores MongoDB",
+            icon: Database,
+            action: () => router.push("/mongo-servers"),
+            keywords: ["servidores", "mongodb", "bases", "cambiar", "switch"],
+            group: "navigation",
+        },
     ];
 
     // Quick actions

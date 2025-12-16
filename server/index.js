@@ -125,7 +125,46 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ extended: true, limit: '25mb' }));
+
+// Servir archivos estáticos de Next.js
+app.use('/_next/static', express.static(path.resolve(__dirname, '../client/.next/static'), {
+    maxAge: '365d', // Cache los archivos estáticos por 1 año
+    immutable: true,
+}));
+
+// Servir archivos públicos
+app.use(express.static(path.resolve(__dirname, '../client/public')));
+
+// Servir archivos de Next.js (*.js, *.css, etc.)
+app.use(express.static(path.resolve(__dirname, '../client/.next'), {
+    setHeaders: (res, path) => {
+        if (path.endsWith('.json') || path.endsWith('.js') || path.endsWith('.css')) {
+            res.setHeader('Content-Type', path.endsWith('.json') ? 'application/json' : 
+                          path.endsWith('.js') ? 'application/javascript' : 'text/css');
+        }
+    },
+}));
+
 app.use('/uploads', express.static(path.resolve(__dirname, 'uploads')));
+
+const ensureMongoDb = (res) => {
+    const engine = getCurrentDbEngine();
+    if (engine !== 'mongodb') {
+        res.status(503).json({ message: 'Only MongoDB is supported. Please configure MongoDB in settings.' });
+        return null;
+    }
+    const mongoDb = getMongoDb();
+    if (!mongoDb) {
+        res.status(503).json({ message: 'MongoDB no está conectado.' });
+        return null;
+    }
+    return mongoDb;
+};
+
+const withMappedId = (doc) => ({
+    ...doc,
+    id: doc?.id ? doc.id : String(doc?._id ?? ''),
+});
 
 // Routes
 const accessRoutes = require('./routes/access');
@@ -134,6 +173,8 @@ const installRoutes = require('./routes/install');
 const systemBackupRoutes = require('./routes/system-backup');
 const databaseRoutes = require('./routes/database');
 const implementationRoutes = require('./routes/implementation');
+const mongoServersRoutes = require('./routes/mongo-servers');
+const statusRoutes = require('./routes/status');
 const { checkInstallation } = require('./middleware/checkInstallation');
 
 // Installation routes (always accessible)
@@ -148,6 +189,8 @@ app.use('/api', diagramRoutes);
 app.use('/api', implementationRoutes);
 app.use('/api/system', systemBackupRoutes);
 app.use('/api/database', databaseRoutes);
+app.use('/api/mongo-servers', mongoServersRoutes);
+app.use('/api/status', statusRoutes);
 
 
 const MongoStore = require('connect-mongo');
@@ -1185,6 +1228,100 @@ app.get('/api/system/database/overview', async (req, res) => {
         });
     } catch (error) {
         res.status(500).json({ message: 'Error generando resumen de bases', detail: error.message });
+    }
+});
+
+app.post('/api/system/database/collections', async (req, res) => {
+    try {
+        const { uri } = req.body;
+        
+        if (uri) {
+            // Connect to specific URI
+            const { MongoClient } = require('mongodb');
+            let client;
+            try {
+                client = new MongoClient(uri, { serverSelectionTimeoutMS: 5000 });
+                await client.connect();
+                const db = client.db();
+                const collectionList = await db.listCollections().toArray();
+                
+                // Get stats for each collection
+                const collectionsWithStats = await Promise.all(
+                    collectionList.map(async (col) => {
+                        try {
+                            const collection = db.collection(col.name);
+                            const count = await collection.countDocuments();
+                            const stats = await collection.stats();
+                            return {
+                                name: col.name,
+                                count: count,
+                                size: stats.size || 0
+                            };
+                        } catch (error) {
+                            return {
+                                name: col.name,
+                                count: 0,
+                                size: 0
+                            };
+                        }
+                    })
+                );
+                
+                await client.close();
+                
+                res.json({
+                    success: true,
+                    collections: collectionsWithStats
+                });
+            } catch (error) {
+                if (client) await client.close().catch(() => {});
+                throw error;
+            }
+        } else {
+            // Use current connection
+            const mongoDb = getMongoDb();
+            if (!mongoDb) {
+                return res.status(503).json({ 
+                    success: false,
+                    message: 'MongoDB no está conectado' 
+                });
+            }
+            
+            const collectionList = await mongoDb.listCollections().toArray();
+            
+            // Get stats for each collection
+            const collectionsWithStats = await Promise.all(
+                collectionList.map(async (col) => {
+                    try {
+                        const collection = mongoDb.collection(col.name);
+                        const count = await collection.countDocuments();
+                        const stats = await collection.stats();
+                        return {
+                            name: col.name,
+                            count: count,
+                            size: stats.size || 0
+                        };
+                    } catch (error) {
+                        return {
+                            name: col.name,
+                            count: 0,
+                            size: 0
+                        };
+                    }
+                })
+            );
+            
+            res.json({
+                success: true,
+                collections: collectionsWithStats
+            });
+        }
+    } catch (error) {
+        res.status(500).json({ 
+            success: false,
+            message: 'Error al obtener colecciones',
+            detail: error.message 
+        });
     }
 });
 
@@ -2646,6 +2783,25 @@ const mapProductRow = (row) => ({
     imageUrl: row.image_url || "",
     stock: row.stock ?? 0,
     manufacturerLogoUrl: row.manufacturer_logo_url || row.manufacturerLogo || "",
+    quotedAt: row.quoted_at || null,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    suppliers: (() => {
+        if (!row.suppliers) return [];
+        try {
+            const parsed = JSON.parse(row.suppliers);
+            return Array.isArray(parsed) ? parsed : [];
+        } catch {
+            return [];
+        }
+    })(),
+});
+
+const mapSupplierCatalogRow = (row) => ({
+    id: String(row.id),
+    name: row.name,
+    priceUYU: row.price_uyu ?? 0,
+    priceUSD: row.price_usd ?? 0,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
 });
@@ -2714,10 +2870,479 @@ app.delete('/api/items/:itemId', (req, res) => {
 
 // Product routes
 app.get('/api/products', (req, res) => {
-    db.all('SELECT * FROM products ORDER BY createdAt DESC', [], (err, rows) => {
-        if (err) return res.status(500).json({ message: err.message });
-        res.json(rows.map(mapProductRow));
-    });
+    const engine = getCurrentDbEngine();
+    if (engine !== 'mongodb') {
+        return res.status(503).json({ message: 'Only MongoDB is supported. Please configure MongoDB in settings.' });
+    }
+
+    const mongoDb = getMongoDb();
+    if (!mongoDb) {
+        return res.status(503).json({ message: 'MongoDB no está conectado.' });
+    }
+
+    return mongoDb
+        .collection('products')
+        .find({})
+        .sort({ createdAt: -1 })
+        .toArray()
+        .then((docs) =>
+            res.json(
+                docs.map((d) => ({
+                    ...d,
+                    id: d.id || String(d._id),
+                }))
+            )
+        )
+        .catch((error) => res.status(500).json({ message: error.message }));
+});
+
+// Supplier catalog routes (standalone list)
+app.get('/api/suppliers-catalog', (req, res) => {
+    const engine = getCurrentDbEngine();
+    if (engine !== 'mongodb') {
+        return res.status(503).json({ message: 'Only MongoDB is supported. Please configure MongoDB in settings.' });
+    }
+
+    const mongoDb = getMongoDb();
+    if (!mongoDb) {
+        return res.status(503).json({ message: 'MongoDB no está conectado.' });
+    }
+
+    const pickCollection = async () => {
+        const candidates = ['suppliers_catalog', 'suppliersCatalog', 'suppliers', 'proveedores', 'providers'];
+        for (const name of candidates) {
+            try {
+                const exists = await mongoDb.listCollections({ name }).hasNext();
+                if (exists) return name;
+            } catch (_) {
+                // ignore and continue
+            }
+        }
+        return 'suppliers_catalog';
+    };
+
+    return mongoDb
+        .listCollections()
+        .toArray()
+        .then(() => pickCollection())
+        .then((collectionName) =>
+            mongoDb
+                .collection(collectionName)
+                .find({})
+                .sort({ name: 1 })
+                .toArray()
+                .then((docs) => res.json(docs.map((d) => ({ ...d, id: d.id || String(d._id) }))))
+        )
+        .catch((error) => res.status(500).json({ message: error.message }));
+});
+
+app.post('/api/suppliers-catalog', (req, res) => {
+    const { name, priceUYU = 0, priceUSD = 0, logoUrl = '' } = req.body;
+    if (!name || !name.trim()) {
+        return res.status(400).json({ message: 'Supplier name is required.' });
+    }
+
+    const engine = getCurrentDbEngine();
+    if (engine !== 'mongodb') {
+        return res.status(503).json({ message: 'Only MongoDB is supported. Please configure MongoDB in settings.' });
+    }
+
+    const mongoDb = getMongoDb();
+    if (!mongoDb) {
+        return res.status(503).json({ message: 'MongoDB no está conectado.' });
+    }
+
+    const doc = {
+        name: name.trim(),
+        priceUYU: Number(priceUYU) || 0,
+        priceUSD: Number(priceUSD) || 0,
+        logoUrl: logoUrl?.trim() || '',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+    };
+
+    return mongoDb
+        .collection('suppliers_catalog')
+        .insertOne(doc)
+        .then((result) => res.status(201).json({ ...doc, id: String(result.insertedId), _id: result.insertedId }))
+        .catch((error) => {
+            if (error?.code === 11000) {
+                return res.status(409).json({ message: 'Supplier name already exists.' });
+            }
+            return res.status(500).json({ message: error.message });
+        });
+});
+
+app.put('/api/suppliers-catalog/:id', (req, res) => {
+    const { name, priceUYU = 0, priceUSD = 0, logoUrl = '' } = req.body;
+    if (!name || !name.trim()) {
+        return res.status(400).json({ message: 'Supplier name is required.' });
+    }
+
+    const engine = getCurrentDbEngine();
+    if (engine !== 'mongodb') {
+        return res.status(503).json({ message: 'Only MongoDB is supported. Please configure MongoDB in settings.' });
+    }
+
+    const mongoDb = getMongoDb();
+    if (!mongoDb) {
+        return res.status(503).json({ message: 'MongoDB no está conectado.' });
+    }
+
+    const { ObjectId } = require('mongodb');
+    const filter = ObjectId.isValid(req.params.id)
+        ? { _id: new ObjectId(req.params.id) }
+        : { id: req.params.id };
+
+    const updates = {
+        name: name.trim(),
+        priceUYU: Number(priceUYU) || 0,
+        priceUSD: Number(priceUSD) || 0,
+        logoUrl: logoUrl?.trim() || '',
+        updatedAt: new Date(),
+    };
+
+    return mongoDb
+        .collection('suppliers_catalog')
+        .findOneAndUpdate(filter, { $set: updates }, { returnDocument: 'after' })
+        .then((result) => {
+            if (!result.value) {
+                return res.status(404).json({ message: 'Supplier not found.' });
+            }
+            res.json({ ...result.value, id: String(result.value._id) });
+        })
+        .catch((error) => {
+            if (error?.code === 11000) {
+                return res.status(409).json({ message: 'Supplier name already exists.' });
+            }
+            return res.status(500).json({ message: error.message });
+        });
+});
+
+app.delete('/api/suppliers-catalog/:id', (req, res) => {
+    const supplierId = req.params.id;
+    const engine = getCurrentDbEngine();
+    if (engine !== 'mongodb') {
+        return res.status(503).json({ message: 'Only MongoDB is supported. Please configure MongoDB in settings.' });
+    }
+
+    const mongoDb = getMongoDb();
+    if (!mongoDb) {
+        return res.status(503).json({ message: 'MongoDB no está conectado.' });
+    }
+
+    const { ObjectId } = require('mongodb');
+    const filter = ObjectId.isValid(supplierId) ? { _id: new ObjectId(supplierId) } : { id: supplierId };
+
+    return mongoDb
+        .collection('suppliers_catalog')
+        .findOne(filter)
+        .then(async (supplierDoc) => {
+            if (!supplierDoc) {
+                return res.status(404).json({ message: 'Supplier not found.' });
+            }
+            const supplierName = supplierDoc.name;
+            const linked = await mongoDb
+                .collection('products')
+                .countDocuments({ suppliers: { $elemMatch: { name: supplierName } } });
+            if (linked > 0) {
+                return res.status(409).json({ message: 'Supplier is linked to existing products.' });
+            }
+            await mongoDb.collection('suppliers_catalog').deleteOne(filter);
+            res.json({ message: 'Supplier deleted.' });
+        })
+        .catch((error) => res.status(500).json({ message: error.message }));
+});
+
+app.get('/api/manufacturers', async (req, res) => {
+    const mongoDb = ensureMongoDb(res);
+    if (!mongoDb) return;
+
+    try {
+        const productManufacturers = await mongoDb
+            .collection('products')
+            .distinct('manufacturer', { manufacturer: { $exists: true, $ne: '' } });
+        const normalized = Array.from(
+            new Set(
+                productManufacturers
+                    .map((name) => (typeof name === 'string' ? name.trim() : ''))
+                    .filter((name) => Boolean(name))
+            )
+        );
+        if (normalized.length) {
+            const existing = await mongoDb
+                .collection('manufacturers')
+                .find({ name: { $in: normalized } })
+                .project({ name: 1 })
+                .toArray();
+            const existingNames = new Set(existing.map((doc) => doc.name));
+            const toInsert = normalized.filter((name) => !existingNames.has(name));
+            if (toInsert.length) {
+                const now = new Date();
+                await mongoDb.collection('manufacturers').insertMany(
+                    toInsert.map((name) => ({
+                        name,
+                        logoUrl: '',
+                        createdAt: now,
+                        updatedAt: now,
+                    }))
+                );
+            }
+        }
+        const docs = await mongoDb
+            .collection('manufacturers')
+            .find({})
+            .sort({ name: 1 })
+            .toArray();
+        res.json(docs.map(withMappedId));
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
+app.post('/api/manufacturers', async (req, res) => {
+    const { name, logoUrl = '' } = req.body;
+    if (!name || !name.trim()) {
+        return res.status(400).json({ message: 'El nombre del fabricante es requerido.' });
+    }
+
+    const mongoDb = ensureMongoDb(res);
+    if (!mongoDb) return;
+
+    try {
+        const trimmed = name.trim();
+        const existing = await mongoDb.collection('manufacturers').findOne({ name: trimmed });
+        if (existing) {
+            return res.status(409).json({ message: 'Ese fabricante ya existe.' });
+        }
+
+        const now = new Date();
+        const doc = {
+            name: trimmed,
+            logoUrl: logoUrl?.trim() || '',
+            createdAt: now,
+            updatedAt: now,
+        };
+        const result = await mongoDb.collection('manufacturers').insertOne(doc);
+        res.status(201).json({ ...doc, id: String(result.insertedId), _id: result.insertedId });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
+app.put('/api/manufacturers/:id', async (req, res) => {
+    const { name, logoUrl = '' } = req.body;
+    if (!name || !name.trim()) {
+        return res.status(400).json({ message: 'El nombre del fabricante es requerido.' });
+    }
+
+    const mongoDb = ensureMongoDb(res);
+    if (!mongoDb) return;
+
+    const { ObjectId } = require('mongodb');
+    const filter = ObjectId.isValid(req.params.id)
+        ? { _id: new ObjectId(req.params.id) }
+        : { id: req.params.id };
+    try {
+        const existing = await mongoDb.collection('manufacturers').findOne(filter);
+        if (!existing) {
+            return res.status(404).json({ message: 'Fabricante no encontrado.' });
+        }
+        const trimmed = name.trim();
+        if (trimmed !== existing.name) {
+            const duplicate = await mongoDb
+                .collection('manufacturers')
+                .findOne({ name: trimmed, _id: { $ne: existing._id } });
+            if (duplicate) {
+                return res.status(409).json({ message: 'Ese fabricante ya existe.' });
+            }
+        }
+
+        const updates = {
+            name: trimmed,
+            logoUrl: logoUrl?.trim() || '',
+            updatedAt: new Date(),
+        };
+
+        const result = await mongoDb
+            .collection('manufacturers')
+            .findOneAndUpdate(filter, { $set: updates }, { returnDocument: 'after' });
+        if (!result.value) {
+            return res.status(404).json({ message: 'Fabricante no encontrado.' });
+        }
+
+        if (trimmed !== existing.name) {
+            await mongoDb
+                .collection('products')
+                .updateMany({ manufacturer: existing.name }, { $set: { manufacturer: trimmed } });
+        }
+
+        res.json(withMappedId(result.value));
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
+app.delete('/api/manufacturers/:id', async (req, res) => {
+    const mongoDb = ensureMongoDb(res);
+    if (!mongoDb) return;
+
+    const { ObjectId } = require('mongodb');
+    const filter = ObjectId.isValid(req.params.id)
+        ? { _id: new ObjectId(req.params.id) }
+        : { id: req.params.id };
+    try {
+        const existing = await mongoDb.collection('manufacturers').findOne(filter);
+        if (!existing) {
+            return res.status(404).json({ message: 'Fabricante no encontrado.' });
+        }
+        const linked = await mongoDb.collection('products').countDocuments({ manufacturer: existing.name });
+        if (linked > 0) {
+            return res.status(409).json({ message: 'No se puede eliminar un fabricante con productos asociados.' });
+        }
+        await mongoDb.collection('manufacturers').deleteOne(filter);
+        res.json({ message: 'Fabricante eliminado.' });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
+app.get('/api/categories', async (req, res) => {
+    const mongoDb = ensureMongoDb(res);
+    if (!mongoDb) return;
+
+    try {
+        const productCategories = await mongoDb
+            .collection('products')
+            .distinct('category', { category: { $exists: true, $ne: '' } });
+        const normalized = Array.from(
+            new Set(
+                productCategories
+                    .map((name) => (typeof name === 'string' ? name.trim() : ''))
+                    .filter((name) => Boolean(name))
+            )
+        );
+        if (normalized.length) {
+            const categoriesColl = mongoDb.collection('categories');
+            const existing = await categoriesColl.find({ name: { $in: normalized } }).project({ name: 1 }).toArray();
+            const existingNames = new Set(existing.map((doc) => doc.name));
+            const toInsert = normalized.filter((name) => !existingNames.has(name));
+            if (toInsert.length) {
+                const now = new Date();
+                await categoriesColl.insertMany(
+                    toInsert.map((name) => ({
+                        name,
+                        createdAt: now,
+                        updatedAt: now,
+                    }))
+                );
+            }
+        }
+        const docs = await mongoDb
+            .collection('categories')
+            .find({})
+            .sort({ name: 1 })
+            .toArray();
+        res.json(docs.map(withMappedId));
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
+app.post('/api/categories', async (req, res) => {
+    const { name } = req.body;
+    if (!name || !name.trim()) {
+        return res.status(400).json({ message: 'El nombre de la categoría es requerido.' });
+    }
+
+    const mongoDb = ensureMongoDb(res);
+    if (!mongoDb) return;
+
+    try {
+        const trimmed = name.trim();
+        const existing = await mongoDb.collection('categories').findOne({ name: trimmed });
+        if (existing) {
+            return res.status(409).json({ message: 'Esa categoría ya existe.' });
+        }
+        const now = new Date();
+        const doc = { name: trimmed, createdAt: now, updatedAt: now };
+        const result = await mongoDb.collection('categories').insertOne(doc);
+        res.status(201).json({ ...doc, id: String(result.insertedId), _id: result.insertedId });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
+app.put('/api/categories/:id', async (req, res) => {
+    const { name } = req.body;
+    if (!name || !name.trim()) {
+        return res.status(400).json({ message: 'El nombre de la categoría es requerido.' });
+    }
+
+    const mongoDb = ensureMongoDb(res);
+    if (!mongoDb) return;
+
+    const { ObjectId } = require('mongodb');
+    const filter = ObjectId.isValid(req.params.id)
+        ? { _id: new ObjectId(req.params.id) }
+        : { id: req.params.id };
+    try {
+        const existing = await mongoDb.collection('categories').findOne(filter);
+        if (!existing) {
+            return res.status(404).json({ message: 'Categoría no encontrada.' });
+        }
+        const trimmed = name.trim();
+        if (trimmed !== existing.name) {
+            const duplicate = await mongoDb
+                .collection('categories')
+                .findOne({ name: trimmed, _id: { $ne: existing._id } });
+            if (duplicate) {
+                return res.status(409).json({ message: 'Esa categoría ya existe.' });
+            }
+        }
+
+        const updates = { name: trimmed, updatedAt: new Date() };
+        const result = await mongoDb
+            .collection('categories')
+            .findOneAndUpdate(filter, { $set: updates }, { returnDocument: 'after' });
+        if (!result.value) {
+            return res.status(404).json({ message: 'Categoría no encontrada.' });
+        }
+
+        if (trimmed !== existing.name) {
+            await mongoDb
+                .collection('products')
+                .updateMany({ category: existing.name }, { $set: { category: trimmed } });
+        }
+
+        res.json(withMappedId(result.value));
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
+app.delete('/api/categories/:id', async (req, res) => {
+    const mongoDb = ensureMongoDb(res);
+    if (!mongoDb) return;
+
+    const { ObjectId } = require('mongodb');
+    const filter = ObjectId.isValid(req.params.id)
+        ? { _id: new ObjectId(req.params.id) }
+        : { id: req.params.id };
+    try {
+        const existing = await mongoDb.collection('categories').findOne(filter);
+        if (!existing) {
+            return res.status(404).json({ message: 'Categoría no encontrada.' });
+        }
+        const linked = await mongoDb.collection('products').countDocuments({ category: existing.name });
+        if (linked > 0) {
+            return res.status(409).json({ message: 'No se puede eliminar una categoría utilizada por productos.' });
+        }
+        await mongoDb.collection('categories').deleteOne(filter);
+        res.json({ message: 'Categoría eliminada.' });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
 });
 
 app.post('/api/products', (req, res) => {
@@ -2732,128 +3357,134 @@ app.post('/api/products', (req, res) => {
         imageUrl,
         stock = 0,
         manufacturerLogoUrl = "",
+        quotedAt,
+        suppliers = [],
     } = req.body;
 
     if (!name || !manufacturer) {
         return res.status(400).json({ message: 'Name and manufacturer are required.' });
     }
 
-    db.run(
-        `INSERT INTO products (name, description, manufacturer, category, badge, price_uyu, price_usd, image_url, stock, manufacturer_logo_url)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-            name,
-            description || null,
-            manufacturer,
-            category || null,
-            badge,
-            priceUYU,
-            priceUSD,
-            imageUrl || null,
-            Number.isNaN(Number(stock)) ? 0 : Number(stock),
-            manufacturerLogoUrl || null,
-        ],
-        function (err) {
-            if (err) return res.status(500).json({ message: err.message });
-            db.get('SELECT * FROM products WHERE id = ?', [this.lastID], async (selectErr, row) => {
-                if (selectErr) return res.status(500).json({ message: selectErr.message });
-                const newProduct = mapProductRow(row);
+    const engine = getCurrentDbEngine();
+    if (engine !== 'mongodb') {
+        return res.status(503).json({ message: 'Only MongoDB is supported. Please configure MongoDB in settings.' });
+    }
 
-                await logEvent({
-                    user: req.user ? req.user.email : 'system',
-                    action: 'create',
-                    resource: 'product',
-                    details: { productId: newProduct.id, name: newProduct.name },
-                    ip: req.ip
-                });
+    const mongoDb = getMongoDb();
+    if (!mongoDb) {
+        return res.status(503).json({ message: 'MongoDB no está conectado.' });
+    }
 
-                res.status(201).json(newProduct);
+    const document = {
+        name,
+        description: description || '',
+        manufacturer,
+        category: category || '',
+        badge,
+        priceUYU: Number(priceUYU) || 0,
+        priceUSD: Number(priceUSD) || 0,
+        imageUrl: imageUrl || '',
+        stock: Number.isNaN(Number(stock)) ? 0 : Number(stock),
+        manufacturerLogoUrl: manufacturerLogoUrl || '',
+        quotedAt: quotedAt || null,
+        suppliers: Array.isArray(suppliers) ? suppliers : [],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+    };
+
+    return mongoDb
+        .collection('products')
+        .insertOne(document)
+        .then(async (result) => {
+            const created = { ...document, id: String(result.insertedId), _id: result.insertedId };
+            await logEvent({
+                user: req.user ? req.user.email : 'system',
+                action: 'create',
+                resource: 'product',
+                details: { productId: created.id, name: created.name },
+                ip: req.ip,
             });
-        }
-    );
+            res.status(201).json(created);
+        })
+        .catch((error) => res.status(500).json({ message: error.message }));
 });
 
 app.put('/api/products/:id', (req, res) => {
-    db.get('SELECT * FROM products WHERE id = ?', [req.params.id], (err, existing) => {
-        if (err) return res.status(500).json({ message: err.message });
-        if (!existing) return res.status(404).json({ message: 'Product not found' });
+    const engine = getCurrentDbEngine();
+    if (engine !== 'mongodb') {
+        return res.status(503).json({ message: 'Only MongoDB is supported. Please configure MongoDB in settings.' });
+    }
 
-        const payload = {
-            name: req.body.name ?? existing.name,
-            description: req.body.description ?? existing.description,
-            manufacturer: req.body.manufacturer ?? existing.manufacturer,
-            category: req.body.category ?? existing.category,
-            badge: req.body.badge ?? existing.badge,
-            priceUYU: req.body.priceUYU ?? existing.price_uyu,
-            priceUSD: req.body.priceUSD ?? existing.price_usd,
-            imageUrl: req.body.imageUrl ?? existing.image_url,
-            stock:
-                req.body.stock !== undefined
-                    ? Number.isNaN(Number(req.body.stock))
-                        ? existing.stock ?? 0
-                        : Number(req.body.stock)
-                    : existing.stock ?? 0,
-            manufacturerLogoUrl:
-                req.body.manufacturerLogoUrl ??
-                req.body.manufacturer_logo_url ??
-                existing.manufacturer_logo_url ??
-                existing.manufacturerLogo ??
-                "",
-        };
+    const mongoDb = getMongoDb();
+    if (!mongoDb) {
+        return res.status(503).json({ message: 'MongoDB no está conectado.' });
+    }
 
-        db.run(
-        `UPDATE products
-       SET name = ?, description = ?, manufacturer = ?, category = ?, badge = ?, price_uyu = ?, price_usd = ?, image_url = ?, stock = ?, manufacturer_logo_url = ?, updatedAt = CURRENT_TIMESTAMP
-       WHERE id = ?`,
-            [
-                payload.name,
-                payload.description,
-                payload.manufacturer,
-                payload.category,
-                payload.badge,
-                payload.priceUYU,
-                payload.priceUSD,
-                payload.imageUrl,
-                payload.stock,
-                payload.manufacturerLogoUrl,
-                req.params.id,
-            ],
-            function (updateErr) {
-                if (updateErr) return res.status(500).json({ message: updateErr.message });
-                db.get('SELECT * FROM products WHERE id = ?', [req.params.id], async (selectErr, row) => {
-                    if (selectErr) return res.status(500).json({ message: selectErr.message });
-                    const updatedProduct = mapProductRow(row);
+    const id = req.params.id;
+    const { ObjectId } = require('mongodb');
+    const filter = ObjectId.isValid(id) ? { _id: new ObjectId(id) } : { id };
 
-                    await logEvent({
-                        user: req.user ? req.user.email : 'system',
-                        action: 'update',
-                        resource: 'product',
-                        details: { productId: updatedProduct.id, name: updatedProduct.name },
-                        ip: req.ip
-                    });
+    const updates = { ...req.body };
+    // Normalize numeric fields when present
+    if (updates.priceUYU !== undefined) updates.priceUYU = Number(updates.priceUYU) || 0;
+    if (updates.priceUSD !== undefined) updates.priceUSD = Number(updates.priceUSD) || 0;
+    if (updates.stock !== undefined) updates.stock = Number.isNaN(Number(updates.stock)) ? 0 : Number(updates.stock);
+    if (updates.suppliers !== undefined) updates.suppliers = Array.isArray(updates.suppliers) ? updates.suppliers : [];
+    if (updates.quotedAt === undefined && updates.quoted_at !== undefined) updates.quotedAt = updates.quoted_at;
+    updates.updatedAt = new Date();
 
-                    res.json(updatedProduct);
-                });
+    return mongoDb
+        .collection('products')
+        .findOneAndUpdate(filter, { $set: updates }, { returnDocument: 'after' })
+        .then(async (result) => {
+            if (!result.value) {
+                return res.status(404).json({ message: 'Product not found' });
             }
-        );
-    });
+            const updated = { ...result.value, id: String(result.value._id) };
+            await logEvent({
+                user: req.user ? req.user.email : 'system',
+                action: 'update',
+                resource: 'product',
+                details: { productId: updated.id, name: updated.name },
+                ip: req.ip,
+            });
+            res.json(updated);
+        })
+        .catch((error) => res.status(500).json({ message: error.message }));
 });
 
 app.delete('/api/products/:id', (req, res) => {
-    db.run('DELETE FROM products WHERE id = ?', [req.params.id], async function (err) {
-        if (err) return res.status(500).json({ message: err.message });
-        if (this.changes === 0) return res.status(404).json({ message: 'Product not found' });
+    const engine = getCurrentDbEngine();
+    if (engine !== 'mongodb') {
+        return res.status(503).json({ message: 'Only MongoDB is supported. Please configure MongoDB in settings.' });
+    }
 
-        await logEvent({
-            user: req.user ? req.user.email : 'system',
-            action: 'delete',
-            resource: 'product',
-            details: { productId: req.params.id },
-            ip: req.ip
-        });
+    const mongoDb = getMongoDb();
+    if (!mongoDb) {
+        return res.status(503).json({ message: 'MongoDB no está conectado.' });
+    }
 
-        res.json({ message: 'Product deleted successfully.' });
-    });
+    const id = req.params.id;
+    const { ObjectId } = require('mongodb');
+    const filter = ObjectId.isValid(id) ? { _id: new ObjectId(id) } : { id };
+
+    return mongoDb
+        .collection('products')
+        .deleteOne(filter)
+        .then(async (result) => {
+            if (!result.deletedCount) {
+                return res.status(404).json({ message: 'Product not found' });
+            }
+            await logEvent({
+                user: req.user ? req.user.email : 'system',
+                action: 'delete',
+                resource: 'product',
+                details: { productId: id },
+                ip: req.ip,
+            });
+            res.json({ message: 'Product deleted successfully.' });
+        })
+        .catch((error) => res.status(500).json({ message: error.message }));
 });
 
 // Ticket routes

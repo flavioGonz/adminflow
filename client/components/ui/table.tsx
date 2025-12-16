@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { AnimatePresence, motion } from "framer-motion"
 
 import { cn } from "@/lib/utils"
 
@@ -29,13 +30,17 @@ function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
   )
 }
 
-function TableBody({ className, ...props }: React.ComponentProps<"tbody">) {
+function TableBody({ className, children, ...props }: React.ComponentProps<"tbody">) {
   return (
     <tbody
       data-slot="table-body"
       className={cn("[&_tr:last-child]:border-0", className)}
       {...props}
-    />
+    >
+      <AnimatePresence initial={false}>
+        {React.Children.map(children, (child) => child)}
+      </AnimatePresence>
+    </tbody>
   )
 }
 
@@ -52,15 +57,25 @@ function TableFooter({ className, ...props }: React.ComponentProps<"tfoot">) {
   )
 }
 
+const MotionTr = motion.tr
+
 function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
+  // Filter out drag event handlers to avoid conflicts with motion
+  const { onDrag, onDragStart, onDragEnd, ...restProps } = props as any;
+  
   return (
-    <tr
+    <MotionTr
+      layout
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -8 }}
+      transition={{ duration: 0.18, ease: "easeOut" }}
       data-slot="table-row"
       className={cn(
         "hover:bg-muted/50 data-[state=selected]:bg-muted border-b transition-colors",
         className
       )}
-      {...props}
+      {...restProps}
     />
   )
 }

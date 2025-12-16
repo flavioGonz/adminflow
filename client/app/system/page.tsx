@@ -60,6 +60,7 @@ import { API_URL } from "@/lib/http";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Upload } from "lucide-react";
 import { BackupManager } from "@/components/system/backup-manager";
+import { DatabaseManager } from "@/components/system/database-manager";
 import UsersManagementPage, { UsersManagementRef } from "@/components/users/users-management";
 import { useRef } from "react";
 import {
@@ -156,7 +157,6 @@ const eventTypeColors: Record<string, string> = {
 
 export default function SystemPage() {
   const [activeTab, setActiveTab] = useState("users");
-  const [loading, setLoading] = useState(true);
   const [users, setUsers] = useState<SystemUser[]>([]);
   const [config, setConfig] = useState<NotificationConfig>(DEFAULT_CONFIG);
   const [logs, setLogs] = useState<NotificationLog[]>([]);
@@ -321,7 +321,6 @@ export default function SystemPage() {
   }, [auditSearchTerm, auditFilterType, auditFilterStatus]);
 
   const loadData = async () => {
-    setLoading(true);
     try {
       const [usersData, configData] = await Promise.all([
         SystemApi.getRegisteredUsers(),
@@ -346,8 +345,6 @@ export default function SystemPage() {
     } catch (error) {
       console.error("Error cargando datos del sistema:", error);
       toast.error("Error al cargar datos del sistema");
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -464,7 +461,7 @@ export default function SystemPage() {
   }, [activeTab, previewEvent]);
 
   // Template generators
-  const getEmailTemplate = (eventType: string) => {
+  const getEmailTemplate = (eventType: string): string => {
     const templates: Record<string, string> = {
       'email_created': `<!DOCTYPE html>
 <html>
@@ -581,7 +578,14 @@ export default function SystemPage() {
     return templates[eventType] || templates['email_created'];
   };
 
-  const getTextTemplate = (eventType: string) => {
+  const getEmailTemplateObject = (eventType: string): SystemApi.NotificationTemplate => {
+    return {
+      subject: 'Nuevo Ticket Creado',
+      body: getEmailTemplate(eventType)
+    };
+  };
+
+  const getTextTemplate = (eventType: string): string => {
     const templates: Record<string, string> = {
       'whatsapp_created': `🎫 *Nuevo Ticket Creado*
 
@@ -636,6 +640,12 @@ _Enviado automáticamente por AdminFlow_`,
     return templates[eventType] || templates['whatsapp_created'];
   };
 
+  const getTextTemplateObject = (eventType: string): SystemApi.NotificationTemplate => {
+    return {
+      subject: '',
+      body: getTextTemplate(eventType)
+    };
+  };
 
   const handleCreateUser = () => {
     setEditingUser(null);
@@ -944,14 +954,6 @@ _Enviado automáticamente por AdminFlow_`,
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex h-screen items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6 p-6">
       {/* Header */}
@@ -994,9 +996,17 @@ _Enviado automáticamente por AdminFlow_`,
                   <Button variant="ghost" size="sm" className="gap-2" onClick={() => setActiveTab("templates")}>
                     <LayoutTemplate className="h-4 w-4" /> Plantillas
                   </Button>
+                  <Button variant="ghost" size="sm" className="gap-2" onClick={() => setActiveTab("database")}>
+                    <Database className="h-4 w-4" /> Base de Datos
+                  </Button>
                   <Button variant="ghost" size="sm" className="gap-2" onClick={() => setActiveTab("backups")}>
                     <Database className="h-4 w-4" /> Respaldos
                   </Button>
+                  <Link href="/mongo-servers">
+                    <Button variant="ghost" size="sm" className="gap-2">
+                      <Server className="h-4 w-4" /> Servidores MongoDB
+                    </Button>
+                  </Link>
                 </div>
 
                 {/* Tabs Secundarias (Usuarios / Grupos / Roles) */}
@@ -1752,7 +1762,7 @@ _Enviado automáticamente por AdminFlow_`,
                   </div>
                 ) : previewEvent.startsWith('email') ? (
                   <iframe
-                    srcDoc={config.templates?.[previewEvent] || previewHtml}
+                    srcDoc={config.templates?.[previewEvent]?.body || previewHtml}
                     className="w-full h-[500px] border-0"
                     title="Email Preview"
                   />
@@ -1765,7 +1775,7 @@ _Enviado automáticamente por AdminFlow_`,
                       previewEvent.startsWith('slack') && "bg-gradient-to-br from-amber-50 to-amber-100 border-2 border-amber-300"
                     )}>
                       <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed">
-                        {(config.templates?.[previewEvent] || '')
+                        {(config.templates?.[previewEvent]?.body || '')
                           .replace(/{{clientName}}/g, 'Juan Pérez')
                           .replace(/{{ticketId}}/g, '1234')
                           .replace(/{{amount}}/g, '$1,500')
@@ -1794,8 +1804,8 @@ _Enviado automáticamente por AdminFlow_`,
                       size="sm"
                       onClick={() => {
                         const template = previewEvent.startsWith('email')
-                          ? getEmailTemplate(previewEvent)
-                          : getTextTemplate(previewEvent);
+                          ? getEmailTemplateObject(previewEvent)
+                          : getTextTemplateObject(previewEvent);
                         setConfig({
                           ...config,
                           templates: {
@@ -1816,7 +1826,7 @@ _Enviado automáticamente por AdminFlow_`,
                           ...config,
                           templates: {
                             ...config.templates,
-                            [previewEvent]: ''
+                            [previewEvent]: { subject: '', body: '' }
                           }
                         });
                       }}
@@ -1835,13 +1845,16 @@ _Enviado automáticamente por AdminFlow_`,
                       ? '<!DOCTYPE html>\n<html>\n<head>\n  <title>{{eventName}}</title>\n</head>\n<body>\n  <h1>Hola {{clientName}}</h1>\n  <p>Tu ticket #{{ticketId}} ha sido creado.</p>\n</body>\n</html>'
                       : '🎫 *Nuevo Ticket Creado*\n\nCliente: {{clientName}}\nTicket: #{{ticketId}}\nFecha: {{date}}\n\n_Enviado automáticamente por AdminFlow_'
                   }
-                  value={config.templates?.[previewEvent] || ''}
+                  value={config.templates?.[previewEvent]?.body || ''}
                   onChange={(e) => {
                     setConfig({
                       ...config,
                       templates: {
                         ...config.templates,
-                        [previewEvent]: e.target.value
+                        [previewEvent]: {
+                          subject: config.templates?.[previewEvent]?.subject || '',
+                          body: e.target.value
+                        }
                       }
                     });
                   }}
@@ -1866,7 +1879,10 @@ _Enviado automáticamente por AdminFlow_`,
                               ...config,
                               templates: {
                                 ...config.templates,
-                                [previewEvent]: newText
+                                [previewEvent]: {
+                                  subject: config.templates?.[previewEvent]?.subject || '',
+                                  body: newText
+                                }
                               }
                             });
                           }
@@ -2029,6 +2045,31 @@ _Enviado automáticamente por AdminFlow_`,
           </div>
         )}
 
+        {activeTab === "database" && (
+          <div className="space-y-6 animate-in fade-in duration-300">
+            <div className="flex flex-wrap items-center gap-4 mb-2">
+              <div className="flex items-center gap-1 border-r pr-4 mr-2">
+                <Button variant="ghost" size="sm" className="gap-2" onClick={() => setActiveTab("users")}>
+                  <Users className="h-4 w-4" /> Usuarios
+                </Button>
+                <Button variant="ghost" size="sm" className="gap-2" onClick={() => setActiveTab("channels")}>
+                  <Bell className="h-4 w-4" /> Canales
+                </Button>
+                <Button variant="ghost" size="sm" className="gap-2" onClick={() => setActiveTab("templates")}>
+                  <LayoutTemplate className="h-4 w-4" /> Plantillas
+                </Button>
+                <Button variant="default" size="sm" className="gap-2" onClick={() => setActiveTab("database")}>
+                  <Database className="h-4 w-4" /> Base de Datos
+                </Button>
+                <Button variant="ghost" size="sm" className="gap-2" onClick={() => setActiveTab("backups")}>
+                  <Database className="h-4 w-4" /> Respaldos
+                </Button>
+              </div>
+            </div>
+            <DatabaseManager />
+          </div>
+        )}
+
         {activeTab === "backups" && (
           <div className="space-y-6 animate-in fade-in duration-300">
             <div className="flex flex-wrap items-center gap-4 mb-2">
@@ -2041,6 +2082,9 @@ _Enviado automáticamente por AdminFlow_`,
                 </Button>
                 <Button variant="ghost" size="sm" className="gap-2" onClick={() => setActiveTab("templates")}>
                   <LayoutTemplate className="h-4 w-4" /> Plantillas
+                </Button>
+                <Button variant="ghost" size="sm" className="gap-2" onClick={() => setActiveTab("database")}>
+                  <Database className="h-4 w-4" /> Base de Datos
                 </Button>
                 <Button variant="default" size="sm" className="gap-2" onClick={() => setActiveTab("backups")}>
                   <Database className="h-4 w-4" /> Respaldos

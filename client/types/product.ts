@@ -1,3 +1,9 @@
+export interface Supplier {
+  name: string;
+  priceUYU: number;
+  priceUSD: number;
+}
+
 export interface Product {
   id: string;
   name: string;
@@ -10,6 +16,8 @@ export interface Product {
   imageUrl?: string;
   stock?: number;
   manufacturerLogoUrl?: string;
+  quotedAt?: string;
   createdAt?: string;
   updatedAt?: string;
+  suppliers?: Supplier[];
 }

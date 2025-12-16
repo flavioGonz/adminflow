@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Table,
+  TableBody,
   TableCell,
   TableHead,
   TableHeader,
@@ -66,7 +67,6 @@ import { Contract } from "@/types/contract";
 import { API_URL } from "@/lib/http";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { TablePageTransition } from "@/components/ui/page-transition";
 
 interface TicketTableProps {
   tickets: Ticket[];
@@ -521,7 +521,7 @@ export function TicketTable({
               </TableHead>
             </TableRow>
           </TableHeader>
-          <TablePageTransition pageKey={currentPage}>
+          <TableBody>
             {currentTickets.length > 0 ? (
               currentTickets.map((ticket) => {
                 const assignedGroup = ticket.assignedGroupId ? groupsMap[ticket.assignedGroupId] : null;
@@ -842,16 +842,16 @@ export function TicketTable({
                     </div>
                   </TableCell>
                 </TableRow>
-                );
-              })
-            ) : (
-              <TableRow>
-                <TableCell colSpan={8} className="h-24 text-center">
-                  No se encontraron tickets.
-                </TableCell>
-              </TableRow>
-            )}
-          </TablePageTransition>
+              );
+            })
+          ) : (
+            <TableRow>
+              <TableCell colSpan={8} className="h-24 text-center">
+                No se encontraron tickets.
+              </TableCell>
+            </TableRow>
+          )}
+        </TableBody>
         </Table>
       </div>
       <Pagination>

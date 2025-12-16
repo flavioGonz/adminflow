@@ -43,7 +43,7 @@ export function RoleSelector({
             <div className="grid gap-3">
                 {Object.values(ROLE_DEFINITIONS).map((role) => {
                     const isSelected = selectedRoles.includes(role.value);
-                    const iconsMap = Icons as Record<string, LucideIcon>;
+                    const iconsMap = Icons as unknown as Record<string, LucideIcon>;
                     const IconComponent = iconsMap[role.icon] ?? Icons.Shield;
 
                     return (

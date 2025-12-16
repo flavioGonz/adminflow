@@ -39,6 +39,7 @@ import {
   Ticket,
   Users,
 } from "lucide-react";
+import { HealthIndicator } from "@/components/health-check";
 
 const SidebarContext = createContext<{ collapsed: boolean; toggle: () => void }>({
   collapsed: false,
@@ -65,6 +66,8 @@ type NavItem = {
   name: string;
   href: string;
   icon: (props: React.ComponentProps<typeof LayoutDashboard>) => React.ReactNode;
+  external?: boolean;
+  target?: string;
 };
 
 const navItems: NavItem[] = [
@@ -83,6 +86,13 @@ const navItems: NavItem[] = [
 const bottomActions: NavItem[] = [
   { name: "Base de datos", href: "/database", icon: Database },
   { name: "Sistema", href: "/system", icon: Settings },
+];
+
+const supportNavItems: NavItem[] = [
+  { name: "Documentación", href: "/support/documentacion", icon: BookOpen },
+  { name: "Centro de ayuda", href: "/support/centro", icon: MessageCircleQuestion },
+  { name: "Enviar feedback", href: "mailto:info@infratec.com.uy", icon: Send, external: true, target: "_blank" },
+  { name: "Estado del sistema", href: "/support/estado", icon: LifeBuoy },
 ];
 
 const menuItemBase =
@@ -109,14 +119,26 @@ const SidebarNavItem = ({
   active: boolean;
   collapsed: boolean;
 }) => (
-  <Link
-    href={item.href}
-    className={`${menuItemBase} ${active ? "bg-slate-100 text-slate-900" : "text-slate-600 hover:bg-slate-50"} ${collapsed ? "justify-center" : ""
-      }`}
-  >
-    <item.icon className="h-4 w-4" />
-    {!collapsed && item.name}
-  </Link>
+  item.external ? (
+    <a
+      href={item.href}
+      target={item.target || "_blank"}
+      rel="noreferrer"
+      className={`${menuItemBase} text-slate-600 hover:bg-slate-50 ${collapsed ? "justify-center" : ""}`}
+    >
+      <item.icon className="h-4 w-4" />
+      {!collapsed && item.name}
+    </a>
+  ) : (
+    <Link
+      href={item.href}
+      className={`${menuItemBase} ${active ? "bg-slate-100 text-slate-900" : "text-slate-600 hover:bg-slate-50"} ${collapsed ? "justify-center" : ""
+        }`}
+    >
+      <item.icon className="h-4 w-4" />
+      {!collapsed && item.name}
+    </Link>
+  )
 );
 
 export default function Sidebar() {
@@ -157,11 +179,12 @@ export function SidebarContent() {
 
     const loadProfile = async () => {
       try {
+        if (!session?.user?.email) return;
         const response = await fetch(`${API_URL}/users`);
         if (!response.ok) return;
         const data = (await response.json()) as { email?: string; avatar?: string | null }[];
         const matched = data.find(
-          (user) => user.email?.toLowerCase() === session.user.email?.toLowerCase()
+          (user) => user.email?.toLowerCase() === session.user?.email?.toLowerCase()
         );
         if (matched && !canceled) {
           setProfile({ avatar: matched.avatar });
@@ -206,6 +229,12 @@ export function SidebarContent() {
           <ChevronsLeft className={`h-4 w-4 transition ${collapsed ? "rotate-180" : ""}`} />
         </Button>
       </div>
+      <div className="px-4 pb-2 -mt-2">
+        <Link href="/system" className={`flex items-center ${collapsed ? "justify-center" : "justify-start gap-2"} hover:opacity-70 transition`}>
+          <div className="h-3 w-3 rounded-full bg-emerald-500" title="Sistema conectado" />
+          {!collapsed && <span className="text-[11px] text-slate-500 hover:text-slate-700 transition">Sistema</span>}
+        </Link>
+      </div>
       <div className="flex-1 overflow-y-auto px-1 py-2">
         <SidebarNavItem item={navItems[0]} active={!!pathname?.startsWith(navItems[0].href)} collapsed={collapsed} />
         <div className="space-y-1">
@@ -213,6 +242,7 @@ export function SidebarContent() {
             <SidebarNavItem key={item.href} item={item} active={!!pathname?.startsWith(item.href)} collapsed={collapsed} />
           ))}
         </div>
+        {/* Ayuda y soporte: se muestra solo en el submenú del icono de ayuda */}
       </div>
       <div className="px-4 pb-3">
         {!collapsed && (
@@ -243,30 +273,28 @@ export function SidebarContent() {
                     Ayuda y soporte
                   </DropdownMenuLabel>
                   <DropdownMenuItem asChild className="cursor-pointer">
-                    <Link href="https://www.shadcn.io/docs" target="_blank" className="flex items-center gap-2">
+                    <Link href="/support/documentacion" className="flex items-center gap-2">
                       <BookOpen className="h-4 w-4" />
                       Documentacion
-                      <ExternalLink className="ml-auto h-3 w-3 text-slate-400" />
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild className="cursor-pointer">
-                    <Link href="mailto:soporte@adminflow.uy" className="flex items-center gap-2">
+                    <Link href="/support/centro" className="flex items-center gap-2">
                       <MessageCircleQuestion className="h-4 w-4" />
                       Centro de ayuda
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild className="cursor-pointer">
-                    <Link href="mailto:feedback@adminflow.uy" className="flex items-center gap-2">
+                    <Link href="mailto:info@infratec.com.uy" className="flex items-center gap-2">
                       <Send className="h-4 w-4" />
                       Enviar feedback
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem asChild className="cursor-pointer">
-                    <Link href="https://status.adminflow.uy" target="_blank" className="flex items-center gap-2">
+                    <Link href="/support/estado" className="flex items-center gap-2">
                       <LifeBuoy className="h-4 w-4" />
                       Estado del sistema
-                      <ExternalLink className="ml-auto h-3 w-3 text-slate-400" />
                     </Link>
                   </DropdownMenuItem>
                 </DropdownMenuContent>

@@ -2,13 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import {
-  Bell,
-  Settings,
-  LogOut,
-  CloudSun,
-  DollarSign,
-} from "lucide-react";
+import { Bell, Settings, LogOut, CloudSun, DollarSign } from "lucide-react";
+import { HealthIndicator } from "@/components/health-check";
 
 interface WeatherInfo {
   temperature: number;
@@ -134,6 +129,10 @@ export default function HeaderBar() {
             </div>
           </div>
           <div className="flex items-center gap-4">
+            <div className="hidden md:flex items-center gap-2" title="Estado del sistema">
+              <HealthIndicator />
+              <span className="text-xs text-slate-300">Estado</span>
+            </div>
             <Bell className="h-6 w-6 cursor-pointer hover:text-gray-300" />
             <Settings className="h-6 w-6 cursor-pointer hover:text-gray-300" />
             <LogOut className="h-6 w-6 cursor-pointer hover:text-gray-300" />

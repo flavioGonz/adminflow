@@ -87,6 +87,9 @@ temp_*
 server/.installed
 server/.selected-db.json
 
+# MongoDB servers configuration (contains credentials)
+server/config/mongo-servers.json
+
 # Test files
 server/test_*.js
 

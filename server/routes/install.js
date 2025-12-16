@@ -58,7 +58,6 @@ router.get('/validate', async (req, res) => {
             timestamp: new Date().toISOString()
         });
     }
-}); res.json({ installed: isInstalled() });
 });
 
 /**

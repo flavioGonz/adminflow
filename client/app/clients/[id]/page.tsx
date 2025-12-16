@@ -645,7 +645,14 @@ export default function ClientDetailPage() {
     return <div className="p-6">Cliente no encontrado.</div>;
   }
 
-  const resourceCards = [
+  const resourceCards: Array<{
+    title: string;
+    description: string;
+    icon: LucideIcon;
+    accent: string;
+    href?: string;
+    onClick?: () => void;
+  }> = [
     {
       title: "Datos / Accesos",
       description: "Credenciales y dispositivos",

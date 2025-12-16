@@ -276,7 +276,9 @@ export function UserModal({ open, onClose, onSave, user, groups, mode }: UserMod
                             </div>
                         </div>
 
-                        <Separator className="bg-border/60" />
+                        <div className="bg-border/60">
+                            <Separator />
+                        </div>
 
                         {/* 2. Sección Roles */}
                         <div className="space-y-4">
