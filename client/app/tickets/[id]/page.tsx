@@ -13,6 +13,7 @@ import {
   Loader2,
   Lock,
   MapPin,
+  Calendar,
   Mic,
   Paperclip,
   PlayCircle,
@@ -37,8 +38,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import VisitForm from "@/components/tickets/visit-form";
 import { Label } from "@/components/ui/label";
+import VisitForm from "@/components/tickets/visit-form";
 import {
   Dialog,
   DialogContent,
@@ -114,25 +115,41 @@ const getPriorityBadgeVariant = (value: TicketPriority) => {
   return "secondary";
 };
 
-const statusIcons: Record<TicketStatus, React.ComponentType<{ className?: string }>> = {
-  Nuevo: PlusCircle,
-  Abierto: FolderOpen,
+const statusIcons: Record<string, React.ComponentType<{ className?: string }>> = {
+  "Nuevo": PlusCircle,
+  "Abierto": FolderOpen,
   "En proceso": Loader2,
-  Visita: MapPin,
-  Resuelto: CheckCircle2,
-  Facturar: Receipt,
-  Pagado: DollarSign,
+  "Visita": MapPin,
+  "Visita - Coordinar": MapPin,
+  "Visita Programada": Calendar,
+  "Visita Realizada": CheckCircle2,
+  "Revision Cerrar Visita": Activity,
+  "Resuelto": CheckCircle2,
+  "Facturar": Receipt,
+  "Pagado": DollarSign,
 };
 
-const statusColors: Record<TicketStatus, string> = {
-  Nuevo: "text-sky-500",
-  Abierto: "text-blue-500",
+const statusColors: Record<string, string> = {
+  "Nuevo": "text-sky-500",
+  "Abierto": "text-blue-500",
   "En proceso": "text-amber-500",
-  Visita: "text-purple-500",
-  Resuelto: "text-emerald-600",
-  Facturar: "text-orange-500",
-  Pagado: "text-lime-600",
+  "Visita": "text-purple-500",
+  "Visita - Coordinar": "text-purple-500",
+  "Visita Programada": "text-indigo-500",
+  "Visita Realizada": "text-emerald-600",
+  "Revision Cerrar Visita": "text-orange-500",
+  "Resuelto": "text-emerald-600",
+  "Facturar": "text-orange-500",
+  "Pagado": "text-lime-600",
 };
+
+const visitStatuses = [
+  "Visita",
+  "Visita - Coordinar",
+  "Visita Programada",
+  "Visita Realizada",
+  "Revision Cerrar Visita",
+] as const;
 
 const priorityOptions: TicketPriority[] = ["Alta", "Media", "Baja"];
 
@@ -218,26 +235,22 @@ export default function TicketDetailPage() {
       setIsLoading(true);
       setError(null);
       try {
-        const response = await fetch(`${API_URL}/tickets/${params.id}`, {
-          signal: controller.signal,
-        });
+        const response = await fetch(`${API_URL}/tickets/${params.id}`);
         if (!response.ok) {
-          throw new Error("No se pudo cargar el ticket solicitado.");
+          throw new Error("No se pudo cargar el ticket");
         }
-        const data = (await response.json()) as Ticket;
+        const data = await response.json();
         setTicket(data);
       } catch (err) {
-        if ((err as Error).name === "AbortError") return;
         const message =
           err instanceof Error
             ? err.message
-          : "Ocurrio un error al cargar el ticket.";
+            : "Ocurrio un error al cargar el ticket.";
         setError(message);
         toast.error(message);
         console.error("Error fetching ticket:", err);
-      } finally {
-        setIsLoading(false);
       }
+      setIsLoading(false);
     };
     fetchTicket();
     return () => controller.abort();
@@ -721,6 +734,10 @@ export default function TicketDetailPage() {
     });
   }, []);
 
+  const isVisitStatus = visitStatuses.includes(
+    formStatus as (typeof visitStatuses)[number]
+  );
+
   const handleOpenAttachment = useCallback((attachment: TicketAttachment) => {
     window.open(attachment.url ?? attachment.dataUrl ?? "#", "_blank");
   }, []);
@@ -800,7 +817,7 @@ export default function TicketDetailPage() {
         {/* Linea horizontal con avatares del timeline */}
         <div className="flex-[0_0_65%] pr-2">
           <div className="relative flex items-center h-14">
-            <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-0.5 bg-slate-300" />
+            <div className="absolute inset-x-0 top-[38%] -translate-y-1/2 h-0.5 border-t-2 border-dashed border-slate-300 w-full" style={{ borderStyle: 'dashed' }} />
             {timelineAnnotations.map((annotation, idx) => {
               const total = timelineAnnotations.length;
               let percent = total === 1 ? 0 : (idx / (total - 1)) * 100;
@@ -838,8 +855,26 @@ export default function TicketDetailPage() {
                       </div>
                     )}
                   </div>
-                  <span className="mt-1 text-[10px] font-semibold text-slate-600 uppercase tracking-[0.2em] leading-tight">
-                    {formatDateTime(annotation.createdAt)}
+                  {/* Fecha y hora en dos líneas */}
+                  <span className="mt-1 text-[10px] font-semibold text-slate-600 uppercase tracking-[0.2em] leading-tight text-center">
+                    {annotation.createdAt ? (
+                      <>
+                        {new Date(annotation.createdAt).toLocaleDateString("es-AR", {
+                          day: "2-digit",
+                          month: "2-digit",
+                          year: "2-digit",
+                        })}
+                        <br />
+                        {(() => {
+                          const d = new Date(annotation.createdAt);
+                          const h = d.getHours().toString().padStart(2, "0");
+                          const m = d.getMinutes().toString().padStart(2, "0");
+                          return `${h}:${m}`;
+                        })()}
+                      </>
+                    ) : (
+                      "--"
+                    )}
                   </span>
                 </div>
               );
@@ -854,14 +889,7 @@ export default function TicketDetailPage() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1.25fr_0.75fr]">
-        {/* Mostrar el formulario de visita solo en estados de visita */}
-        {[
-          "Visita",
-          "Visita - Coordinar",
-          "Visita Programada",
-          "Visita Realizada",
-          "Revision Cerrar Visita"
-        ].includes(formStatus) ? (
+        {isVisitStatus ? (
           <section className="space-y-5 rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm">
             <div className="flex items-center justify-between">
               <div>
@@ -871,7 +899,6 @@ export default function TicketDetailPage() {
                 </p>
               </div>
             </div>
-            {/* Componente del formulario de visita */}
             <VisitForm
               value={ticket?.visitData ?? {}}
               onChange={() => {}}
@@ -887,9 +914,9 @@ export default function TicketDetailPage() {
                   Todo lo que escribas, los archivos adjuntos y las notas de audio se registraran cuando guardes los cambios.
                 </p>
               </div>
-                <span className="text-[11px] text-muted-foreground">
-                  Ultimo registro {sortedAnnotations[0] ? formatDateTime(sortedAnnotations[0].createdAt) : "--"}
-                </span>
+              <span className="text-[11px] text-muted-foreground">
+                Ultimo registro {sortedAnnotations[0] ? formatDateTime(sortedAnnotations[0].createdAt) : "--"}
+              </span>
             </div>
             <div className="flex flex-wrap items-center gap-4 text-xs font-semibold text-muted-foreground">
               <div className="flex items-center gap-3">
