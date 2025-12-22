@@ -128,7 +128,6 @@ export default function ContractsPage() {
                   <FileSignature className="h-6 w-6 text-white" />
                 </div>
                 <div className="space-y-1">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Panel de contratos</p>
                   <h1 className="text-3xl font-bold">
                     <ShinyText size="3xl" weight="bold">Contratos</ShinyText>
                   </h1>

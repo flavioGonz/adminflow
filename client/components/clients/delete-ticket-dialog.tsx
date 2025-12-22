@@ -16,6 +16,7 @@ import {
 import { toast } from "sonner";
 import { Ticket } from "@/types/ticket";
 import { API_URL } from "@/lib/http";
+import { emitTicketDeleted } from "@/lib/app-events";
 
 interface DeleteTicketDialogProps {
   ticket: Pick<Ticket, "id" | "title">;
@@ -38,6 +39,7 @@ export function DeleteTicketDialog({ ticket, onTicketDeleted, children }: Delete
       }
 
       onTicketDeleted(ticket.id);
+      emitTicketDeleted(ticket.id);
       toast.success(`Ticket "${ticket.title}" eliminado exitosamente.`);
     } catch (error) {
       console.error("Error deleting ticket:", error);

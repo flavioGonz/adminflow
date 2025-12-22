@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import DashboardLayout from "@/components/layout/dashboard-layout";
 import { Badge } from "@/components/ui/badge";
@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { AnimatedTableBody, AnimatedRow } from "@/hooks/use-table-animation";
 import {
   Table,
@@ -112,7 +111,7 @@ const productTableColumns: { key: ProductTableColumn; label: string }[] = [
   { key: "category", label: "Categoría" },
 ];
 
-const ITEMS_PER_PAGE = 10;
+const LOAD_INCREMENT = 15;
 
 const formatCurrencyValue = (value: number, currency: "UYU" | "USD") =>
   new Intl.NumberFormat("es-UY", {
@@ -195,7 +194,8 @@ export default function ProductsPage() {
       {} as Record<ProductTableColumn, boolean>
     )
   );
-  const [currentPage, setCurrentPage] = useState(1);
+  const [visibleCount, setVisibleCount] = useState(LOAD_INCREMENT);
+  const tableScrollRef = useRef<HTMLDivElement | null>(null);
 
   const loadProducts = useCallback(async () => {
     try {
@@ -321,27 +321,38 @@ export default function ProductsPage() {
     return filtered;
   }, [searchTerm, products, filterType, filterManufacturer, filterCategory, filterSupplier]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredProducts.length / ITEMS_PER_PAGE));
-  const currentPageSafe = Math.min(Math.max(currentPage, 1), totalPages);
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [filteredProducts.length]);
-
-  useEffect(() => {
-    if (currentPage !== currentPageSafe) {
-      setCurrentPage(currentPageSafe);
-    }
-  }, [currentPage, currentPageSafe]);
-
-  const startIndex = (currentPageSafe - 1) * ITEMS_PER_PAGE;
-  const paginatedProducts = useMemo(
-    () =>
-      filteredProducts.slice(startIndex, startIndex + ITEMS_PER_PAGE),
-    [filteredProducts, startIndex]
+  const visibleProducts = useMemo(
+    () => filteredProducts.slice(0, visibleCount),
+    [filteredProducts, visibleCount]
   );
-  const showingFrom = filteredProducts.length === 0 ? 0 : startIndex + 1;
-  const showingTo = Math.min(filteredProducts.length, startIndex + ITEMS_PER_PAGE);
+  const hasMoreResults = visibleCount < filteredProducts.length;
+
+  useEffect(() => {
+    setVisibleCount(LOAD_INCREMENT);
+    if (tableScrollRef.current) {
+      tableScrollRef.current.scrollTop = 0;
+    }
+  }, [
+    searchTerm,
+    filterType,
+    filterManufacturer,
+    filterCategory,
+    filterSupplier,
+    filteredProducts.length,
+  ]);
+
+  const handleScroll = useCallback(() => {
+    const container = tableScrollRef.current;
+    if (!container || !hasMoreResults) return;
+    if (
+      container.scrollHeight - container.scrollTop - container.clientHeight <
+      150
+    ) {
+      setVisibleCount((prev) =>
+        Math.min(prev + LOAD_INCREMENT, filteredProducts.length)
+      );
+    }
+  }, [filteredProducts.length, hasMoreResults]);
   const visibleColumnCount = productTableColumns.filter((column) => visibleColumns[column.key]).length;
 
   const resetForm = () => setFormValues(defaultFormValues);
@@ -879,8 +890,14 @@ export default function ProductsPage() {
             </div>
           </CardHeader>
           <CardContent className="space-y-4 overflow-hidden">
-            <ScrollArea className="w-full">
-              <Table className="w-full text-sm">
+            <div className="w-full">
+              <div className="relative">
+                <div
+                  ref={tableScrollRef}
+                  className="max-h-[65vh] overflow-y-auto"
+                  onScroll={handleScroll}
+                >
+                  <Table className="w-full text-sm">
                 <TableHeader>
                   <TableRow>
                     {visibleColumns.name && <TableHead>Nombre</TableHead>}
@@ -896,7 +913,7 @@ export default function ProductsPage() {
                 </TableHeader>
                 <TableBody>
                   <AnimatePresence mode="wait">
-                  {paginatedProducts.map((product, index) => {
+                  {visibleProducts.map((product, index) => {
                     const baseFallbackKey = `${product.name}-${product.manufacturer}-${product.category}`.trim();
                     const productRowKey = product.id?.trim()
                       ? product.id
@@ -1103,55 +1120,19 @@ export default function ProductsPage() {
                     </>
                   )}
                 </TableBody>
-              </Table>
-            </ScrollArea>
+                  </Table>
+                </div>
+                {hasMoreResults && (
+                  <div className="px-4 py-3 text-center text-xs text-slate-500 relative z-10">
+                    Desliza para cargar más productos
+                  </div>
+                )}
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-white to-transparent" />
+              </div>
+            </div>
           </CardContent>
         </Card>
         
-        <div className="flex items-center justify-center gap-3 border-t border-slate-200/60 pt-3 text-xs">
-          <span className="inline-flex items-center gap-2 text-muted-foreground">
-            <Layers className="h-3.5 w-3.5 text-slate-500" />
-            {filteredProducts.length === 0
-              ? "Sin resultados"
-              : `${showingFrom}-${showingTo} de ${filteredProducts.length}`}
-          </span>
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed"
-              onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-              disabled={currentPageSafe === 1}
-            >
-              Anterior
-            </button>
-            {Array.from({ length: totalPages }, (_, index) => {
-              const page = index + 1;
-              const isActive = page === currentPageSafe;
-              return (
-                <button
-                  key={page}
-                  type="button"
-                  className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                    isActive
-                      ? "bg-slate-900 text-white"
-                      : "border border-slate-200 text-slate-700"
-                  }`}
-                  onClick={() => setCurrentPage(page)}
-                >
-                  {page}
-                </button>
-              );
-            })}
-            <button
-              type="button"
-              className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed"
-              onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
-              disabled={currentPageSafe === totalPages}
-            >
-              Siguiente
-            </button>
-          </div>
-        </div>
           </TabsContent>
 
           <TabsContent value="manufacturers" className="space-y-6 mt-2">

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Table,
   TableBody,
@@ -8,13 +8,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationNext,
-  PaginationPrevious,
-} from "@/components/ui/pagination";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Command,
@@ -94,12 +87,13 @@ export function BudgetTable({
   onBudgetUpdated,
   searchTerm,
 }: BudgetTableProps) {
-  const [currentPage, setCurrentPage] = useState(1);
   const [sortConfig, setSortConfig] = useState<{
     key: SortKey;
     direction: "ascending" | "descending";
   } | null>(null);
-  const budgetsPerPage = 10;
+  const LOAD_INCREMENT = 15;
+  const [visibleCount, setVisibleCount] = useState(LOAD_INCREMENT);
+  const tableScrollRef = useRef<HTMLDivElement | null>(null);
 
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [itemsByBudget, setItemsByBudget] = useState<Record<string, BudgetItem[]>>({});
@@ -239,25 +233,23 @@ export function BudgetTable({
     return sortableItems;
   }, [filteredBudgets, sortConfig]);
 
-  const currentBudgets = useMemo(() => {
-    const indexOfLastBudget = currentPage * budgetsPerPage;
-    const indexOfFirstBudget = indexOfLastBudget - budgetsPerPage;
-    return sortedBudgets.slice(indexOfFirstBudget, indexOfLastBudget);
-  }, [sortedBudgets, currentPage, budgetsPerPage]);
+  const visibleBudgets = useMemo(() => sortedBudgets.slice(0, visibleCount), [
+    sortedBudgets,
+    visibleCount,
+  ]);
+  const hasMoreResults = visibleCount < sortedBudgets.length;
 
-  const totalPages = Math.ceil(sortedBudgets.length / budgetsPerPage);
-
-  const handleNextPage = () => {
-    if (currentPage < totalPages) {
-      setCurrentPage(currentPage + 1);
+  const handleScroll = useCallback(() => {
+    const container = tableScrollRef.current;
+    if (!container || !hasMoreResults) {
+      return;
     }
-  };
-
-  const handlePreviousPage = () => {
-    if (currentPage > 1) {
-      setCurrentPage(currentPage - 1);
+    if (container.scrollHeight - container.scrollTop - container.clientHeight < 150) {
+      setVisibleCount((prev) =>
+        Math.min(prev + LOAD_INCREMENT, sortedBudgets.length)
+      );
     }
-  };
+  }, [hasMoreResults, sortedBudgets.length]);
 
   const requestSort = (key: SortKey) => {
     let direction: "ascending" | "descending" = "ascending";
@@ -357,6 +349,18 @@ export function BudgetTable({
   const formatCurrency = (value: number, code: string) =>
     new Intl.NumberFormat("es-UY", { style: "currency", currency: code }).format(value);
 
+  useEffect(() => {
+    setVisibleCount(LOAD_INCREMENT);
+    if (tableScrollRef.current) {
+      tableScrollRef.current.scrollTop = 0;
+    }
+  }, [
+    sortedBudgets.length,
+    sortConfig?.key,
+    sortConfig?.direction,
+    searchTerm,
+  ]);
+
   return (
     <div className="space-y-4">
       <div className="rounded-md border">
@@ -391,9 +395,15 @@ export function BudgetTable({
             </PopoverContent>
           </Popover>
         </div>
-        <Table>
-          <TableHeader>
-            <TableRow>
+        <div className="relative">
+          <div
+            ref={tableScrollRef}
+            className="max-h-[65vh] overflow-y-auto"
+            onScroll={handleScroll}
+          >
+            <Table>
+            <TableHeader>
+              <TableRow>
               <TableHead />
               {hasColumn("creation") && (
                 <TableHead>
@@ -469,8 +479,8 @@ export function BudgetTable({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {currentBudgets.length > 0 ? (
-              currentBudgets.map((budget) => {
+            {visibleBudgets.length > 0 ? (
+              visibleBudgets.map((budget) => {
                 const isOpen = expandedRows.has(budget.id);
                 const items = itemsByBudget[budget.id] || [];
                 const currency = currencyInfo(budget.currency);
@@ -809,25 +819,15 @@ export function BudgetTable({
             )}
           </TableBody>
         </Table>
+          </div>
+          {hasMoreResults && (
+            <div className="px-4 py-3 text-center text-xs text-slate-500 relative z-10">
+              Desliza para cargar más presupuestos
+            </div>
+          )}
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-white to-transparent" />
+        </div>
       </div>
-      <Pagination>
-        <PaginationContent>
-          <PaginationItem>
-            <PaginationPrevious
-              onClick={currentPage === 1 ? undefined : handlePreviousPage}
-              aria-disabled={currentPage === 1}
-              className={currentPage === 1 ? "opacity-40 pointer-events-none" : undefined}
-            />
-          </PaginationItem>
-          <PaginationItem>
-            <PaginationNext
-              onClick={currentPage === totalPages ? undefined : handleNextPage}
-              aria-disabled={currentPage === totalPages}
-              className={currentPage === totalPages ? "opacity-40 pointer-events-none" : undefined}
-            />
-          </PaginationItem>
-        </PaginationContent>
-      </Pagination>
     </div>
   );
 }

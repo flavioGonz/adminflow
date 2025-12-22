@@ -14,6 +14,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
   DialogContent,
@@ -101,6 +102,10 @@ export default function DatabasePage() {
   const [switchModalOpen, setSwitchModalOpen] = useState(false);
   const [switchTargetServer, setSwitchTargetServer] = useState<any | null>(null);
   const [syncModalOpen, setSyncModalOpen] = useState(false);
+  const [scheduleEnabled, setScheduleEnabled] = useState(false);
+  const [scheduleInterval, setScheduleInterval] = useState("60");
+  const [scheduleStartAt, setScheduleStartAt] = useState<string>("");
+  const [scheduleSaving, setScheduleSaving] = useState(false);
 
   // Backup states
   const [backups, setBackups] = useState<any[]>([]);
@@ -114,6 +119,7 @@ export default function DatabasePage() {
     fetchOverview();
     loadServers();
     loadBackups();
+    loadSchedule();
     
     const interval = setInterval(fetchOverview, 30000);
     return () => clearInterval(interval);
@@ -139,19 +145,31 @@ export default function DatabasePage() {
     }
   };
 
+  const normalizeStatuses = (data: any) => {
+    const rawStatuses = Array.isArray(data?.status)
+      ? data.status
+      : Array.isArray(data)
+        ? data
+        : [];
+
+    return rawStatuses.map((status: any) => ({
+      ...status,
+      // Normalize primary flag from multiple possible sources
+      isPrimary: status?.isPrimary ?? (status?.role === "primary" || status?.current === true),
+    }));
+  };
+
   const loadServers = async () => {
     try {
       const response = await fetch("/api/mongo-servers");
       if (!response.ok) throw new Error("Error al cargar servidores");
-      
-      const servers = await response.json();
-      
+      await response.json();
+
       // Load status
       const statusResponse = await fetch("/api/mongo-servers/status");
       if (statusResponse.ok) {
-        const statuses = await statusResponse.json();
-        // Ensure statuses is always an array
-        const statusesArray = Array.isArray(statuses) ? statuses : [];
+        const statusData = await statusResponse.json();
+        const statusesArray = normalizeStatuses(statusData);
         setServersStatus(statusesArray);
         const current = statusesArray.find((s: any) => s.isPrimary);
         setCurrentServer(current || null);
@@ -165,9 +183,8 @@ export default function DatabasePage() {
     try {
       const response = await fetch("/api/mongo-servers/status");
       if (response.ok) {
-        const statuses = await response.json();
-        // Ensure statuses is always an array
-        const statusesArray = Array.isArray(statuses) ? statuses : [];
+        const statusData = await response.json();
+        const statusesArray = normalizeStatuses(statusData);
         setServersStatus(statusesArray);
         const current = statusesArray.find((s: any) => s.isPrimary);
         setCurrentServer(current || null);
@@ -179,13 +196,29 @@ export default function DatabasePage() {
 
   const loadBackups = async () => {
     try {
-      const response = await fetch("/api/system/backups");
+      const response = await fetch("/api/database/backup/list");
       if (response.ok) {
         const data = await response.json();
-        setBackups(data.backups || []);
+        const list = Array.isArray(data?.backups) ? data.backups : [];
+        setBackups(list);
       }
     } catch (error) {
       console.error("Error loading backups", error);
+    }
+  };
+
+  const loadSchedule = async () => {
+    try {
+      const response = await fetch("/api/database/sync/schedule");
+      if (!response.ok) return;
+      const data = await response.json();
+      if (data?.enabled !== undefined) {
+        setScheduleEnabled(Boolean(data.enabled));
+        if (data.intervalMinutes) setScheduleInterval(String(data.intervalMinutes));
+        if (data.startAt) setScheduleStartAt(data.startAt);
+      }
+    } catch (error) {
+      console.error("Error loading sync schedule", error);
     }
   };
 
@@ -281,6 +314,32 @@ export default function DatabasePage() {
     }
   };
 
+  const handleRestoreBackup = async (backupName: string) => {
+    setActionLoading(`restore-backup-${backupName}`);
+    try {
+      const response = await fetch("/api/database/backup/restore", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ backupName }),
+      });
+      const data = await response.json();
+      if (!response.ok || data.success === false) {
+        throw new Error(data.message || data.error || "Error al restaurar respaldo");
+      }
+      toast.success("Respaldo restaurado correctamente");
+      fetchOverview();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Error al restaurar respaldo");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleDownloadBackup = (backupName: string) => {
+    const url = `/api/database/backup/download/${backupName}`;
+    window.open(url, "_blank");
+  };
+
   const handleSwitchServer = async (serverId: string) => {
     const target = serversStatus.find((s) => s.id === serverId);
     setSwitchTargetServer(target);
@@ -321,6 +380,39 @@ export default function DatabasePage() {
     setSelectedSecondaries((prev) =>
       prev.includes(serverId) ? prev.filter((id) => id !== serverId) : [...prev, serverId]
     );
+  };
+
+  const handleSaveSchedule = async () => {
+    if (selectedSecondaries.length === 0) {
+      toast.error("Selecciona al menos un servidor secundario para programar");
+      return;
+    }
+    setScheduleSaving(true);
+    try {
+      const response = await fetch("/api/database/sync/schedule", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          enabled: scheduleEnabled,
+          intervalMinutes: Number(scheduleInterval) || 60,
+          startAt: scheduleStartAt || null,
+          sourceId: currentServer?.id,
+          targetIds: selectedSecondaries,
+          dropBeforeInsert: true,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok || data.success === false) {
+        throw new Error(data.error || "No se pudo guardar la programación");
+      }
+
+      toast.success(scheduleEnabled ? "Sincronización programada" : "Programación desactivada");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Error al programar sincronización");
+    } finally {
+      setScheduleSaving(false);
+    }
   };
 
   const handleSyncNow = async () => {
@@ -383,7 +475,7 @@ export default function DatabasePage() {
   const secondaryServers = Array.isArray(serversStatus) ? serversStatus.filter((s) => !s.isPrimary) : [];
 
   return (
-    <div className="min-h-screen bg-slate-50/50 p-6 space-y-8">
+    <div className="min-h-screen bg-white p-6 space-y-8">
       {/* Header Section */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
@@ -418,100 +510,144 @@ export default function DatabasePage() {
         </div>
       </div>
 
-      {/* Conexiones MongoDB - Full Width */}
-      <Card className="border-slate-200 shadow-sm">
-        <CardHeader className="pb-4">
-          <CardTitle className="text-lg flex items-center gap-2">
-            <Database className="h-5 w-5 text-emerald-600" />
-            Servidores MongoDB
-          </CardTitle>
-          <CardDescription>
-            Haz clic en una base para ver su contenido. Usa el botón "Usar como primaria" para cambiar de servidor.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="pt-0">
-          <div className="rounded-lg border border-slate-200 overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-slate-50/50 hover:bg-slate-50/50">
-                  <TableHead>Nombre</TableHead>
-                  <TableHead>Host</TableHead>
-                  <TableHead>Base</TableHead>
-                  <TableHead>Estado</TableHead>
-                  <TableHead>Rol</TableHead>
-                  <TableHead className="text-right">Acciones</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                <AnimatePresence mode="wait">
-                  {serversStatus.map((server, idx) => (
-                    <motion.tr
-                      key={server.id}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -10 }}
-                      transition={{ duration: 0.2, delay: idx * 0.05 }}
-                      className="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted"
-                    >
-                      <TableCell className="font-medium whitespace-nowrap">{server.name}</TableCell>
-                      <TableCell className="font-mono text-xs text-slate-600 whitespace-nowrap">
-                        {server.host}:{server.port}
-                      </TableCell>
-                      <TableCell className="font-mono text-xs text-slate-600 whitespace-nowrap">{server.database}</TableCell>
-                      <TableCell className="whitespace-nowrap">
-                        <Badge
-                          className={cn(
-                            "text-xs",
-                            server.connectionStatus === "online"
-                              ? "bg-emerald-100 text-emerald-800"
-                              : "bg-red-100 text-red-800"
-                          )}
-                        >
-                          {server.connectionStatus === "online" ? "Online" : "Offline"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap">
-                        <Badge
-                          variant="outline"
-                          className={cn(
-                            "text-xs",
-                            server.isPrimary
-                              ? "border-emerald-300 bg-emerald-50 text-emerald-700"
-                              : "border-slate-300 bg-slate-50 text-slate-600"
-                          )}
-                        >
-                          {server.isPrimary ? "Primaria" : "Secundaria"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right whitespace-nowrap">
-                        <div className="flex justify-end gap-2">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-8 w-8 p-0 text-sky-600 hover:bg-sky-50 hover:text-sky-700"
+      {/* Conexiones MongoDB + Modo de Trabajo side card */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
+        <Card className="border-slate-200 shadow-sm md:col-span-2">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Database className="h-5 w-5 text-emerald-600" />
+              Servidores MongoDB
+            </CardTitle>
+            <CardDescription>
+              Haz clic en una base para ver su contenido. Usa el botón "Usar como primaria" para cambiar de servidor.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="rounded-lg border border-slate-200 overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-slate-50/50 hover:bg-slate-50/50">
+                    <TableHead>Nombre</TableHead>
+                    <TableHead>Host</TableHead>
+                    <TableHead>Base</TableHead>
+                    <TableHead>Estado</TableHead>
+                    <TableHead>Rol</TableHead>
+                    <TableHead className="text-right">Acciones</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                    {serversStatus.map((server, idx) => (
+                      <TableRow
+                        key={server.id}
+                        className="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted"
+                      >
+                        <TableCell className="font-medium whitespace-nowrap">{server.name}</TableCell>
+                        <TableCell className="font-mono text-xs text-slate-600 whitespace-nowrap">
+                          {server.host}:{server.port}
+                        </TableCell>
+                        <TableCell className="font-mono text-xs text-slate-600 whitespace-nowrap">{server.database}</TableCell>
+                        <TableCell className="whitespace-nowrap">
+                          <Badge
+                            className={cn(
+                              "text-xs",
+                              server.connectionStatus === "online"
+                                ? "bg-emerald-100 text-emerald-800"
+                                : "bg-red-100 text-red-800"
+                            )}
                           >
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                          {!server.isPrimary && (
+                            {server.connectionStatus === "online" ? "Online" : "Offline"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap">
+                          <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+                            <span
+                              className={cn(
+                                "inline-block h-2.5 w-2.5 rounded-full",
+                                server.isPrimary ? "bg-emerald-500" : "bg-slate-400"
+                              )}
+                            />
+                            <span>{server.isPrimary ? "Primaria" : "Secundaria"}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right whitespace-nowrap">
+                          <div className="flex justify-end gap-2">
                             <Button
                               size="sm"
-                              variant="outline"
-                              className="h-8 text-xs border-emerald-200 text-emerald-700 hover:bg-emerald-50"
-                              onClick={() => handleSwitchServer(server.id)}
+                              variant="ghost"
+                              className="h-8 w-8 p-0 text-sky-600 hover:bg-sky-50 hover:text-sky-700"
                             >
-                              Usar como primaria
+                              <Eye className="h-4 w-4" />
                             </Button>
-                          )}
-                        </div>
-                      </TableCell>
-                    </motion.tr>
-                  ))}
-                </AnimatePresence>
-              </TableBody>
-            </Table>
+                            {!server.isPrimary && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-8 text-xs border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+                                onClick={() => handleSwitchServer(server.id)}
+                              >
+                                Usar como primaria
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Side Mode Card */}
+        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden md:col-span-1 min-h-[300px]">
+          <div className="flex h-full">
+            <div
+              className="flex-1 min-w-[40%] bg-cover bg-center"
+              style={{
+                backgroundImage: secondaryServers.length > 1 ? "url(/db-replica.jpg)" : "url(/db-sync.gif)",
+              }}
+            />
+            <div className="flex-[1.6] p-5 space-y-4">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Modo de Trabajo</p>
+                  <h3 className="text-2xl font-extrabold text-slate-900 leading-tight">
+                    {currentServer?.isPrimary ? "Master-Slave" : secondaryServers.length > 1 ? "Replicación Multibase" : "Sync"}
+                  </h3>
+                </div>
+                <div className="grid h-10 w-10 place-items-center rounded-xl bg-white/80 shadow-sm">
+                  {currentServer?.isPrimary ? (
+                    <GitCompare className="h-5 w-5 text-emerald-600" />
+                  ) : (
+                    <Database className="h-5 w-5 text-sky-600" />
+                  )}
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-4 pt-1">
+                <div className="space-y-1.5">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">Colecciones</p>
+                  <p className="text-xl font-bold text-slate-900 leading-tight">{overview?.collections?.length ?? 0}</p>
+                </div>
+                <div className="space-y-1.5">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">Tamaño Total</p>
+                  <div>
+                    <p className="text-xl font-bold text-slate-900 leading-tight">{formatBytes(overview?.totalSize ?? 0)}</p>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">Documentos</p>
+                  <p className="text-xl font-bold text-slate-900 leading-tight">{totalDocuments.toLocaleString()}</p>
+                </div>
+              </div>
+              <div className="pt-1 space-y-1.5">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">Primaria Actual</p>
+                <p className="text-sm font-bold text-slate-900">{currentServer?.name ?? "—"}</p>
+                <p className="text-xs text-slate-600">{currentServer ? `${currentServer.host}:${currentServer.port}` : ""}</p>
+              </div>
+            </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {/* 3-Column Layout: Colecciones, Respaldos, Sincronización */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -682,15 +818,34 @@ export default function DatabasePage() {
                               {formatBytes(backup.size)} • {new Date(backup.created).toLocaleDateString("es-UY")}
                             </p>
                           </div>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-8 w-8 text-slate-500 hover:text-rose-600 hover:bg-rose-50 opacity-0 group-hover:opacity-100 transition-all"
-                            onClick={() => handleDeleteBackup(backup.name)}
-                            disabled={actionLoading === `delete-backup-${backup.name}`}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                          <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-all">
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-8 w-8 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50"
+                              onClick={() => handleDownloadBackup(backup.name)}
+                            >
+                              <Download className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-8 w-8 text-slate-500 hover:text-sky-600 hover:bg-sky-50"
+                              onClick={() => handleRestoreBackup(backup.name)}
+                              disabled={actionLoading === `restore-backup-${backup.name}`}
+                            >
+                              <RefreshCw className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-8 w-8 text-slate-500 hover:text-rose-600 hover:bg-rose-50"
+                              onClick={() => handleDeleteBackup(backup.name)}
+                              disabled={actionLoading === `delete-backup-${backup.name}`}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </div>
                       </TableRowAnimation>
                     ))}
@@ -738,6 +893,50 @@ export default function DatabasePage() {
                       </Badge>
                     </label>
                   ))}
+                </div>
+
+                <div className="mt-4 space-y-3 rounded-lg border border-dashed border-slate-200 bg-white/60 p-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">Programar sincronización</p>
+                      <p className="text-xs text-slate-500">Ejecuta la sync en segundo plano desde Node</p>
+                    </div>
+                    <Switch
+                      checked={scheduleEnabled}
+                      onCheckedChange={(checked) => setScheduleEnabled(Boolean(checked))}
+                    />
+                  </div>
+                  {scheduleEnabled && (
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold text-slate-600">Intervalo (minutos)</p>
+                        <Input
+                          type="number"
+                          min={5}
+                          value={scheduleInterval}
+                          onChange={(e) => setScheduleInterval(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold text-slate-600">Inicia</p>
+                        <Input
+                          type="datetime-local"
+                          value={scheduleStartAt}
+                          onChange={(e) => setScheduleStartAt(e.target.value)}
+                        />
+                      </div>
+                      <div className="md:col-span-2 flex justify-end">
+                        <Button
+                          size="sm"
+                          onClick={handleSaveSchedule}
+                          disabled={scheduleSaving}
+                          className="bg-sky-600 hover:bg-sky-700 text-white"
+                        >
+                          {scheduleSaving ? "Guardando..." : "Guardar programación"}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex justify-end pt-2">

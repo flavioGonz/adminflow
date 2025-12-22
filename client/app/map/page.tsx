@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useMap } from "react-leaflet";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -86,8 +86,24 @@ interface PendingLocation {
   previousCoords: { lat: number; lng: number };
 }
 
+const MapResizer = () => {
+  const map = useMap();
+
+  useEffect(() => {
+    map.invalidateSize();
+    const handleResize = () => map.invalidateSize();
+    const raf = requestAnimationFrame(() => map.invalidateSize());
+    window.addEventListener("resize", handleResize);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", handleResize);
+    };
+  }, [map]);
+
+  return null;
+};
+
 export default function MapPage() {
-  const router = useRouter();
   const [clients, setClients] = useState<Client[]>([]);
   const [query, setQuery] = useState("");
   const [addressQuery, setAddressQuery] = useState("");
@@ -394,18 +410,15 @@ export default function MapPage() {
     }
   }, [highlightLocation]);
 
-  const handleReturn = () => {
-    router.back();
-  };
-
   return (
-    <div className="relative flex-1 min-h-0 w-full overflow-hidden bg-transparent text-white">
+    <div className="relative flex-1 min-h-0 w-full overflow-hidden bg-transparent text-white lg:pl-56">
       <MapContainer
-        center={highlightLocation ? [highlightLocation.lat, highlightLocation.lng] : [-34.9, -56.2]}
-        zoom={6}
+        center={highlightLocation ? [highlightLocation.lat, highlightLocation.lng] : [-34.85, -56.1]}
+        zoom={10}
         scrollWheelZoom
-        className="fixed inset-0 z-0"
+        className="fixed inset-y-0 left-0 lg:left-56 right-0 z-0"
       >
+        <MapResizer />
         <TileLayer
           url="https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png"
           attribution='&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a>'
@@ -487,16 +500,6 @@ export default function MapPage() {
           </Marker>
         ))}
       </MapContainer>
-      <div className="absolute inset-0 pointer-events-none bg-gradient-to-br from-slate-950/80 via-slate-950/30 to-slate-950/70" />
-      <div className="absolute top-6 left-6 z-30">
-        <Button
-          variant="ghost"
-          className="bg-slate-900/80 text-white hover:bg-slate-900"
-          onClick={handleReturn}
-        >
-          Volver
-        </Button>
-      </div>
       <div className="absolute top-6 right-6 z-30 w-full max-w-lg space-y-4 p-4 lg:p-6 pointer-events-auto">
         <div className="rounded-3xl border border-white/10 bg-white/10 p-6 text-white shadow-2xl backdrop-blur">
           <div className="flex items-center justify-between">

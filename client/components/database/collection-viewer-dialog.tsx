@@ -174,7 +174,7 @@ export function CollectionViewerDialog({
                 <div className="flex-1 overflow-hidden flex">
                     {/* Main Content Area */}
                     <div className={`flex-1 flex flex-col min-w-0 ${selectedDoc ? "border-r border-slate-200" : ""}`}>
-                        <ScrollArea className="flex-1">
+                        <ScrollArea className="flex-1 min-h-0">
                             {loading ? (
                                 <div className="flex flex-col items-center justify-center h-64 text-slate-400">
                                     <Loader2 className="h-8 w-8 animate-spin mb-2" />
@@ -186,7 +186,7 @@ export function CollectionViewerDialog({
                                     <p className="text-sm">La colección está vacía</p>
                                 </div>
                             ) : viewMode === "table" ? (
-                                <div className="min-w-full inline-block align-middle">
+                                <div className="min-w-[960px] inline-block align-middle overflow-auto pr-2">
                                     <Table>
                                         <TableHeader>
                                             <TableRow className="hover:bg-transparent">

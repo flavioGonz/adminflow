@@ -17,6 +17,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Bell,
   Calculator,
@@ -48,13 +49,39 @@ const SidebarContext = createContext<{ collapsed: boolean; toggle: () => void }>
 
 export function SidebarProvider({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  // Load collapsed state from localStorage on mount
+  useEffect(() => {
+    const saved = typeof window !== "undefined" ? localStorage.getItem("sidebar-collapsed") : null;
+    if (saved !== null) {
+      setCollapsed(JSON.parse(saved));
+    }
+    setMounted(true);
+  }, []);
+
+  // Save collapsed state to localStorage when it changes
+  const handleToggle = () => {
+    setCollapsed((prev) => {
+      const next = !prev;
+      localStorage.setItem("sidebar-collapsed", JSON.stringify(next));
+      return next;
+    });
+  };
+
   const value = useMemo(
     () => ({
       collapsed,
-      toggle: () => setCollapsed((prev) => !prev),
+      toggle: handleToggle,
     }),
     [collapsed]
   );
+
+  // Prevent hydration mismatch
+  if (!mounted) {
+    return <SidebarContext.Provider value={value}>{children}</SidebarContext.Provider>;
+  }
+
   return <SidebarContext.Provider value={value}>{children}</SidebarContext.Provider>;
 }
 
@@ -81,11 +108,11 @@ const navItems: NavItem[] = [
   { name: "Repositorio", href: "/repository", icon: Folder },
   { name: "Calendario", href: "/calendar", icon: CalendarCheck },
   { name: "Mapa", href: "/map", icon: Map },
+  { name: "System", href: "/system", icon: Settings },
 ];
 
 const bottomActions: NavItem[] = [
   { name: "Base de datos", href: "/database", icon: Database },
-  { name: "Sistema", href: "/system", icon: Settings },
 ];
 
 const supportNavItems: NavItem[] = [
@@ -155,6 +182,7 @@ export function SidebarContent() {
   const pathname = usePathname();
   const { data: session } = useSession();
   const [profile, setProfile] = useState<SidebarProfile | null>(null);
+  const [primaryDbName, setPrimaryDbName] = useState<string | null>(null);
 
   const userName = session?.user?.name ?? "Usuario";
   const userRole = (session?.user as any)?.role ?? "Equipo";
@@ -205,12 +233,34 @@ export function SidebarContent() {
     fetch("/api/system/database").catch(() => undefined);
   }, []);
 
+  useEffect(() => {
+    let canceled = false;
+    const loadPrimary = async () => {
+      try {
+        const res = await fetch("/api/mongo-servers/status");
+        if (!res.ok) return;
+        const data = await res.json();
+        const list = Array.isArray(data) ? data : [];
+        const primary = list.find((s: any) => s.isPrimary);
+        if (!canceled) {
+          setPrimaryDbName(primary?.database || primary?.name || null);
+        }
+      } catch (err) {
+        // fail silently
+      }
+    };
+    loadPrimary();
+    return () => {
+      canceled = true;
+    };
+  }, []);
+
   const handleLogout = () => {
     setIsLogoutOpen(false);
     signOut({ callbackUrl: "/login" });
   };
 
-  const openTickets = (session?.user as any)?.assignedTickets ?? 3;
+  const openTickets = (session?.user as any)?.assignedTickets ?? 0;
   const isMapRoute = pathname?.startsWith("/map");
 
   return (
@@ -228,12 +278,6 @@ export function SidebarContent() {
         <Button variant="ghost" size="icon" className="text-slate-700" onClick={toggle}>
           <ChevronsLeft className={`h-4 w-4 transition ${collapsed ? "rotate-180" : ""}`} />
         </Button>
-      </div>
-      <div className="px-4 pb-2 -mt-2">
-        <Link href="/system" className={`flex items-center ${collapsed ? "justify-center" : "justify-start gap-2"} hover:opacity-70 transition`}>
-          <div className="h-3 w-3 rounded-full bg-emerald-500" title="Sistema conectado" />
-          {!collapsed && <span className="text-[11px] text-slate-500 hover:text-slate-700 transition">Sistema</span>}
-        </Link>
       </div>
       <div className="flex-1 overflow-y-auto px-1 py-2">
         <SidebarNavItem item={navItems[0]} active={!!pathname?.startsWith(navItems[0].href)} collapsed={collapsed} />
@@ -359,16 +403,22 @@ export function SidebarContent() {
                   <AvatarFallback>{avatarInitials}</AvatarFallback>
                 )}
               </Avatar>
-              {bottomActions.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className="rounded-full bg-transparent p-1 text-slate-500 hover:text-slate-900"
-                >
-                  <item.icon className="h-4 w-4" aria-hidden />
-                  <span className="sr-only">{item.name}</span>
-                </Link>
-              ))}
+                  {bottomActions.map((item) => (
+                    <Tooltip key={item.href}>
+                      <TooltipTrigger asChild>
+                        <Link
+                          href={item.href}
+                          className="rounded-full bg-transparent p-1 text-slate-500 hover:text-slate-900"
+                        >
+                          <item.icon className="h-4 w-4" aria-hidden />
+                          <span className="sr-only">{item.name}</span>
+                        </Link>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" align="center">
+                        Base primaria: {primaryDbName || "No definida"}
+                      </TooltipContent>
+                    </Tooltip>
+                  ))}
               <Link href="/notifications" className="text-slate-500 hover:text-slate-900">
                 <Bell className="h-4 w-4" />
               </Link>

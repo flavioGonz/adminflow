@@ -49,6 +49,7 @@ import {
   Tag,
   Trash2,
   ImageIcon,
+  Loader2,
 } from "lucide-react";
 import { BudgetPdfPreview } from "@/components/budgets/budget-pdf-preview";
 import { API_URL } from "@/lib/http";
@@ -643,7 +644,7 @@ export default function EditBudgetPage() {
   if (loading) {
     return (
       <DashboardLayout>
-        <div className="flex items-center justify-center h-full">Cargando...</div>
+        <div className="flex items-center justify-center h-full text-muted-foreground"><Loader2 className="h-6 w-6 animate-spin mr-2" />Cargando presupuesto...</div>
       </DashboardLayout>
     );
   }

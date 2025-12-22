@@ -56,7 +56,7 @@ export function BackupManager() {
   const loadBackups = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${API_URL}/system/database/backup/list`, {
+      const response = await fetch(`${API_URL}/database/backup/list`, {
         method: "GET",
       });
 
@@ -77,7 +77,7 @@ export function BackupManager() {
   const handleCreateBackup = async () => {
     setCreating(true);
     try {
-      const response = await fetch(`${API_URL}/system/database/backup/create`, {
+      const response = await fetch(`${API_URL}/database/backup/create`, {
         method: "POST",
       });
 
@@ -103,7 +103,7 @@ export function BackupManager() {
 
     try {
       const response = await fetch(
-        `${API_URL}/system/database/backup/delete/${deleteTarget}`,
+        `${API_URL}/database/backup/delete/${deleteTarget}`,
         {
           method: "DELETE",
         }
@@ -127,7 +127,7 @@ export function BackupManager() {
     if (!restoreTarget) return;
 
     try {
-      const response = await fetch(`${API_URL}/system/database/backup/restore`, {
+      const response = await fetch(`${API_URL}/database/backup/restore`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ backupName: restoreTarget }),
@@ -149,7 +149,7 @@ export function BackupManager() {
 
   const handleDownloadBackup = (backupName: string) => {
     const link = document.createElement("a");
-    link.href = `${API_URL}/system/database/backup/download/${backupName}`;
+    link.href = `${API_URL}/database/backup/download/${backupName}`;
     link.download = `${backupName}.zip`;
     document.body.appendChild(link);
     link.click();

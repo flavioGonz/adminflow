@@ -75,9 +75,17 @@ export function TicketTable({ tickets, onTicketUpdated, onTicketDeleted }: Ticke
     switch (status) {
       case "Abierto":
         return "default";
-      case "En proceso":
+      case "Visita":
+      case "Visita - Coordinar":
+      case "Visita Programada":
+      case "Visita Realizada":
+      case "Revision Cerrar Visita":
         return "secondary";
       case "Resuelto":
+        return "outline";
+      case "Facturar":
+        return "destructive";
+      case "Pagado":
         return "outline";
       default:
         return "default";
@@ -97,7 +105,19 @@ export function TicketTable({ tickets, onTicketUpdated, onTicketDeleted }: Ticke
     }
   };
 
-  const statusOptions: Ticket["status"][] = ["Nuevo", "Abierto", "En proceso", "Visita", "Resuelto", "Facturar", "Pagado"];
+  const statusOptions: Ticket["status"][] = [
+    "Nuevo",
+    "Abierto",
+    "En proceso",
+    "Visita",
+    "Visita - Coordinar",
+    "Visita Programada",
+    "Visita Realizada",
+    "Revision Cerrar Visita",
+    "Resuelto",
+    "Facturar",
+    "Pagado",
+  ];
 
   const handleStatusChange = async (ticket: Ticket, value: Ticket["status"]) => {
     setUpdatingId(ticket.id);

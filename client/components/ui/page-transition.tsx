@@ -30,7 +30,7 @@ interface TablePageTransitionProps {
 
 export function TablePageTransition({ children, pageKey }: TablePageTransitionProps) {
   return (
-    <AnimatePresence mode="wait">
+    <AnimatePresence initial={false}>
       <motion.tbody
         key={pageKey}
         initial={{ opacity: 0 }}

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   Table,
@@ -9,13 +9,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationNext,
-  PaginationPrevious,
-} from "@/components/ui/pagination";
 import {
   Edit,
   Trash2,
@@ -61,14 +54,15 @@ export function ContractTable({
   onContractDeleted,
   searchTerm,
 }: ContractTableProps) {
-  const [currentPage, setCurrentPage] = useState(1);
   const [sortConfig, setSortConfig] = useState<{
     key: SortKey;
     direction: "ascending" | "descending";
   } | null>(null);
   const [isPdfViewerOpen, setIsPdfViewerOpen] = useState(false);
   const [currentPdfPath, setCurrentPdfPath] = useState<string | undefined>(undefined);
-  const contractsPerPage = 10;
+  const LOAD_INCREMENT = 15;
+  const [visibleCount, setVisibleCount] = useState(LOAD_INCREMENT);
+  const tableScrollRef = useRef<HTMLDivElement | null>(null);
 
   const filteredContracts = useMemo(() => {
     return contracts.filter((contract) => {
@@ -108,25 +102,36 @@ export function ContractTable({
     return sortableItems;
   }, [filteredContracts, sortConfig]);
 
-  const currentContracts = useMemo(() => {
-    const indexOfLastContract = currentPage * contractsPerPage;
-    const indexOfFirstContract = indexOfLastContract - contractsPerPage;
-    return sortedContracts.slice(indexOfFirstContract, indexOfLastContract);
-  }, [sortedContracts, currentPage]);
+  const visibleContracts = useMemo(
+    () => sortedContracts.slice(0, visibleCount),
+    [sortedContracts, visibleCount]
+  );
+  const hasMoreResults = visibleCount < sortedContracts.length;
 
-  const totalPages = Math.ceil(sortedContracts.length / contractsPerPage);
-
-  const handleNextPage = () => {
-    if (currentPage < totalPages) {
-      setCurrentPage(currentPage + 1);
+  const handleScroll = useCallback(() => {
+    const container = tableScrollRef.current;
+    if (!container || !hasMoreResults) return;
+    if (
+      container.scrollHeight - container.scrollTop - container.clientHeight <
+      150
+    ) {
+      setVisibleCount((prev) =>
+        Math.min(prev + LOAD_INCREMENT, sortedContracts.length)
+      );
     }
-  };
+  }, [hasMoreResults, sortedContracts.length]);
 
-  const handlePreviousPage = () => {
-    if (currentPage > 1) {
-      setCurrentPage(currentPage - 1);
+  useEffect(() => {
+    setVisibleCount(LOAD_INCREMENT);
+    if (tableScrollRef.current) {
+      tableScrollRef.current.scrollTop = 0;
     }
-  };
+  }, [
+    searchTerm,
+    sortConfig?.key,
+    sortConfig?.direction,
+    sortedContracts.length,
+  ]);
 
   const currencyInfo = (currency?: string) => {
     if (!currency) return { label: "Sin moneda", flagCode: null };
@@ -161,222 +166,217 @@ export function ContractTable({
   return (
     <div className="space-y-4">
       <div className="overflow-hidden rounded-xl bg-gradient-to-b from-white to-slate-50 shadow-sm">
-        <Table>
-          <TableHeader>
-            <TableRow className="bg-slate-50/70">
-              <TableHead onClick={() => requestSort("id")}>
-                <button className="flex items-center gap-2 cursor-pointer font-semibold text-slate-800">
-                  <Check className="h-4 w-4" />
-                  ID #
-                  <ArrowUpDown className="h-4 w-4 text-slate-500" />
-                </button>
-              </TableHead>
-              <TableHead>
-                <div className="flex items-center gap-2">
-                  <User className="h-4 w-4" />
-                  Cliente
-                </div>
-              </TableHead>
-              <TableHead onClick={() => requestSort("title")}>
-                <button className="flex items-center gap-2 cursor-pointer font-semibold text-slate-800">
-                  <Tag className="h-4 w-4" />
-                  Título
-                  <ArrowUpDown className="h-4 w-4 text-slate-500" />
-                </button>
-              </TableHead>
-              <TableHead onClick={() => requestSort("startDate")}>
-                <button className="flex items-center gap-2 cursor-pointer font-semibold text-slate-800">
-                  <Calendar className="h-4 w-4" />
-                  Fecha Inicio
-                  <ArrowUpDown className="h-4 w-4 text-slate-500" />
-                </button>
-              </TableHead>
-              <TableHead onClick={() => requestSort("endDate")}>
-                <button className="flex items-center gap-2 cursor-pointer font-semibold text-slate-800">
-                  <Calendar className="h-4 w-4" />
-                  Fecha Fin
-                  <ArrowUpDown className="h-4 w-4 text-slate-500" />
-                </button>
-              </TableHead>
-              <TableHead onClick={() => requestSort("status")}>
-                <button className="flex items-center gap-2 cursor-pointer font-semibold text-slate-800">
-                  <CheckCircle className="h-4 w-4" />
-                  Estado
-                  <ArrowUpDown className="h-4 w-4 text-slate-500" />
-                </button>
-              </TableHead>
-              <TableHead onClick={() => requestSort("amount")}>
-                <button className="flex items-center gap-2 cursor-pointer font-semibold text-slate-800">
-                  <DollarSign className="h-4 w-4" />
-                  Monto
-                  <ArrowUpDown className="h-4 w-4 text-slate-500" />
-                </button>
-              </TableHead>
-
-              <TableHead className="text-right">
-                <span className="sr-only">Acciones</span>
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {currentContracts.length > 0 ? (
-              currentContracts.map((contract) => (
-                <TableRow key={contract.id} className="hover:bg-slate-50">
-                  <TableCell className="font-mono text-sm text-slate-700">
-                    #{contract.id}
-                  </TableCell>
-                  <TableCell className="font-medium">
-                    {contract.clientId ? (
-                      <Link
-                        href={`/clients/${contract.clientId}`}
-                        className="text-slate-900 underline-offset-2 hover:text-slate-700 hover:underline"
-                      >
-                        {contract.clientName || "Cliente sin nombre"}
-                      </Link>
-                    ) : (
-                      <span className="text-slate-500">Cliente no asignado</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="font-semibold text-slate-900">
-                    <div className="space-y-2">
-                      <div className="text-base font-semibold text-slate-900">{contract.title}</div>
-                      <div className="flex flex-wrap gap-3 text-xs text-slate-700">
-                        {contract.sla && (
-                          <span className="inline-flex items-center gap-1">
-                            <Clock3 className="h-3 w-3" />
-                            SLA {contract.sla}
-                          </span>
-                        )}
-                        {contract.contractType && (
-                          <span className="inline-flex items-center gap-1">
-                            <ClipboardList className="h-3 w-3" />
-                            {contract.contractType}
-                          </span>
-                        )}
-                      </div>
+        <div className="relative">
+          <div
+            ref={tableScrollRef}
+            className="max-h-[65vh] overflow-y-auto"
+            onScroll={handleScroll}
+          >
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-slate-50/70">
+                  <TableHead onClick={() => requestSort("id")}>
+                    <button className="flex items-center gap-2 cursor-pointer font-semibold text-slate-800">
+                      <Check className="h-4 w-4" />
+                      ID #
+                      <ArrowUpDown className="h-4 w-4 text-slate-500" />
+                    </button>
+                  </TableHead>
+                  <TableHead>
+                    <div className="flex items-center gap-2">
+                      <User className="h-4 w-4" />
+                      Cliente
                     </div>
-                  </TableCell>
-                  <TableCell className="text-sm text-slate-700">
-                    {contract.startDate || "Sin fecha"}
-                  </TableCell>
-                  <TableCell className="text-sm text-slate-700">
-                    {contract.endDate || "Sin fecha"}
-                  </TableCell>
-                  <TableCell>
-                    {(() => {
-                      const badge = statusBadge(contract.status);
-                      return (
-                        <span className={`${badge.className} inline-flex items-center gap-1 rounded px-2 py-1 text-sm`}>
-                          <span>{badge.emoji}</span>
-                          {badge.label}
-                        </span>
-                      );
-                    })()}
-                  </TableCell>
-                  <TableCell className="font-semibold text-slate-900">
-                    <div className="flex items-center gap-3">
-                      {(() => {
-                        const info = currencyInfo(contract.currency);
-                        return (
-                          <div className="flex items-center gap-2 text-slate-700">
-                            {info.flagCode && (
-                              <ReactCountryFlag
-                                svg
-                                countryCode={info.flagCode}
-                                className="inline-block h-4 w-5"
-                                aria-label={info.label}
-                              />
-                            )}
-                            <span className="text-sm font-semibold">{info.label}</span>
-                          </div>
-                        );
-                      })()}
-                      <span className="text-slate-900">
-                        {contract.amount !== undefined
-                          ? new Intl.NumberFormat("es-UY", {
-                            style: "decimal",
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          }).format(contract.amount)
-                          : "Sin monto"}
-                      </span>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" title="Acciones">
-                          <EllipsisVertical className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-44">
-                        {contract.filePath && (
-                          <DropdownMenuItem
-                            onSelect={(e) => {
-                              e.preventDefault();
-                              setCurrentPdfPath(contract.filePath);
-                              setIsPdfViewerOpen(true);
-                            }}
-                            className="gap-2"
-                          >
-                            <Eye className="h-4 w-4" />
-                            Ver contrato
-                          </DropdownMenuItem>
-                        )}
-                        <UploadContractDialog contract={contract} onContractUpdated={onContractUpdated}>
-                          <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="gap-2">
-                            <Upload className="h-4 w-4" />
-                            Subir PDF
-                          </DropdownMenuItem>
-                        </UploadContractDialog>
-                        <EditContractDialog contract={contract} onContractUpdated={onContractUpdated}>
-                          <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="gap-2">
-                            <Edit className="h-4 w-4" />
-                            Editar
-                          </DropdownMenuItem>
-                        </EditContractDialog>
-                        <DeleteContractDialog contract={contract} onContractDeleted={onContractDeleted}>
-                          <DropdownMenuItem
-                            onSelect={(e) => e.preventDefault()}
-                            className="gap-2 text-red-600 focus:text-red-600"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                            Eliminar
-                          </DropdownMenuItem>
-                        </DeleteContractDialog>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
+                  </TableHead>
+                  <TableHead onClick={() => requestSort("title")}>
+                    <button className="flex items-center gap-2 cursor-pointer font-semibold text-slate-800">
+                      <Tag className="h-4 w-4" />
+                      Título
+                      <ArrowUpDown className="h-4 w-4 text-slate-500" />
+                    </button>
+                  </TableHead>
+                  <TableHead onClick={() => requestSort("startDate")}>
+                    <button className="flex items-center gap-2 cursor-pointer font-semibold text-slate-800">
+                      <Calendar className="h-4 w-4" />
+                      Fecha Inicio
+                      <ArrowUpDown className="h-4 w-4 text-slate-500" />
+                    </button>
+                  </TableHead>
+                  <TableHead onClick={() => requestSort("endDate")}>
+                    <button className="flex items-center gap-2 cursor-pointer font-semibold text-slate-800">
+                      <Calendar className="h-4 w-4" />
+                      Fecha Fin
+                      <ArrowUpDown className="h-4 w-4 text-slate-500" />
+                    </button>
+                  </TableHead>
+                  <TableHead onClick={() => requestSort("status")}>
+                    <button className="flex items-center gap-2 cursor-pointer font-semibold text-slate-800">
+                      <CheckCircle className="h-4 w-4" />
+                      Estado
+                      <ArrowUpDown className="h-4 w-4 text-slate-500" />
+                    </button>
+                  </TableHead>
+                  <TableHead onClick={() => requestSort("amount")}>
+                    <button className="flex items-center gap-2 cursor-pointer font-semibold text-slate-800">
+                      <DollarSign className="h-4 w-4" />
+                      Monto
+                      <ArrowUpDown className="h-4 w-4 text-slate-500" />
+                    </button>
+                  </TableHead>
+                  <TableHead className="text-right">
+                    <span className="sr-only">Acciones</span>
+                  </TableHead>
                 </TableRow>
-              ))
-            ) : (
-              <TableRow>
-                <TableCell colSpan={8} className="h-24 text-center">
-                  No se encontraron contratos.
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
+              </TableHeader>
+              <TableBody>
+                {visibleContracts.length > 0 ? (
+                  visibleContracts.map((contract) => (
+                    <TableRow key={contract.id} className="hover:bg-slate-50">
+                      <TableCell className="font-mono text-sm text-slate-700">
+                        #{contract.id}
+                      </TableCell>
+                      <TableCell className="font-medium">
+                        {contract.clientId ? (
+                          <Link
+                            href={`/clients/${contract.clientId}`}
+                            className="text-slate-900 underline-offset-2 hover:text-slate-700 hover:underline"
+                          >
+                            {contract.clientName || "Cliente sin nombre"}
+                          </Link>
+                        ) : (
+                          <span className="text-slate-500">Cliente no asignado</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="font-semibold text-slate-900">
+                        <div className="space-y-2">
+                          <div className="text-base font-semibold text-slate-900">{contract.title}</div>
+                          <div className="flex flex-wrap gap-3 text-xs text-slate-700">
+                            {contract.sla && (
+                              <span className="inline-flex items-center gap-1">
+                                <Clock3 className="h-3 w-3" />
+                                SLA {contract.sla}
+                              </span>
+                            )}
+                            {contract.contractType && (
+                              <span className="inline-flex items-center gap-1">
+                                <ClipboardList className="h-3 w-3" />
+                                {contract.contractType}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-sm text-slate-700">
+                        {contract.startDate || "Sin fecha"}
+                      </TableCell>
+                      <TableCell className="text-sm text-slate-700">
+                        {contract.endDate || "Sin fecha"}
+                      </TableCell>
+                      <TableCell>
+                        {(() => {
+                          const badge = statusBadge(contract.status);
+                          return (
+                            <span className={`${badge.className} inline-flex items-center gap-1 rounded px-2 py-1 text-sm`}>
+                              <span>{badge.emoji}</span>
+                              {badge.label}
+                            </span>
+                          );
+                        })()}
+                      </TableCell>
+                      <TableCell className="font-semibold text-slate-900">
+                        <div className="flex items-center gap-3">
+                          {(() => {
+                            const info = currencyInfo(contract.currency);
+                            return (
+                              <div className="flex items-center gap-2 text-slate-700">
+                                {info.flagCode && (
+                                  <ReactCountryFlag
+                                    svg
+                                    countryCode={info.flagCode}
+                                    className="inline-block h-4 w-5"
+                                    aria-label={info.label}
+                                  />
+                                )}
+                                <span className="text-sm font-semibold">{info.label}</span>
+                              </div>
+                            );
+                          })()}
+                          <span className="text-slate-900">
+                            {contract.amount !== undefined
+                              ? new Intl.NumberFormat("es-UY", {
+                                style: "decimal",
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              }).format(contract.amount)
+                              : "Sin monto"}
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" title="Acciones">
+                              <EllipsisVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-44">
+                            {contract.filePath && (
+                              <DropdownMenuItem
+                                onSelect={(e) => {
+                                  e.preventDefault();
+                                  setCurrentPdfPath(contract.filePath);
+                                  setIsPdfViewerOpen(true);
+                                }}
+                                className="gap-2"
+                              >
+                                <Eye className="h-4 w-4" />
+                                Ver contrato
+                              </DropdownMenuItem>
+                            )}
+                            <UploadContractDialog contract={contract} onContractUpdated={onContractUpdated}>
+                              <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="gap-2">
+                                <Upload className="h-4 w-4" />
+                                Subir PDF
+                              </DropdownMenuItem>
+                            </UploadContractDialog>
+                            <EditContractDialog contract={contract} onContractUpdated={onContractUpdated}>
+                              <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="gap-2">
+                                <Edit className="h-4 w-4" />
+                                Editar
+                              </DropdownMenuItem>
+                            </EditContractDialog>
+                            <DeleteContractDialog contract={contract} onContractDeleted={onContractDeleted}>
+                              <DropdownMenuItem
+                                onSelect={(e) => e.preventDefault()}
+                                className="gap-2 text-red-600 focus:text-red-600"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                                Eliminar
+                              </DropdownMenuItem>
+                            </DeleteContractDialog>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={8} className="h-24 text-center">
+                      No se encontraron contratos.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+          {hasMoreResults && (
+            <div className="px-4 py-3 text-center text-xs text-slate-500 relative z-10">
+              Desliza para cargar más contratos
+            </div>
+          )}
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-white to-transparent" />
+        </div>
       </div>
-      <Pagination>
-        <PaginationContent>
-          <PaginationItem>
-            <PaginationPrevious
-              onClick={currentPage === 1 ? undefined : handlePreviousPage}
-              aria-disabled={currentPage === 1}
-              className={currentPage === 1 ? "opacity-40 pointer-events-none" : undefined}
-            />
-          </PaginationItem>
-          <PaginationItem>
-            <PaginationNext
-              onClick={currentPage === totalPages ? undefined : handleNextPage}
-              aria-disabled={currentPage === totalPages}
-              className={currentPage === totalPages ? "opacity-40 pointer-events-none" : undefined}
-            />
-          </PaginationItem>
-        </PaginationContent>
-      </Pagination>
 
       <PdfViewerModal
         isOpen={isPdfViewerOpen}

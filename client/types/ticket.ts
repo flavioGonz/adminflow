@@ -2,7 +2,18 @@ export type TicketStatus =
   | "Nuevo"
   | "Abierto"
   | "En proceso"
+  | "En proceso de soporte"
   | "Visita"
+  | "Visita - Coordinar"
+  | "Visita Programada"
+  | "Visita Realizada"
+  | "Revision Cerrar Visita"
+  | "Pendiente de Coordinación"
+  | "Pendiente de Cliente"
+  | "Pendiente de Tercero"
+  | "Pendiente de Facturación"
+  | "Pendiente de Pago"
+  | "Cerrado"
   | "Resuelto"
   | "Facturar"
   | "Pagado";
@@ -43,10 +54,10 @@ export interface Ticket {
     text: string;
     createdAt: string;
     user?: string;
-      attachments?: TicketAttachment[];
-      audioNotes?: TicketAudioNote[];
-      avatar?: string | null;
-    }[];
+    attachments?: TicketAttachment[];
+    audioNotes?: TicketAudioNote[];
+    avatar?: string | null;
+  }[];
   hasActiveContract?: boolean;
   description?: string;
   amountCurrency?: "UYU" | "USD";
@@ -57,4 +68,5 @@ export interface Ticket {
   paid?: boolean;
   assignedTo?: string | null;
   assignedGroupId?: string | null;
+  updatedAt?: string;
 }

@@ -1,7 +1,5 @@
 "use client";
 
-import { motion } from "framer-motion";
-
 interface UseTableAnimationProps {
   staggerDelay?: number;
   rowDelay?: number;
@@ -13,30 +11,12 @@ export function useTableAnimation({
   rowDelay = 0,
   duration = 0.4,
 }: UseTableAnimationProps = {}) {
-  const containerVariants = {
-    hidden: { opacity: 0 },
-    visible: {
-      opacity: 1,
-      transition: {
-        staggerChildren: staggerDelay,
-        delayChildren: rowDelay,
-      },
-    },
-  };
-
-  const rowVariants = {
-    hidden: { opacity: 0, y: 20 },
-    visible: {
-      opacity: 1,
-      y: 0,
-      transition: {
-        duration,
-        ease: [0.34, 1.56, 0.64, 1], // cubic-bezier for smooth spring effect
-      },
-    },
-  };
-
-  const MotionTableBody = motion.tbody;
+  // No-op variants for compatibility; animations removed for performance
+  const containerVariants = {} as const;
+  const rowVariants = {} as const;
+  const MotionTableBody = (props: React.HTMLAttributes<HTMLTableSectionElement>) => (
+    <tbody {...props} />
+  );
 
   return {
     MotionTableBody,
@@ -57,39 +37,26 @@ export function AnimatedTableBody({
   staggerDelay = 0.05,
   rowDelay = 0,
 }: AnimatedTableBodyProps) {
-  const { MotionTableBody, containerVariants } = useTableAnimation({
-    staggerDelay,
-    rowDelay,
-  });
-
-  return (
-    <MotionTableBody
-      initial="hidden"
-      animate="visible"
-      variants={containerVariants}
-    >
-      {children}
-    </MotionTableBody>
-  );
+  // Render plain tbody without animations
+  return <tbody>{children}</tbody>;
 }
 
 // Helper component for wrapping individual rows
-interface AnimatedRowProps {
+type AnimatedRowProps = {
   children: React.ReactNode;
   delay?: number;
-}
+  className?: string;
+  onClick?: () => void;
+};
 
-export function AnimatedRow({ children, delay = 0 }: AnimatedRowProps) {
-  const { rowVariants } = useTableAnimation();
-
+export function AnimatedRow({ children, delay = 0, className, onClick }: AnimatedRowProps) {
+  // Render plain tr without animations
   return (
-    <motion.tr
-      variants={rowVariants}
-      transition={{
-        delay,
-      }}
+    <tr
+      onClick={onClick}
+      className={`border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted ${className ?? ""}`}
     >
       {children}
-    </motion.tr>
+    </tr>
   );
 }

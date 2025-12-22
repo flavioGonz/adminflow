@@ -16,13 +16,13 @@ import {
   Mic,
   Paperclip,
   PlayCircle,
+  Receipt,
   Send,
   Trash2,
   Unlock,
   PlusCircle,
   FolderOpen,
   CheckCircle2,
-  Receipt,
   DollarSign,
   Ticket as TicketIcon,
   Activity,
@@ -37,6 +37,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import VisitForm from "@/components/tickets/visit-form";
 import { Label } from "@/components/ui/label";
 import {
   Dialog,
@@ -67,6 +68,7 @@ import {
 } from "@/types/ticket";
 import { Group } from "@/types/group";
 import { API_URL } from "@/lib/http";
+import { TicketsTimeline } from "@/components/tickets/tickets-timeline";
 
 const formatDateTime = (value?: string) =>
   value
@@ -156,9 +158,8 @@ export default function TicketDetailPage() {
   const [formAmount, setFormAmount] = useState<number | undefined>();
   const [formCurrency, setFormCurrency] = useState<"UYU" | "USD">("UYU");
   const [formDescription, setFormDescription] = useState("");
-  const [formAnnotations, setFormAnnotations] = useState<Ticket["annotations"]>(
-    []
-  );
+  const [formAnnotations, setFormAnnotations] = useState<Ticket["annotations"]>([]);
+  const [timelinePeriod, setTimelinePeriod] = useState<"day" | "week">("week");
   const [notifyClient, setNotifyClient] = useState(false);
   const [noteDraft, setNoteDraft] = useState("");
   const [pendingAttachments, setPendingAttachments] = useState<
@@ -179,6 +180,16 @@ export default function TicketDetailPage() {
   const [isLocked, setIsLocked] = useState(true);
   const [users, setUsers] = useState<{ id: string; name: string; email: string; avatar?: string }[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
+  // Declaracion de groupsMap al nivel superior del componente
+  const groupsMap = useMemo(() => {
+    const map: Record<string, Group> = {};
+    groups.forEach((group) => {
+      if (group._id) {
+        map[group._id] = group;
+      }
+    });
+    return map;
+  }, [groups]);
   const [formAssignedTo, setFormAssignedTo] = useState<string | null>(null);
   const [formAssignedGroupId, setFormAssignedGroupId] = useState<string | null>(null);
   const currentUserProfile = useMemo(() => {
@@ -207,12 +218,9 @@ export default function TicketDetailPage() {
       setIsLoading(true);
       setError(null);
       try {
-        const response = await fetch(
-          `${API_URL}/tickets/${params.id}`,
-          {
-            signal: controller.signal,
-          }
-        );
+        const response = await fetch(`${API_URL}/tickets/${params.id}`, {
+          signal: controller.signal,
+        });
         if (!response.ok) {
           throw new Error("No se pudo cargar el ticket solicitado.");
         }
@@ -223,7 +231,7 @@ export default function TicketDetailPage() {
         const message =
           err instanceof Error
             ? err.message
-            : "Ocurrió un error al cargar el ticket.";
+          : "Ocurrio un error al cargar el ticket.";
         setError(message);
         toast.error(message);
         console.error("Error fetching ticket:", err);
@@ -317,17 +325,6 @@ export default function TicketDetailPage() {
       setFormAssignedGroupId(ticket.assignedGroupId ?? null);
     }
   }, [ticket]);
-
-  const groupsMap = useMemo(() => {
-    const map: Record<string, Group> = {};
-    groups.forEach((group) => {
-      if (group._id) {
-        map[group._id] = group;
-      }
-    });
-    return map;
-  }, [groups]);
-
   const assignedUser = useMemo(
     () => users.find((user) => user.email === formAssignedTo) ?? null,
     [users, formAssignedTo]
@@ -401,6 +398,13 @@ export default function TicketDetailPage() {
     );
   }, [formAnnotations]);
 
+  const timelineAnnotations = useMemo(() => {
+    return [...(formAnnotations ?? [])].sort(
+      (a, b) =>
+        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    );
+  }, [formAnnotations]);
+
   const handleSave = useCallback(
     async (overrides?: { annotations?: Ticket["annotations"] }) => {
       if (!ticket) return;
@@ -417,15 +421,19 @@ export default function TicketDetailPage() {
             changes.push(`Prioridad: <strong>${ticket.priority}</strong> → <strong>${formPriority}</strong>`);
           }
           if (Boolean(ticket.visit) !== Boolean(formVisit)) {
-            changes.push(`Visita: <strong>${ticket.visit ? "Sí" : "No"}</strong> → <strong>${formVisit ? "Sí" : "No"}</strong>`);
+                changes.push(`Visita: <strong>${ticket.visit ? "Si" : "No"}</strong> → <strong>${formVisit ? "Si" : "No"}</strong>`);
           }
-          if (ticket.amount !== formAmount || ticket.amountCurrency !== formCurrency) {
+          const currentAmount = ticket.amount ?? 0;
+          const currentCurrency = ticket.amountCurrency ?? "UYU";
+          const newAmount = formAmount ?? 0;
+          const newCurrency = formCurrency ?? "UYU";
+          if (currentAmount !== newAmount || currentCurrency !== newCurrency) {
             changes.push(
-              `Monto: <strong>${ticket.amount ?? "--"} ${ticket.amountCurrency ?? "UYU"}</strong> → <strong>${formAmount ?? "--"} ${formCurrency}</strong>`
+              `Monto: <strong>${currentAmount} ${currentCurrency}</strong> → <strong>${newAmount} ${newCurrency}</strong>`
             );
           }
           if ((ticket.description ?? "") !== (formDescription ?? "")) {
-            changes.push("Descripción actualizada");
+                changes.push("Descripcion actualizada");
           }
           if ((ticket.assignedTo ?? null) !== (formAssignedTo ?? null)) {
             const oldUser = ticket.assignedTo || "Sin asignar";
@@ -455,7 +463,7 @@ export default function TicketDetailPage() {
             }
             if (hasEditorNote) {
               segments.push(
-                `<p class="mt-3 text-[0.7rem] uppercase tracking-[0.3em] text-slate-500">Detalle técnico</p>${noteDraft}`
+                `<p class="mt-3 text-[0.7rem] uppercase tracking-[0.3em] text-slate-500">Detalle tecnico</p>${noteDraft}`
               );
             }
             if (!segments.length) {
@@ -518,7 +526,7 @@ export default function TicketDetailPage() {
         const message =
           err instanceof Error
             ? err.message
-            : "Ocurrió un error al guardar los cambios.";
+          : "Ocurrio un error al guardar los cambios.";
         toast.error(message);
         console.error("Error saving ticket:", err);
       } finally {
@@ -689,7 +697,7 @@ export default function TicketDetailPage() {
       setIsRecording(true);
     } catch (err) {
       console.error("Recording error:", err);
-      toast.error("No se pudo iniciar la grabación.");
+        toast.error("No se pudo iniciar la grabacion.");
     }
   }, []);
 
@@ -769,8 +777,11 @@ export default function TicketDetailPage() {
   const contractTitle = ticket.contractTitle ?? "Sin contrato activo";
   const contractSla = ticket.contractSla ?? "SLA pendiente";
 
+  // Debug: log ticket and annotation data to diagnose RangeError
+  console.log("[DEBUG] Ticket Data:", ticket);
+  console.log("[DEBUG] Annotations:", sortedAnnotations);
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-5 p-6">
       <PageHeader
         title={ticket.title}
         subtitle={`ID: ${ticket.id} • Cliente: ${ticket.clientName}`}
@@ -781,126 +792,167 @@ export default function TicketDetailPage() {
           { label: `Ticket ${ticket.id}`, icon: <CheckCircle2 className="h-3 w-3 text-slate-500" /> },
         ]}
         actions={
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            <Badge
-              variant={getStatusBadgeVariant(formStatus)}
-              className="text-sm uppercase"
-            >
-              {formStatus}
-            </Badge>
-            <Badge
-              variant={getPriorityBadgeVariant(formPriority)}
-              className="text-sm uppercase"
-            >
-              {formPriority}
-            </Badge>
-            {formVisit && (
-              <Badge variant="outline" className="text-sm uppercase">
-                Visita
-              </Badge>
-            )}
-          </div>
+          null
         }
       />
 
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="flex flex-wrap gap-3">
-          {metrics.map((metric) => (
-            <div
-              key={metric.label}
-              className="flex flex-col px-4 py-1 text-left text-sm text-slate-700"
-            >
-              <span className="text-lg font-semibold text-slate-900">
-                {metric.value}
-              </span>
-              <span className="text-[10px] uppercase tracking-wide text-slate-400">
-                {metric.label}
-              </span>
-              <span className="text-[10px] text-slate-500">{metric.meta}</span>
-            </div>
-          ))}
+      <div className="flex items-center gap-4 justify-between">
+        {/* Linea horizontal con avatares del timeline */}
+        <div className="flex-[0_0_65%] pr-2">
+          <div className="relative flex items-center h-14">
+            <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-0.5 bg-slate-300" />
+            {timelineAnnotations.map((annotation, idx) => {
+              const total = timelineAnnotations.length;
+              let percent = total === 1 ? 0 : (idx / (total - 1)) * 100;
+              if (!isFinite(percent) || isNaN(percent)) percent = 0;
+              percent = Math.max(0, Math.min(100, percent));
+              return (
+                <div
+                  key={annotation.createdAt}
+                  className="absolute top-1/2 -translate-y-1/2 flex flex-col items-center group"
+                  style={{ left: `${percent}%` }}
+                >
+                  <div className="relative">
+                    <Avatar className="h-9 w-9 border border-white bg-white shadow transition-transform duration-200 group-hover:scale-110">
+                      {annotation.avatar ? (
+                        <AvatarImage src={annotation.avatar} alt={annotation.user ?? "Usuario"} />
+                      ) : (
+                        <AvatarFallback>
+                          {(annotation.user ?? "Usuario")
+                            .split(" ")
+                            .map((part) => part.charAt(0))
+                            .join("")
+                            .slice(0, 2)
+                            .toUpperCase()}
+                        </AvatarFallback>
+                      )}
+                    </Avatar>
+                    {annotation.text && (
+                      <div className="pointer-events-none absolute left-1/2 top-full mt-2 -translate-x-1/2">
+                        <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div
+                            className="whitespace-nowrap rounded-lg border border-slate-200 bg-white p-2 text-[10px] font-semibold text-slate-600 shadow-lg"
+                            dangerouslySetInnerHTML={{ __html: annotation.text }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <span className="mt-1 text-[10px] font-semibold text-slate-600 uppercase tracking-[0.2em] leading-tight">
+                    {formatDateTime(annotation.createdAt)}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
         </div>
-        <div className="ml-auto">
-          <Button onClick={() => handleSave()} disabled={isSaving}>
+        <div className="flex-[0_0_10%] flex justify-end min-w-[140px]">
+          <Button onClick={() => handleSave()} disabled={isSaving} className="w-full">
             {isSaving ? "Guardando..." : "Guardar cambios"}
           </Button>
         </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1.25fr_0.75fr]">
-        <section className="space-y-5 rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-semibold">Documenta la intervención</p>
-              <p className="text-xs text-muted-foreground">
-                Todo lo que escribas, los archivos adjuntos y las notas de audio se registrarán cuando guardes los cambios.
-              </p>
+        {/* Mostrar el formulario de visita solo en estados de visita */}
+        {[
+          "Visita",
+          "Visita - Coordinar",
+          "Visita Programada",
+          "Visita Realizada",
+          "Revision Cerrar Visita"
+        ].includes(formStatus) ? (
+          <section className="space-y-5 rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-semibold">Formulario de visita</p>
+                <p className="text-xs text-muted-foreground">
+                  Completa los datos de la visita y registra pendientes o facturacion.
+                </p>
+              </div>
             </div>
-            <span className="text-[11px] text-muted-foreground">
-              Último registro {sortedAnnotations[0] ? formatDateTime(sortedAnnotations[0].createdAt) : "--"}
-            </span>
-          </div>
-          <div className="flex flex-wrap items-center gap-4 text-xs font-semibold text-muted-foreground">
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                aria-label={isRecording ? "Detener grabación" : "Grabar nota de voz"}
-                onClick={isRecording ? handleStopRecording : handleStartRecording}
-                className="flex h-9 w-9 items-center justify-center rounded-xl border border-border/60 bg-muted/10 transition hover:border-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-              >
-                {isRecording ? (
-                  <Mic className="h-4 w-4 text-red-500" />
-                ) : (
-                  <Mic className="h-4 w-4 text-primary" />
-                )}
-              </button>
-              <span className="text-[11px] uppercase tracking-wide text-slate-500">
-                {pendingAudioNotes.length} audios
-              </span>
-              <button
-                type="button"
-                aria-label="Adjuntar archivos"
-                onClick={() => fileInputRef.current?.click()}
-                className="flex h-9 w-9 items-center justify-center rounded-xl border border-border/60 bg-muted/10 transition hover:border-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-              >
-                <Paperclip className="h-4 w-4" />
-              </button>
-              <span className="text-[11px] uppercase tracking-wide text-slate-500">
-                {pendingAttachments.length} archivos
-              </span>
-              <button
-                type="button"
-                aria-pressed={notifyClient}
-                aria-label="Notificar al cliente"
-                onClick={() => setNotifyClient((prev) => !prev)}
-                className={`flex h-9 w-9 items-center justify-center rounded-xl border bg-muted/10 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ${notifyClient
-                  ? "border-emerald-500 text-emerald-600"
-                  : "border-border/60 text-muted-foreground"
-                  }`}
-              >
-                <Send className="h-4 w-4" />
-              </button>
-              <span className="text-[11px] uppercase tracking-wide text-slate-500">
-                {notifyClient ? "Notificación activa" : "Sin notificación"}
-              </span>
+            {/* Componente del formulario de visita */}
+            <VisitForm
+              value={ticket?.visitData ?? {}}
+              onChange={() => {}}
+              disabled={isLocked}
+            />
+          </section>
+        ) : (
+          <section className="space-y-5 rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-semibold">Documenta la intervencion</p>
+                <p className="text-xs text-muted-foreground">
+                  Todo lo que escribas, los archivos adjuntos y las notas de audio se registraran cuando guardes los cambios.
+                </p>
+              </div>
+                <span className="text-[11px] text-muted-foreground">
+                  Ultimo registro {sortedAnnotations[0] ? formatDateTime(sortedAnnotations[0].createdAt) : "--"}
+                </span>
             </div>
-          </div>
-          <RichTextEditor
-            value={noteDraft}
-            onChange={setNoteDraft}
-            placeholder="Describe la intervención, acciones, resultados o bloqueos."
-            direction="ltr"
-            className="min-h-[220px]"
-            onImagePaste={handleEditorImagePaste}
-          />
-        </section>
+            <div className="flex flex-wrap items-center gap-4 text-xs font-semibold text-muted-foreground">
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  aria-label={isRecording ? "Detener grabacion" : "Grabar nota de voz"}
+                  onClick={isRecording ? handleStopRecording : handleStartRecording}
+                  className="flex h-9 w-9 items-center justify-center rounded-xl border border-border/60 bg-muted/10 transition hover:border-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                >
+                  {isRecording ? (
+                    <Mic className="h-4 w-4 text-red-500" />
+                  ) : (
+                    <Mic className="h-4 w-4 text-primary" />
+                  )}
+                </button>
+                <span className="text-[11px] uppercase tracking-wide text-slate-500">
+                  {pendingAudioNotes.length} audios
+                </span>
+                <button
+                  type="button"
+                  aria-label="Adjuntar archivos"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex h-9 w-9 items-center justify-center rounded-xl border border-border/60 bg-muted/10 transition hover:border-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                >
+                  <Paperclip className="h-4 w-4" />
+                </button>
+                <span className="text-[11px] uppercase tracking-wide text-slate-500">
+                  {pendingAttachments.length} archivos
+                </span>
+                <button
+                  type="button"
+                  aria-pressed={notifyClient}
+                  aria-label="Notificar al cliente"
+                  onClick={() => setNotifyClient((prev) => !prev)}
+                  className={`flex h-9 w-9 items-center justify-center rounded-xl border bg-muted/10 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ${notifyClient
+                    ? "border-emerald-500 text-emerald-600"
+                    : "border-border/60 text-muted-foreground"
+                    }`}
+                >
+                  <Send className="h-4 w-4" />
+                </button>
+                <span className="text-[11px] uppercase tracking-wide text-slate-500">
+                  {notifyClient ? "Notificacion activa" : "Sin notificacion"}
+                </span>
+              </div>
+            </div>
+            <RichTextEditor
+              value={noteDraft}
+              onChange={setNoteDraft}
+                placeholder="Describe la intervencion, acciones, resultados o bloqueos."
+              direction="ltr"
+              className="min-h-[220px]"
+              onImagePaste={handleEditorImagePaste}
+            />
+          </section>
+        )}
 
         <section className="space-y-5 rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-semibold">Detalles del ticket</p>
               <p className="text-xs text-muted-foreground">
-                Los campos están {isLocked ? "bloqueados" : "listos para editar"}.
+                Los campos estan {isLocked ? "bloqueados" : "listos para editar"}.
               </p>
             </div>
             <Button
@@ -941,20 +993,37 @@ export default function TicketDetailPage() {
                     </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
-                    {(["Nuevo", "Abierto", "En proceso", "Visita", "Resuelto", "Facturar", "Pagado"] as TicketStatus[]).map(
-                      (status) => {
-                        const Icon = statusIcons[status] ?? Loader2;
-                        const color = statusColors[status] ?? "text-slate-500";
-                        return (
-                          <SelectItem key={status} value={status}>
-                            <div className="flex items-center gap-2">
-                              <Icon className={`h-4 w-4 ${color}`} />
-                              <span className="leading-none">{status}</span>
-                            </div>
-                          </SelectItem>
-                        );
-                      }
-                    )}
+                    {[
+                      "Nuevo",
+                      "Abierto",
+                      "En proceso",
+                      "En proceso de soporte",
+                      "Visita",
+                      "Visita - Coordinar",
+                      "Visita Programada",
+                      "Visita Realizada",
+                      "Revision Cerrar Visita",
+                      "Pendiente de Coordinacion",
+                      "Pendiente de Cliente",
+                      "Pendiente de Tercero",
+                      "Pendiente de Facturacion",
+                      "Pendiente de Pago",
+                      "Cerrado",
+                      "Resuelto",
+                      "Facturar",
+                      "Pagado"
+                    ].map((status) => {
+                      const Icon = statusIcons[status as TicketStatus] ?? Loader2;
+                      const color = statusColors[status as TicketStatus] ?? "text-slate-500";
+                      return (
+                        <SelectItem key={status} value={status}>
+                          <div className="flex items-center gap-2">
+                            <Icon className={`h-4 w-4 ${color}`} />
+                            <span className="leading-none">{status}</span>
+                          </div>
+                        </SelectItem>
+                      );
+                    })}
                   </SelectContent>
                 </Select>
               </div>
@@ -998,7 +1067,7 @@ export default function TicketDetailPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="assignment">Asignación</Label>
+              <Label htmlFor="assignment">Asignacion</Label>
               <Select
                 value={assignmentValue}
                 onValueChange={handleAssignmentChange}
@@ -1186,7 +1255,7 @@ export default function TicketDetailPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="ticket-description">Descripción</Label>
+              <Label htmlFor="ticket-description">Descripcion</Label>
               <Textarea
                 id="ticket-description"
                 value={formDescription}
@@ -1205,15 +1274,15 @@ export default function TicketDetailPage() {
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm font-semibold">Timeline de notas</p>
-            <p className="text-xs text-muted-foreground">
-              Anotaciones ordenadas por fecha (último registro primero).
-            </p>
+              <p className="text-xs text-muted-foreground">
+                Anotaciones ordenadas por fecha (ultimo registro primero).
+              </p>
           </div>
         </div>
         <div className="mt-4 max-h-[360px] overflow-y-auto pr-2">
           {sortedAnnotations.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              Aún no hay registros.
+              Aun no hay registros.
             </p>
           ) : (
             sortedAnnotations.map((annotation, index) => (
@@ -1245,7 +1314,7 @@ export default function TicketDetailPage() {
                   <div className="flex items-center justify-between text-[11px] text-slate-500">
                     <div className="flex flex-col">
                       <span className="font-semibold text-slate-900">
-                        {annotation.user ?? "Técnico"}
+                        {annotation.user ?? "Tecnico"}
                       </span>
                       <span>{formatDateTime(annotation.createdAt)}</span>
                     </div>
@@ -1310,7 +1379,7 @@ export default function TicketDetailPage() {
           <DialogHeader>
             <DialogTitle>Editar nota</DialogTitle>
             <DialogDescription>
-              Actualiza la anotación antes de guardar.
+              Actualiza la anotacion antes de guardar.
             </DialogDescription>
           </DialogHeader>
           <RichTextEditor
@@ -1339,7 +1408,7 @@ export default function TicketDetailPage() {
           <DialogHeader>
             <DialogTitle>Eliminar nota</DialogTitle>
             <DialogDescription>
-              ¿Estás seguro de eliminar esta nota? La acción no se puede deshacer.
+              Estas seguro de eliminar esta nota? La accion no se puede deshacer.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="mt-4 flex justify-end gap-2">

@@ -1,5 +1,6 @@
 "use client";
 
+import { ReactNode } from "react";
 import { toast as sonnerToast } from "sonner";
 
 type ToastInput =
@@ -8,6 +9,7 @@ type ToastInput =
       title?: string;
       description?: string;
       variant?: "default" | "destructive" | "success" | "info" | "warning";
+      icon?: ReactNode;
     };
 
 /**
@@ -18,9 +20,12 @@ const toast = (options: ToastInput) => {
   if (typeof options === "string") {
     return sonnerToast(options);
   }
-  const { title, description, variant = "default" } = options;
+  const { title, description, variant = "default", icon } = options;
   const message = title || description || "Notificación";
-  const payload = { description };
+  const payload: { description?: string; icon?: ReactNode } = {
+    description,
+    icon,
+  };
 
   if (variant === "destructive") {
     return sonnerToast.error(message, payload);

@@ -18,6 +18,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 export type ComboboxOption = {
   value: string;
   label: string;
+  badge?: React.ReactNode;
 };
 
 type ComboboxProps = {
@@ -55,12 +56,17 @@ export function Combobox({
     setInternalValue(defaultValue);
   }, [defaultValue]);
 
-  const handleSelect = (currentValue: string) => {
-    const newValue = currentValue === selectedValue ? undefined : currentValue;
-    if (value === undefined) {
-      setInternalValue(newValue);
+  React.useEffect(() => {
+    if (value !== undefined) {
+      setInternalValue(value);
     }
-    onValueChange?.(newValue);
+  }, [value]);
+
+  const handleSelect = (selectedValue: string) => {
+    if (value === undefined) {
+      setInternalValue(selectedValue);
+    }
+    onValueChange?.(selectedValue);
     setOpen(false);
   };
 
@@ -86,24 +92,31 @@ export function Combobox({
       <PopoverContent
         align="start"
         className={cn(
-          "w-[var(--radix-popover-trigger-width)] min-w-[260px] p-0 bg-white/80 backdrop-blur-lg border border-gray-200 text-slate-900 shadow-lg",
+          "w-[var(--radix-popover-trigger-width)] min-w-[260px] p-0 border border-slate-200 text-slate-900 shadow-lg",
           contentClassName
         )}
       >
-        <Command className="bg-white/80 backdrop-blur-lg text-slate-900">
+        <Command className="bg-slate-50 text-slate-900">
           <CommandInput placeholder={searchPlaceholder} />
-          <CommandList>
+          <CommandList className="max-h-[240px]">
             <CommandEmpty>{emptyMessage}</CommandEmpty>
             <CommandGroup>
               {options.map((option) => (
-                <CommandItem key={option.value} value={option.value} onSelect={handleSelect}>
+                <CommandItem 
+                  key={option.value} 
+                  value={option.label}
+                  onSelect={() => handleSelect(option.value)}
+                >
                   <Check
                     className={cn(
                       "mr-2 h-4 w-4",
                       selectedValue === option.value ? "opacity-100" : "opacity-0"
                     )}
                   />
-                  <span className="truncate">{option.label}</span>
+                  <span className="truncate flex-1">{option.label}</span>
+                  {option.badge && (
+                    <span className="ml-2 shrink-0">{option.badge}</span>
+                  )}
                 </CommandItem>
               ))}
             </CommandGroup>

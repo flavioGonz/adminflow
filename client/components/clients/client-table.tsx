@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Table,
   TableBody,
@@ -13,13 +13,6 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { updateClient } from "@/lib/api-clients";
 import { AnimatedTableBody, AnimatedRow } from "@/hooks/use-table-animation";
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationNext,
-  PaginationPrevious,
-} from "@/components/ui/pagination";
 import {
   Edit,
   Trash2,
@@ -73,13 +66,14 @@ export function ClientTable({
 }: ClientTableProps) {
   const router = useRouter();
   const [searchTerm, setSearchTerm] = useState("");
-  const [currentPage, setCurrentPage] = useState(1);
   const [sortConfig, setSortConfig] = useState<{
     key: SortKey;
     direction: "ascending" | "descending";
   } | null>(null);
-  const clientsPerPage = 10;
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const LOAD_INCREMENT = 15;
+  const [visibleCount, setVisibleCount] = useState(LOAD_INCREMENT);
+  const tableScrollRef = useRef<HTMLDivElement | null>(null);
 
   const handleExportExcel = () => {
     const worksheet = XLSX.utils.json_to_sheet(sortedClients);
@@ -144,29 +138,35 @@ export function ClientTable({
     })()
     : filteredClients;
 
-  const currentClients = useMemo(() => {
-    const indexOfLastClient = currentPage * clientsPerPage;
-    const indexOfFirstClient = indexOfLastClient - clientsPerPage;
-    return sortedClients.slice(indexOfFirstClient, indexOfLastClient);
-  }, [sortedClients, currentPage, clientsPerPage]);
+  const visibleClients = useMemo(
+    () => sortedClients.slice(0, visibleCount),
+    [sortedClients, visibleCount]
+  );
+  const hasMoreResults = visibleCount < sortedClients.length;
 
-  const totalPages = Math.ceil(sortedClients.length / clientsPerPage);
-
-  const handleNextPage = () => {
-    if (currentPage < totalPages) {
-      setCurrentPage(currentPage + 1);
+  const handleScroll = useCallback(() => {
+    const container = tableScrollRef.current;
+    if (!container || !hasMoreResults) return;
+    if (
+      container.scrollHeight - container.scrollTop - container.clientHeight <
+      150
+    ) {
+      setVisibleCount((prev) =>
+        Math.min(prev + LOAD_INCREMENT, sortedClients.length)
+      );
     }
-  };
+  }, [hasMoreResults, sortedClients.length]);
 
-  const handlePreviousPage = () => {
-    if (currentPage > 1) {
-      setCurrentPage(currentPage - 1);
+  useEffect(() => {
+    setVisibleCount(LOAD_INCREMENT);
+    if (tableScrollRef.current) {
+      tableScrollRef.current.scrollTop = 0;
     }
-  };
+  }, [searchTerm, sortConfig?.key, sortConfig?.direction, sortedClients.length]);
 
   const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(event.target.value);
-    setCurrentPage(1); // Reset to first page on search
+    setVisibleCount(LOAD_INCREMENT);
   };
 
   const requestSort = (key: SortKey) => {
@@ -214,8 +214,13 @@ export function ClientTable({
           </Button>
         </div>
       </div>
-      <div className="rounded-md border">
-        <Table>
+      <div className="relative rounded-md border">
+        <div
+          ref={tableScrollRef}
+          onScroll={handleScroll}
+          className="max-h-[60vh] overflow-y-auto"
+        >
+          <Table>
           <TableHeader>
             <TableRow>
               <TableHead>
@@ -289,8 +294,8 @@ export function ClientTable({
             </TableRow>
           </TableHeader>
           <AnimatedTableBody staggerDelay={0.03}>
-            {currentClients.length > 0 ? (
-              currentClients.map((client, index) => (
+            {visibleClients.length > 0 ? (
+              visibleClients.map((client, index) => (
                 <AnimatedRow key={client.id} delay={index * 0.03}>
                   <TableCell className="font-medium">
                     <div className="flex items-center gap-3">
@@ -468,73 +473,14 @@ export function ClientTable({
               </TableRow>
             )}
           </AnimatedTableBody>
-        </Table>
-      </div>
-      <div className="flex items-center justify-between px-2 py-4">
-        <div className="text-sm text-muted-foreground">
-          Mostrando {currentClients.length} de {sortedClients.length} clientes
+          </Table>
         </div>
-        <Pagination>
-          <PaginationContent>
-            <PaginationItem>
-              <PaginationPrevious
-                onClick={currentPage === 1 ? undefined : handlePreviousPage}
-                aria-disabled={currentPage === 1}
-                className={currentPage === 1 ? "opacity-40 pointer-events-none cursor-not-allowed" : "cursor-pointer"}
-              >
-                Anterior
-              </PaginationPrevious>
-            </PaginationItem>
-
-            {/* Page numbers */}
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
-              // Show first page, last page, current page, and pages around current
-              const showPage =
-                page === 1 ||
-                page === totalPages ||
-                (page >= currentPage - 1 && page <= currentPage + 1);
-
-              // Show ellipsis
-              const showEllipsisBefore = page === currentPage - 2 && currentPage > 3;
-              const showEllipsisAfter = page === currentPage + 2 && currentPage < totalPages - 2;
-
-              if (showEllipsisBefore || showEllipsisAfter) {
-                return (
-                  <PaginationItem key={`ellipsis-${page}`}>
-                    <span className="px-4">...</span>
-                  </PaginationItem>
-                );
-              }
-
-              if (!showPage) return null;
-
-              return (
-                <PaginationItem key={page}>
-                  <Button
-                    variant={currentPage === page ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setCurrentPage(page)}
-                    className="cursor-pointer"
-                  >
-                    {page}
-                  </Button>
-                </PaginationItem>
-              );
-            })}
-
-            <PaginationItem>
-              <PaginationNext
-                onClick={currentPage === totalPages ? undefined : handleNextPage}
-                aria-disabled={currentPage === totalPages}
-                className={
-                  currentPage === totalPages ? "opacity-40 pointer-events-none cursor-not-allowed" : "cursor-pointer"
-                }
-              >
-                Siguiente
-              </PaginationNext>
-            </PaginationItem>
-          </PaginationContent>
-        </Pagination>
+        {hasMoreResults && (
+          <div className="px-4 py-3 text-center text-xs text-slate-500 relative z-10">
+            Desliza para cargar más clientes
+          </div>
+        )}
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-white to-transparent" />
       </div>
     </div>
   );

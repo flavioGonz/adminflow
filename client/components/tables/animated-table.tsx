@@ -1,7 +1,6 @@
 "use client";
 
-import { motion, AnimatePresence } from "framer-motion";
-import { TableBody, TableRow } from "@/components/ui/table";
+import { TableBody } from "@/components/ui/table";
 import { ReactNode } from "react";
 
 interface AnimatedTableProps {
@@ -26,13 +25,8 @@ interface AnimatedTableRowProps {
  * Aplica AnimatePresence para animaciones de entrada/salida
  */
 export function AnimatedTableBody({ children, className }: AnimatedTableProps) {
-  return (
-    <TableBody className={className}>
-      <AnimatePresence mode="wait">
-        {children}
-      </AnimatePresence>
-    </TableBody>
-  );
+  // Render plain TableBody without animations
+  return <TableBody className={className}>{children}</TableBody>;
 }
 
 /**
@@ -48,17 +42,11 @@ export function AnimatedTableRow({
   children, 
   className 
 }: AnimatedTableRowProps) {
+  // Render plain tr without animations
   return (
-    <motion.tr
-      key={data.id}
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -10 }}
-      transition={{ duration: 0.2, delay: index * 0.05 }}
-      className={className || "border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted"}
-    >
+    <tr key={data.id} className={className || "border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted"}>
       {children}
-    </motion.tr>
+    </tr>
   );
 }
 
@@ -67,11 +55,6 @@ export function AnimatedTableRow({
  * Combina AnimatedTableBody y manejo automático de AnimatePresence
  */
 export function AnimatedTable({ children, className }: AnimatedTableProps) {
-  return (
-    <AnimatePresence mode="wait">
-      <TableBody className={className}>
-        {children}
-      </TableBody>
-    </AnimatePresence>
-  );
+  // Render plain TableBody without animations
+  return <TableBody className={className}>{children}</TableBody>;
 }

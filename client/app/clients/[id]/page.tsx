@@ -8,14 +8,6 @@ import type { LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/layout/page-header";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
@@ -62,6 +54,7 @@ import {
   FolderArchive,
   Rocket,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { updateClient } from "@/lib/api-clients";
 import { API_URL } from "@/lib/http";
 import "leaflet/dist/leaflet.css";
@@ -327,6 +320,11 @@ export default function ClientDetailPage() {
   >([
     { id: 1, name: "Patch Panel 1", ports: 24 },
   ]);
+  const [movementFilterType, setMovementFilterType] = useState<MovementType | "Todos">("Todos");
+  const [movementStatusFilter, setMovementStatusFilter] = useState<string>("Todos");
+  const [movementSearch, setMovementSearch] = useState("");
+  const [movementPage, setMovementPage] = useState(1);
+  const MOVEMENTS_PAGE_SIZE = 6;
 
   const fetchClient = useCallback(async () => {
     if (!id) return;
@@ -526,6 +524,68 @@ export default function ClientDetailPage() {
 
     return rows.sort((a, b) => parseDate(b.date) - parseDate(a.date));
   }, [tickets, payments, repositoryItems, contracts]);
+
+  const movementStatuses = useMemo(() => {
+    const set = new Set<string>();
+    movementRows.forEach((row) => row.status && set.add(row.status));
+    return Array.from(set);
+  }, [movementRows]);
+
+  const filteredMovements = useMemo(() => {
+    const typeFiltered = movementFilterType === "Todos"
+      ? movementRows
+      : movementRows.filter((row) => row.type === movementFilterType);
+
+    const statusFiltered = movementStatusFilter === "Todos"
+      ? typeFiltered
+      : typeFiltered.filter((row) => row.status === movementStatusFilter);
+
+    const text = movementSearch.trim().toLowerCase();
+    const searched = text
+      ? statusFiltered.filter((row) =>
+          row.description.toLowerCase().includes(text) ||
+          row.status?.toLowerCase().includes(text) ||
+          row.reference?.toLowerCase().includes(text)
+        )
+      : statusFiltered;
+
+    return searched;
+  }, [movementRows, movementFilterType, movementStatusFilter, movementSearch]);
+
+  useEffect(() => {
+    setMovementPage(1);
+  }, [movementFilterType, movementStatusFilter, movementSearch]);
+
+  const totalMovementPages = Math.max(1, Math.ceil(filteredMovements.length / MOVEMENTS_PAGE_SIZE));
+  const paginatedMovements = filteredMovements.slice(
+    (movementPage - 1) * MOVEMENTS_PAGE_SIZE,
+    movementPage * MOVEMENTS_PAGE_SIZE
+  );
+
+  const movementTypeMeta: Record<MovementType, { icon: LucideIcon; color: string; bg: string; extra?: string }> = {
+    Ticket: { icon: TicketIcon, color: "text-sky-600", bg: "bg-sky-50" },
+    Pago: { icon: DollarSign, color: "text-emerald-600", bg: "bg-emerald-50", extra: "animate-bounce" },
+    Repositorio: { icon: Folder, color: "text-amber-600", bg: "bg-amber-50" },
+    Contrato: { icon: FileText, color: "text-purple-600", bg: "bg-purple-50" },
+  };
+
+  const statusTone = (status?: string) => {
+    if (!status) return { bg: "bg-slate-100", color: "text-slate-700" };
+    const normalized = status.toLowerCase();
+    if (normalized.includes("abiert") || normalized.includes("pend")) {
+      return { bg: "bg-amber-100", color: "text-amber-800" };
+    }
+    if (normalized.includes("cerrad") || normalized.includes("final")) {
+      return { bg: "bg-slate-100", color: "text-slate-800" };
+    }
+    if (normalized.includes("pago") || normalized.includes("pagado") || normalized.includes("complet")) {
+      return { bg: "bg-emerald-100", color: "text-emerald-800" };
+    }
+    if (normalized.includes("cancel") || normalized.includes("fall")) {
+      return { bg: "bg-rose-100", color: "text-rose-800" };
+    }
+    return { bg: "bg-sky-100", color: "text-sky-800" };
+  };
 
   const infoPills = useMemo(
     () => [
@@ -882,8 +942,8 @@ export default function ClientDetailPage() {
 
 
       <section className="grid gap-4 lg:grid-cols-[3fr,2fr]">
-        <section className="rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm">
-          <div className="flex items-center justify-between">
+        <section className="rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm space-y-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                 Movimientos del Cliente
@@ -892,53 +952,145 @@ export default function ClientDetailPage() {
                 Tickets, pagos, repositorio y contratos recientes
               </h3>
             </div>
+            <div className="flex flex-wrap gap-2 text-xs text-slate-600">
+              <div className="flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 shadow-inner">
+                <Input
+                  placeholder="Buscar…"
+                  value={movementSearch}
+                  onChange={(e) => setMovementSearch(e.target.value)}
+                  className="h-8 w-40 border-0 bg-transparent text-xs focus-visible:ring-0"
+                />
+              </div>
+              <Select value={movementFilterType} onValueChange={(v) => setMovementFilterType(v as MovementType | "Todos")}> 
+                <SelectTrigger className="h-8 w-[130px] border-slate-200 text-xs">
+                  <SelectValue placeholder="Tipo" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Todos">Todos</SelectItem>
+                  <SelectItem value="Ticket">Tickets</SelectItem>
+                  <SelectItem value="Pago">Pagos</SelectItem>
+                  <SelectItem value="Repositorio">Repositorio</SelectItem>
+                  <SelectItem value="Contrato">Contratos</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={movementStatusFilter} onValueChange={(v) => setMovementStatusFilter(v)}> 
+                <SelectTrigger className="h-8 w-[150px] border-slate-200 text-xs">
+                  <SelectValue placeholder="Estado" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Todos">Estado: Todos</SelectItem>
+                  {movementStatuses.map((status) => (
+                    <SelectItem key={status} value={status}>
+                      {status}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
+
           {movementRows.length === 0 ? (
-            <p className="mt-4 text-sm text-slate-500">
+            <p className="mt-2 text-sm text-slate-500">
               Aún no se registran movimientos para este cliente.
             </p>
           ) : (
-            <div className="mt-4 overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Tipo</TableHead>
-                    <TableHead>Descripción</TableHead>
-                    <TableHead>Estado</TableHead>
-                    <TableHead>Fecha</TableHead>
-                    <TableHead className="text-right">
-                      Monto / Referencia
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {movementRows.map((movement) => (
-                    <TableRow key={`${movement.type}-${movement.id}`}>
-                      <TableCell>
-                        <Badge variant="outline" className="border-slate-300">
-                          {movement.type}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="font-medium text-slate-800">
-                        {movement.description}
-                      </TableCell>
-                      <TableCell className="text-slate-600">
-                        {movement.status ?? "—"}
-                      </TableCell>
-                      <TableCell className="text-slate-600">
-                        {movement.date
-                          ? new Date(movement.date).toLocaleString()
-                          : "—"}
-                      </TableCell>
-                      <TableCell className="text-right text-slate-600">
-                        {typeof movement.amount === "number"
+            <div className="space-y-3">
+              <div className="overflow-hidden rounded-2xl border border-slate-200">
+                <div className="min-w-full overflow-x-auto">
+                  <table className="min-w-full text-sm text-slate-800">
+                    <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+                      <tr className="divide-x divide-slate-200">
+                        <th className="px-3 py-2 text-left">Fecha</th>
+                        <th className="px-3 py-2 text-left">Tipo</th>
+                        <th className="px-3 py-2 text-left">Descripción</th>
+                        <th className="px-3 py-2 text-left">Monto / Ref</th>
+                        <th className="px-3 py-2 text-left">Estado</th>
+                        <th className="px-3 py-2 text-right">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 bg-white">
+                      {paginatedMovements.map((movement) => {
+                        const meta = movementTypeMeta[movement.type];
+                        const tone = statusTone(movement.status);
+                        const dateLabel = movement.date
+                          ? new Date(movement.date).toLocaleDateString()
+                          : "—";
+                        const amountLabel = typeof movement.amount === "number"
                           ? formatCurrency(movement.amount)
-                          : movement.reference ?? "—"}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                          : movement.reference ?? "—";
+
+                        const detailHref = (() => {
+                          if (movement.type === "Ticket") return `/tickets/${movement.id}`;
+                          if (movement.type === "Pago") return `/payments?search=${movement.id}`;
+                          if (movement.type === "Repositorio") return `/clients/${client.id}/repository/access`;
+                          if (movement.type === "Contrato") return `/contracts?highlight=${movement.id}`;
+                          return "#";
+                        })();
+
+                        return (
+                          <tr key={`${movement.type}-${movement.id}`} className="hover:bg-slate-50">
+                            <td className="px-3 py-3 align-middle text-slate-700">{dateLabel}</td>
+                            <td className="px-3 py-3 align-middle">
+                              <div className="flex items-center gap-2">
+                                <span className={cn("grid h-9 w-9 place-items-center rounded-xl", meta.bg)}>
+                                  <meta.icon className={cn("h-5 w-5", meta.color, meta.extra)} />
+                                </span>
+                                <div>
+                                  <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">{movement.type}</p>
+                                  {movement.reference ? (
+                                    <p className="text-xs text-slate-500">{movement.reference}</p>
+                                  ) : null}
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-3 py-3 align-middle">
+                              <p className="font-semibold text-slate-900 leading-tight line-clamp-2">{movement.description}</p>
+                            </td>
+                            <td className="px-3 py-3 align-middle text-slate-800">{amountLabel}</td>
+                            <td className="px-3 py-3 align-middle">
+                              <span className={cn("rounded-full px-3 py-1 text-xs font-semibold", tone.bg, tone.color)}>
+                                {movement.status ?? "Sin estado"}
+                              </span>
+                            </td>
+                            <td className="px-3 py-3 align-middle text-right">
+                              <Button asChild variant="ghost" size="sm" className="gap-1 text-xs text-slate-600">
+                                <Link href={detailHref}>
+                                  Ver detalle
+                                  <ArrowLeft className="h-3 w-3 rotate-180" />
+                                </Link>
+                              </Button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between border-t border-slate-200 pt-3 text-sm text-slate-600">
+                <span>
+                  Página {movementPage} de {totalMovementPages} · {filteredMovements.length} registros
+                </span>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={movementPage === 1}
+                    onClick={() => setMovementPage((p) => Math.max(1, p - 1))}
+                  >
+                    Anterior
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={movementPage === totalMovementPages}
+                    onClick={() => setMovementPage((p) => Math.min(totalMovementPages, p + 1))}
+                  >
+                    Siguiente
+                  </Button>
+                </div>
+              </div>
             </div>
           )}
         </section>

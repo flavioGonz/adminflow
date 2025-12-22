@@ -5,6 +5,7 @@ import React, { useState } from "react";
 import { TicketTable } from "@/components/clients/ticket-table";
 import { CreateTicketDialog } from "@/components/clients/create-ticket-dialog";
 import { Ticket } from "@/types/ticket";
+import { emitTicketDeleted } from "@/lib/app-events";
 
 const mockTickets: Ticket[] = [
   {
@@ -42,6 +43,7 @@ export default function TicketsPage() {
 
   const handleTicketDeleted = (ticketId: string) => {
     setTickets((prevTickets) => prevTickets.filter((ticket) => ticket.id !== ticketId));
+    emitTicketDeleted(ticketId);
   };
 
   return (

@@ -1,7 +1,6 @@
 "use client";
 
 import { ReactNode } from "react";
-import { motion } from "framer-motion";
 import {
   Table,
   TableBody,
@@ -29,21 +28,7 @@ export function TableWithAnimations({
   rowDelay = 0,
 }: TableWithAnimationsProps) {
   return (
-    <motion.div
-      initial="hidden"
-      animate="visible"
-      variants={{
-        hidden: { opacity: 0 },
-        visible: {
-          opacity: 1,
-          transition: {
-            staggerChildren: staggerDelay,
-            delayChildren: rowDelay,
-          },
-        },
-      }}
-      className={className}
-    >
+    <div className={className}>
       <Table>
         <TableHeader>
           <TableRow>
@@ -54,25 +39,12 @@ export function TableWithAnimations({
         </TableHeader>
         <TableBody>
           {rows.map((row, index) => (
-            <motion.tr
-              key={index}
-              variants={{
-                hidden: { opacity: 0, y: 20 },
-                visible: {
-                  opacity: 1,
-                  y: 0,
-                  transition: {
-                    duration: 0.4,
-                    ease: [0.34, 1.56, 0.64, 1],
-                  },
-                },
-              }}
-            >
+            <TableRow key={index}>
               {renderRow(row, index)}
-            </motion.tr>
+            </TableRow>
           ))}
         </TableBody>
       </Table>
-    </motion.div>
+    </div>
   );
 }

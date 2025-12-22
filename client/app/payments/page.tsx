@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import DashboardLayout from "@/components/layout/dashboard-layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,14 +30,6 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from "@/components/ui/pagination";
 import {
   Popover,
   PopoverContent,
@@ -680,6 +672,8 @@ function ConfirmPaymentDialog({
   );
 }
 
+const LOAD_INCREMENT = 10;
+
 export default function PaymentsPage() {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [statusFilter, setStatusFilter] = useState<"todos" | PaymentStatus>("todos");
@@ -695,12 +689,12 @@ export default function PaymentsPage() {
   const [currencyFilter, setCurrencyFilter] = useState<"todos" | "UYU" | "USD">("todos");
   const [dateFilter, setDateFilter] = useState<"thisMonth" | "lastMonth" | "thisWeek" | "all" | "custom">("thisMonth");
   const [customDate, setCustomDate] = useState<Date | undefined>(undefined);
-  const [currentPage, setCurrentPage] = useState(1);
   const [sortConfig, setSortConfig] = useState<{
     key: keyof Payment | "client" | "amount";
     direction: "ascending" | "descending";
   } | null>(null);
-  const itemsPerPage = 10;
+  const [visibleCount, setVisibleCount] = useState(LOAD_INCREMENT);
+  const tableScrollRef = useRef<HTMLDivElement | null>(null);
 
   const requestSort = (key: keyof Payment | "client" | "amount") => {
     let direction: "ascending" | "descending" = "ascending";
@@ -851,17 +845,34 @@ export default function PaymentsPage() {
     return filtered;
   }, [payments, search, statusFilter, currencyFilter, dateFilter, customDate, sortConfig]);
 
-  const totalPages = Math.ceil(filteredPayments.length / itemsPerPage);
+  const visiblePayments = useMemo(
+    () => filteredPayments.slice(0, visibleCount),
+    [filteredPayments, visibleCount]
+  );
+  const hasMoreResults = visibleCount < filteredPayments.length;
 
-  const paginatedPayments = useMemo(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    const endIndex = startIndex + itemsPerPage;
-    return filteredPayments.slice(startIndex, endIndex);
-  }, [filteredPayments, currentPage, itemsPerPage]);
+  const handleScroll = useCallback(() => {
+    const container = tableScrollRef.current;
+    if (!container || !hasMoreResults) return;
+    if (container.scrollHeight - container.scrollTop - container.clientHeight < 150) {
+      setVisibleCount((prev) => Math.min(prev + LOAD_INCREMENT, filteredPayments.length));
+    }
+  }, [filteredPayments.length, hasMoreResults]);
 
   useEffect(() => {
-    setCurrentPage(1);
-  }, [search, statusFilter, currencyFilter, dateFilter, customDate]);
+    setVisibleCount(LOAD_INCREMENT);
+    if (tableScrollRef.current) {
+      tableScrollRef.current.scrollTop = 0;
+    }
+  }, [
+    search,
+    statusFilter,
+    currencyFilter,
+    dateFilter,
+    customDate,
+    sortConfig,
+    filteredPayments.length,
+  ]);
 
   const totalThisMonth = useMemo(() => {
     const today = new Date();
@@ -1272,7 +1283,13 @@ export default function PaymentsPage() {
             payment={confirmingPayment}
           />
           <div className="rounded-lg border">
-            <Table>
+            <div className="relative">
+              <div
+                ref={tableScrollRef}
+                className="max-h-[65vh] overflow-y-auto"
+                onScroll={handleScroll}
+              >
+                <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead onClick={() => requestSort("createdAt")}>
@@ -1337,15 +1354,15 @@ export default function PaymentsPage() {
                   </TableHead>
                 </TableRow>
               </TableHeader>
-              <TablePageTransition pageKey={currentPage}>
-                {paginatedPayments.length === 0 ? (
+              <TablePageTransition pageKey={visibleCount}>
+                {visiblePayments.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={9} className="p-6 text-center">
                       No existen pagos para el criterio actual.
                     </TableCell>
                   </TableRow>
                 ) : (
-                  paginatedPayments.map((payment) => (
+                  visiblePayments.map((payment) => (
                     <TableRow key={payment.id}>
                       <TableCell>
                         <div className="flex items-center gap-2 text-sm">
@@ -1460,40 +1477,17 @@ export default function PaymentsPage() {
                   ))
                 )}
               </TablePageTransition>
-            </Table>
+                </Table>
+                {hasMoreResults && (
+                  <div className="px-4 py-3 text-center text-xs text-slate-500">
+                    Desliza para cargar más pagos
+                  </div>
+                )}
+              </div>
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-white to-transparent" />
+            </div>
           </div>
 
-          {totalPages > 1 && (
-            <Pagination className="mt-4">
-              <PaginationContent>
-                <PaginationItem>
-                  <PaginationPrevious
-                    onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-                    className={currentPage === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
-                  />
-                </PaginationItem>
-
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                  <PaginationItem key={page}>
-                    <PaginationLink
-                      isActive={currentPage === page}
-                      onClick={() => setCurrentPage(page)}
-                      className="cursor-pointer"
-                    >
-                      {page}
-                    </PaginationLink>
-                  </PaginationItem>
-                ))}
-
-                <PaginationItem>
-                  <PaginationNext
-                    onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
-                    className={currentPage === totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
-                  />
-                </PaginationItem>
-              </PaginationContent>
-            </Pagination>
-          )}
         </div>
       </PageTransition>
     </DashboardLayout >

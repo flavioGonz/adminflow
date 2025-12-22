@@ -120,8 +120,14 @@ export function CreateTicketDialog({ onTicketCreated }: CreateTicketDialogProps)
                     <SelectItem value="Nuevo">Nuevo</SelectItem>
                     <SelectItem value="Abierto">Abierto</SelectItem>
                     <SelectItem value="En proceso">En proceso</SelectItem>
+                    <SelectItem value="Visita">Visita</SelectItem>
+                    <SelectItem value="Visita - Coordinar">Visita - Coordinar</SelectItem>
+                    <SelectItem value="Visita Programada">Visita Programada</SelectItem>
+                    <SelectItem value="Visita Realizada">Visita Realizada</SelectItem>
+                    <SelectItem value="Revision Cerrar Visita">Revision Cerrar Visita</SelectItem>
                     <SelectItem value="Resuelto">Resuelto</SelectItem>
                     <SelectItem value="Facturar">Facturar</SelectItem>
+                    <SelectItem value="Pagado">Pagado</SelectItem>
                   </SelectContent>
                 </Select>
                 {status === "En proceso" && (

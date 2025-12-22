@@ -40,6 +40,7 @@ import {
   Upload,
   FolderArchive,
   Home,
+  Loader2,
 } from "lucide-react";
 import { ShinyText } from "@/components/ui/shiny-text";
 import { PageHeader } from "@/components/layout/page-header";
@@ -526,7 +527,7 @@ function RepositoryContent() {
 
 export default function RepositoryPage() {
   return (
-    <Suspense fallback={<div>Cargando...</div>}>
+    <Suspense fallback={<div className="flex items-center justify-center p-8 text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin mr-2" />Cargando repositorio...</div>}>
       <RepositoryContent />
     </Suspense>
   );
