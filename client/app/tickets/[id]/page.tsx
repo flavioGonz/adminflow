@@ -180,7 +180,7 @@ export default function TicketDetailPage() {
   const [isLocked, setIsLocked] = useState(true);
   const [users, setUsers] = useState<{ id: string; name: string; email: string; avatar?: string }[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
-  // Declaracion de groupsMap al nivel superior del componente
+  // Declaración de groupsMap al nivel superior del componente
   const groupsMap = useMemo(() => {
     const map: Record<string, Group> = {};
     groups.forEach((group) => {
