@@ -42,11 +42,12 @@ const createBackup = async () => {
     }
 
     try {
-        console.log(`Starting backup to: ${backupDir}`);
+        console.log(`💾 [BACKUP] Iniciando respaldo en: ${backupDir}`);
+        console.log(`📡 [BACKUP] Conectado a: ${config.mongoUri}`);
 
         // Get all collections
         const collections = await db.listCollections().toArray();
-        console.log(`Found ${collections.length} collections`);
+        console.log(`📋 [BACKUP] Encontradas ${collections.length} colecciones`);
 
         const backupMetadata = {
             timestamp: new Date().toISOString(),
@@ -58,7 +59,7 @@ const createBackup = async () => {
         for (const col of collections) {
             try {
                 const collectionName = col.name;
-                console.log(`Backing up collection: ${collectionName}`);
+                console.log(`📦 [BACKUP] Respaldando colección: ${collectionName}`);
 
                 const collection = db.collection(collectionName);
                 const docs = await collection.find({}).toArray();
@@ -71,9 +72,9 @@ const createBackup = async () => {
                     sizeBytes: fs.statSync(collectionPath).size
                 };
 
-                console.log(`✓ Backed up ${collectionName}: ${docs.length} documents`);
+                console.log(`✅ [BACKUP] Colección: ${collectionName} (${docs.length} documentos)`);
             } catch (err) {
-                console.warn(`⚠ Error backing up collection ${col.name}:`, err.message);
+                console.warn(`⚠️  [BACKUP] Error respaldando ${col.name}: ${err.message}`);
                 backupMetadata.collections[col.name] = {
                     error: err.message
                 };
@@ -84,7 +85,7 @@ const createBackup = async () => {
         const metadataPath = path.join(backupDir, '_metadata.json');
         fs.writeFileSync(metadataPath, JSON.stringify(backupMetadata, null, 2), 'utf8');
 
-        console.log(`✓ Backup completed: ${backupName}`);
+        console.log(`✅ [BACKUP] Respaldo completado: ${backupName}`);
 
         return {
             success: true,
@@ -94,14 +95,14 @@ const createBackup = async () => {
             collections: backupMetadata.collections
         };
     } catch (error) {
-        console.error('Backup failed:', error);
+        console.error(`❌ [BACKUP] Error: ${error.message}`);
         // Try to clean up the backup directory if it was created
         try {
             if (fs.existsSync(backupDir)) {
                 fs.rmSync(backupDir, { recursive: true });
             }
         } catch (cleanupErr) {
-            console.warn('Could not clean up backup directory:', cleanupErr.message);
+            console.warn(`⚠️  [BACKUP] No se pudo limpiar directorio: ${cleanupErr.message}`);
         }
         throw new Error(`Error al crear respaldo: ${error.message}`);
     }

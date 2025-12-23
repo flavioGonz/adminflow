@@ -34,11 +34,22 @@ const initMongo = async ({ uri, dbName } = {}) => {
   await cachedDb.createCollection("notifications").catch(() => {});
   await cachedDb.createCollection("users").catch(() => {});
   await cachedDb.createCollection("groups").catch(() => {});
-  console.log(`Conectado a MongoDB (${connectionUri}/${databaseName}).`);
+  console.log(`✅ [MongoDB] Conectado a ${databaseName}`);
+  console.log(`   URI: ${connectionUri}`);
   return cachedDb;
 };
 
-const getMongoDb = () => cachedDb;
+const getMongoDb = () => {
+  if (cachedDb && currentParams) {
+    // Log every 100th call to avoid spam but maintain visibility
+    if (!getMongoDb.callCount) getMongoDb.callCount = 0;
+    getMongoDb.callCount++;
+    if (getMongoDb.callCount % 100 === 1) {
+      console.log(`[MongoDB] Active DB: ${currentParams.dbName} (${currentParams.uri})`);
+    }
+  }
+  return cachedDb;
+};
 
 const getMongoClient = () => clientInstance;
 

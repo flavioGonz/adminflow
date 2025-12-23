@@ -11,6 +11,33 @@ const path = require('path');
  */
 async function isMongoInitialized() {
     try {
+        // 🔥 PRIORIDAD 1: Usar mongoServerManager si está disponible
+        try {
+            const { getMongoServerManager } = require('./mongoServerManager');
+            const serverManager = getMongoServerManager();
+            
+            if (serverManager && serverManager.getServers && serverManager.getServers().size > 0) {
+                // Buscar servidor primario
+                const servers = Array.from(serverManager.getServers().values());
+                const primaryServer = servers.find(s => s.role === 'primary');
+                const currentServer = serverManager.getCurrentServer();
+                const selectedServer = primaryServer || currentServer;
+                
+                if (selectedServer) {
+                    const { MongoClient } = require('mongodb');
+                    const client = new MongoClient(selectedServer.uri);
+                    await client.connect();
+                    const db = client.db(selectedServer.database || 'adminflow');
+                    const collections = await db.listCollections({ name: 'users' }).toArray();
+                    await client.close();
+                    return collections.length > 0;
+                }
+            }
+        } catch (err) {
+            console.warn(`⚠️  No se pudo usar mongoServerManager: ${err.message}`);
+        }
+        
+        // Fallback: usar determineDbEngine
         const config = determineDbEngine();
 
         if (!config.mongoUri) {
@@ -65,28 +92,73 @@ async function autoInitMongo() {
     console.log('╚════════════════════════════════════════════════════════╝\n');
 
     try {
-        // Verificar si existe configuración
-        const configPath = path.join(__dirname, '../.selected-db.json');
+        // 🔥 PRIORIDAD 1: Verificar si existe configuración de servidores múltiples
+        const { getMongoServerManager } = require('./mongoServerManager');
+        const serverManager = getMongoServerManager();
+        
+        console.log(`🔍 mongoServerManager disponible: ${!!serverManager}`);
+        if (serverManager) {
+            const servers = serverManager.getServers();
+            console.log(`🔍 Cantidad de servidores en manager: ${Array.isArray(servers) ? servers.length : 0}`);
+        }
+        
+        let config;
+        
+        // Si existe configuración de servidores, usar el servidor primario
+        if (serverManager) {
+            const servers = serverManager.getServers();
+            if (Array.isArray(servers) && servers.length > 0) {
+                console.log('🎯 Usando configuración de servidores múltiples...');
 
-        if (!fs.existsSync(configPath)) {
-            console.log('⚠️  No se encontró configuración de MongoDB\n');
-            console.log('🎯 Iniciando instalador interactivo...\n');
+                // Buscar el servidor marcado como primario
+                const primaryServer = servers.find(s => s.role === 'primary');
+                const currentServer = serverManager.getCurrentServer();
+                
+                // Usar primario si existe, sino el servidor actual
+                const selectedServer = primaryServer || currentServer;
+                
+                if (selectedServer) {
+                    config = {
+                        mongoUri: selectedServer.uri,
+                        mongoDb: selectedServer.database || 'adminflow',
+                        engine: 'mongodb'
+                    };
+                    
+                    console.log(`✅ Servidor seleccionado: ${selectedServer.name} (${selectedServer.role || 'actual'})`);
+                    console.log(`   URI: ${selectedServer.uri}`);
+                    
+                    // Actualizar .selected-db.json para mantener sincronización
+                    const configPath = path.join(__dirname, '../.selected-db.json');
+                    fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+                    console.log('✅ Archivo .selected-db.json sincronizado\n');
+                }
+            }
+        }
+        
+        // Si no hay configuración de servidores, usar el método tradicional
+        if (!config) {
+            const configPath = path.join(__dirname, '../.selected-db.json');
 
-            // Ejecutar instalador interactivo
-            const { interactiveMongoSetup } = require('./interactiveMongoSetup');
-            const config = await interactiveMongoSetup();
+            if (!fs.existsSync(configPath)) {
+                console.log('⚠️  No se encontró configuración de MongoDB\n');
+                console.log('🎯 Iniciando instalador interactivo...\n');
 
-            if (!config) {
-                console.log('❌ Instalación cancelada\n');
-                return { success: false, initialized: false, error: 'Instalación cancelada por el usuario' };
+                // Ejecutar instalador interactivo
+                const { interactiveMongoSetup } = require('./interactiveMongoSetup');
+                config = await interactiveMongoSetup();
+
+                if (!config) {
+                    console.log('❌ Instalación cancelada\n');
+                    return { success: false, initialized: false, error: 'Instalación cancelada por el usuario' };
+                }
+
+                // Recargar configuración después del instalador
+                return { success: true, initialized: true, wasAlreadyInitialized: false };
             }
 
-            // Recargar configuración después del instalador
-            return { success: true, initialized: true, wasAlreadyInitialized: false };
+            // Asegurar que existe la configuración
+            config = ensureDbConfig();
         }
-
-        // Asegurar que existe la configuración
-        const config = ensureDbConfig();
 
         console.log(`📡 MongoDB URI: ${config.mongoUri}`);
         console.log(`🗄️  Base de datos: ${config.mongoDb}\n`);

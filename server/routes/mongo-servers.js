@@ -208,8 +208,11 @@ router.post('/:id/switch', async (req, res) => {
 
         // Reconectar el cliente de MongoDB con el nuevo servidor
         const server = result.server;
+        console.log(`🔄 [SWITCH] Cambiando a servidor primario: ${server.name} (${server.id})`);
+        console.log(`   URI: ${server.uri} DB: ${server.database}`);
         await closeMongoConnection();
         await initMongo({ uri: server.uri, dbName: server.database });
+        console.log(`✅ [SWITCH] Primaria activa: ${server.name}`);
 
         res.json({
             ...result,

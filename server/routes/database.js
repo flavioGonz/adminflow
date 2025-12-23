@@ -6,6 +6,8 @@ const { MongoClient } = require('mongodb');
 const fs = require('fs');
 const path = require('path');
 
+const SYNC_CONFIG_PATH = path.join(__dirname, '../.sync-schedule.json');
+
 // Get MongoDB overview
 router.get('/overview', async (req, res) => {
     try {
@@ -58,6 +60,7 @@ router.get('/overview', async (req, res) => {
             mongoUri = config.mongoUri || '';
         }
 
+        console.log(`[DB OVERVIEW] Using DB: ${dbName} URI: ${mongoUri}`);
         res.json({
             collections: collectionsWithStats,
             totalSize,
@@ -348,11 +351,13 @@ router.post('/deploy-collections', async (req, res) => {
 // Create backup
 router.post('/backup/create', async (req, res) => {
     try {
+        console.log('\n📡 [DB BACKUP] Iniciando creación de respaldo...');
         const { createBackup } = require('../lib/backupServiceNative');
         const result = await createBackup();
+        console.log('✅ [DB BACKUP] Respaldo creado exitosamente');
         res.json(result);
     } catch (error) {
-        console.error('Error creating backup:', error);
+        console.error('❌ [DB BACKUP] Error:', error.message);
         res.status(500).json({ 
             success: false,
             message: 'Error al crear respaldo',
@@ -471,10 +476,161 @@ router.delete('/backup/delete/:backupName', async (req, res) => {
     }
 });
 
+// Shared sync helper
+const performSync = async ({ sourceId, targetIds, collections, dropBeforeInsert = true }) => {
+    const manager = getMongoServerManager();
+    const sourceServer = sourceId ? manager.getServer(sourceId) : manager.getCurrentServer();
+    if (!sourceServer) {
+        throw new Error('Servidor origen no encontrado');
+    }
+
+    const targetServers = (targetIds || [])
+        .map((id) => manager.getServer(id))
+        .filter(Boolean);
+
+    if (!targetServers.length) {
+        throw new Error('No se encontraron servidores destino');
+    }
+
+    console.log(`[DB SYNC] Source: ${sourceServer.id} URI: ${sourceServer.uri} Targets: ${targetIds && targetIds.join(', ')}`);
+    const sourceClient = new MongoClient(sourceServer.uri, { serverSelectionTimeoutMS: 15000 });
+    await sourceClient.connect();
+    const sourceDb = sourceClient.db(sourceServer.database);
+
+    let collectionNames = collections;
+    if (!collectionNames || !collectionNames.length) {
+        const colList = await sourceDb.listCollections().toArray();
+        collectionNames = colList.map((c) => c.name);
+    }
+
+    const report = [];
+
+    for (const target of targetServers) {
+        const targetClient = new MongoClient(target.uri, { serverSelectionTimeoutMS: 15000 });
+        const targetLog = { target: target.id, ok: true, details: [] };
+
+        try {
+            await targetClient.connect();
+            const targetDb = targetClient.db(target.database);
+
+            for (const col of collectionNames) {
+                try {
+                    const docs = await sourceDb.collection(col).find({}).toArray();
+                    if (dropBeforeInsert) {
+                        await targetDb.collection(col).deleteMany({});
+                    }
+                    if (docs.length > 0) {
+                        await targetDb.collection(col).insertMany(docs, { ordered: false });
+                    }
+                    targetLog.details.push({ collection: col, count: docs.length });
+                } catch (err) {
+                    targetLog.ok = false;
+                    targetLog.details.push({ collection: col, error: err.message });
+                }
+            }
+        } catch (err) {
+            targetLog.ok = false;
+            targetLog.error = err.message;
+        } finally {
+            await targetClient.close().catch(() => {});
+            report.push(targetLog);
+        }
+    }
+
+    await sourceClient.close();
+    return { success: true, source: sourceServer.id, report };
+};
+
+let syncScheduleTimer = null;
+let syncScheduleTimeout = null;
+let syncScheduleConfig = {
+    enabled: false,
+    intervalMinutes: 60,
+    startAt: null,
+    sourceId: null,
+    targetIds: [],
+    dropBeforeInsert: true,
+};
+
+// Load schedule from disk on startup
+const loadSyncSchedule = () => {
+    try {
+        if (fs.existsSync(SYNC_CONFIG_PATH)) {
+            const data = fs.readFileSync(SYNC_CONFIG_PATH, 'utf8');
+            syncScheduleConfig = JSON.parse(data);
+            console.log('📅 [SYNC SCHEDULE] Loaded from disk:', syncScheduleConfig);
+        }
+    } catch (err) {
+        console.error('❌ [SYNC SCHEDULE] Failed to load:', err.message);
+    }
+};
+
+// Save schedule to disk
+const saveSyncSchedule = () => {
+    try {
+        fs.writeFileSync(SYNC_CONFIG_PATH, JSON.stringify(syncScheduleConfig, null, 2), 'utf8');
+        console.log('💾 [SYNC SCHEDULE] Saved to disk');
+    } catch (err) {
+        console.error('❌ [SYNC SCHEDULE] Failed to save:', err.message);
+    }
+};
+
+const stopSyncSchedule = () => {
+    if (syncScheduleTimer) {
+        clearInterval(syncScheduleTimer);
+        syncScheduleTimer = null;
+    }
+    if (syncScheduleTimeout) {
+        clearTimeout(syncScheduleTimeout);
+        syncScheduleTimeout = null;
+    }
+};
+
+const startSyncSchedule = () => {
+    stopSyncSchedule();
+    if (!syncScheduleConfig.enabled) return;
+    if (!syncScheduleConfig.targetIds || !syncScheduleConfig.targetIds.length) return;
+
+    const runSync = async () => {
+        try {
+            await performSync({
+                sourceId: syncScheduleConfig.sourceId,
+                targetIds: syncScheduleConfig.targetIds,
+                dropBeforeInsert: syncScheduleConfig.dropBeforeInsert,
+            });
+            console.log('✅ Sync programada ejecutada');
+        } catch (err) {
+            console.error('❌ Error en sync programada:', err.message);
+        }
+    };
+
+    const intervalMs = Math.max(5, syncScheduleConfig.intervalMinutes || 60) * 60 * 1000;
+    const startAt = syncScheduleConfig.startAt ? new Date(syncScheduleConfig.startAt) : null;
+
+    if (startAt && startAt.getTime() > Date.now()) {
+        syncScheduleTimeout = setTimeout(() => {
+            runSync();
+            syncScheduleTimer = setInterval(runSync, intervalMs);
+        }, startAt.getTime() - Date.now());
+    } else {
+        runSync();
+        syncScheduleTimer = setInterval(runSync, intervalMs);
+    }
+};
+
+// Initialize on module load
+loadSyncSchedule();
+if (syncScheduleConfig.enabled) {
+    startSyncSchedule();
+}
+
+router.get('/sync/schedule', (req, res) => {
+    res.json({ success: true, ...syncScheduleConfig });
+});
+
 /**
  * POST /api/database/sync
  * Copia colecciones desde la base primaria (o sourceId) hacia una o más secundarias
- * Body: { sourceId?: string, targetIds: string[], collections?: string[], dropBeforeInsert?: boolean }
  */
 router.post('/sync', async (req, res) => {
     const { sourceId, targetIds, collections, dropBeforeInsert = true } = req.body || {};
@@ -484,72 +640,35 @@ router.post('/sync', async (req, res) => {
     }
 
     try {
-        const manager = getMongoServerManager();
-        const sourceServer = sourceId ? manager.getServer(sourceId) : manager.getCurrentServer();
-        if (!sourceServer) {
-            return res.status(404).json({ success: false, error: 'Servidor origen no encontrado' });
-        }
-
-        const targetServers = targetIds
-            .map((id) => manager.getServer(id))
-            .filter(Boolean);
-
-        if (targetServers.length === 0) {
-            return res.status(404).json({ success: false, error: 'No se encontraron servidores destino' });
-        }
-
-        const sourceClient = new MongoClient(sourceServer.uri, { serverSelectionTimeoutMS: 15000 });
-        await sourceClient.connect();
-        const sourceDb = sourceClient.db(sourceServer.database);
-
-        // Obtener colecciones a sincronizar
-        let collectionNames = collections;
-        if (!collectionNames || collectionNames.length === 0) {
-            const colList = await sourceDb.listCollections().toArray();
-            collectionNames = colList.map((c) => c.name);
-        }
-
-        const report = [];
-
-        for (const target of targetServers) {
-            const targetClient = new MongoClient(target.uri, { serverSelectionTimeoutMS: 15000 });
-            const targetLog = { target: target.id, ok: true, details: [] };
-
-            try {
-                await targetClient.connect();
-                const targetDb = targetClient.db(target.database);
-
-                for (const col of collectionNames) {
-                    try {
-                        const docs = await sourceDb.collection(col).find({}).toArray();
-                        if (dropBeforeInsert) {
-                            await targetDb.collection(col).deleteMany({});
-                        }
-                        if (docs.length > 0) {
-                            await targetDb.collection(col).insertMany(docs, { ordered: false });
-                        }
-                        targetLog.details.push({ collection: col, count: docs.length });
-                    } catch (err) {
-                        targetLog.ok = false;
-                        targetLog.details.push({ collection: col, error: err.message });
-                    }
-                }
-            } catch (err) {
-                targetLog.ok = false;
-                targetLog.error = err.message;
-            } finally {
-                await targetClient.close().catch(() => {});
-                report.push(targetLog);
-            }
-        }
-
-        await sourceClient.close();
-
-        res.json({ success: true, source: sourceServer.id, report });
+        const result = await performSync({ sourceId, targetIds, collections, dropBeforeInsert });
+        res.json(result);
     } catch (error) {
         console.error('Error syncing databases:', error);
         res.status(500).json({ success: false, error: error.message });
     }
+});
+
+// Programar sincronización recurrente
+router.post('/sync/schedule', (req, res) => {
+    const { enabled, intervalMinutes, startAt, sourceId, targetIds, dropBeforeInsert = true } = req.body || {};
+
+    if (enabled && (!Array.isArray(targetIds) || !targetIds.length)) {
+        return res.status(400).json({ success: false, error: 'Selecciona al menos un servidor destino' });
+    }
+
+    syncScheduleConfig = {
+        enabled: Boolean(enabled),
+        intervalMinutes: Number(intervalMinutes) || 60,
+        startAt: startAt || null,
+        sourceId: sourceId || null,
+        targetIds: targetIds || [],
+        dropBeforeInsert: dropBeforeInsert !== false,
+    };
+
+    saveSyncSchedule();
+    startSyncSchedule();
+
+    res.json({ success: true, message: syncScheduleConfig.enabled ? 'Programación activada' : 'Programación desactivada', config: syncScheduleConfig });
 });
 
 module.exports = router;

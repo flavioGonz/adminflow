@@ -139,8 +139,8 @@ app.use(express.static(path.resolve(__dirname, '../client/public')));
 app.use(express.static(path.resolve(__dirname, '../client/.next'), {
     setHeaders: (res, path) => {
         if (path.endsWith('.json') || path.endsWith('.js') || path.endsWith('.css')) {
-            res.setHeader('Content-Type', path.endsWith('.json') ? 'application/json' : 
-                          path.endsWith('.js') ? 'application/javascript' : 'text/css');
+            res.setHeader('Content-Type', path.endsWith('.json') ? 'application/json' :
+                path.endsWith('.js') ? 'application/javascript' : 'text/css');
         }
     },
 }));
@@ -302,6 +302,7 @@ const mapTicketRow = (row) => ({
     audioNotes: parseJsonColumn(row.audioNotes, []),
     assignedTo: row.assignedTo || null,
     assignedGroupId: row.assignedGroupId || null,
+    visitData: parseJsonColumn(row.visit_data, null),
     clientNotificationsEnabled: !!row.clientNotificationsEnabled,
     clientEmail: row.clientEmail || '',
 });
@@ -383,10 +384,30 @@ const mapCalendarEventRow = (row) => ({
     sourceType: row.source_type || 'manual',
     sourceId: row.source_id || null,
     clientId: row.ticket_client_id || row.payment_client_id || row.contract_client_id || null,
+    assignedTo: row.ticket_assigned_to || null,
+    assignedGroup: row.ticket_assigned_group || null,
     locked: !!row.locked,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
 });
+
+const getCalendarEventWithDetails = (id, callback) => {
+    const query = `
+        SELECT 
+            ce.*, 
+            t.client_id as ticket_client_id, 
+            t.assigned_to as ticket_assigned_to,
+            t.assigned_group as ticket_assigned_group,
+            p.client_id as payment_client_id, 
+            c.client_id as contract_client_id 
+        FROM calendar_events ce 
+        LEFT JOIN tickets t ON ce.source_id = t.id AND ce.source_type = 'ticket' 
+        LEFT JOIN payments p ON ce.source_id = p.id AND ce.source_type = 'payment' 
+        LEFT JOIN contracts c ON ce.source_id = c.id AND ce.source_type = 'contract' 
+        WHERE ce.id = ?
+    `;
+    db.get(query, [id], callback);
+};
 
 const upsertCalendarEvent = ({
     title,
@@ -400,8 +421,7 @@ const upsertCalendarEvent = ({
     new Promise((resolve, reject) => {
         const normalizedStart = start || new Date().toISOString();
         const normalizedSourceType = sourceType || 'manual';
-        const shouldLock =
-            locked || (normalizedSourceType !== 'manual' && normalizedSourceType !== 'custom');
+        const shouldLock = locked === true; // Only lock if explicitly requested as true
         const insertEvent = () =>
             db.run(
                 `INSERT INTO calendar_events (title, location, start, end, source_type, source_id, locked)
@@ -1236,7 +1256,7 @@ app.get('/api/system/database/overview', async (req, res) => {
 app.post('/api/system/database/collections', async (req, res) => {
     try {
         const { uri } = req.body;
-        
+
         if (uri) {
             // Connect to specific URI
             const { MongoClient } = require('mongodb');
@@ -1246,7 +1266,7 @@ app.post('/api/system/database/collections', async (req, res) => {
                 await client.connect();
                 const db = client.db();
                 const collectionList = await db.listCollections().toArray();
-                
+
                 // Get stats for each collection
                 const collectionsWithStats = await Promise.all(
                     collectionList.map(async (col) => {
@@ -1268,29 +1288,29 @@ app.post('/api/system/database/collections', async (req, res) => {
                         }
                     })
                 );
-                
+
                 await client.close();
-                
+
                 res.json({
                     success: true,
                     collections: collectionsWithStats
                 });
             } catch (error) {
-                if (client) await client.close().catch(() => {});
+                if (client) await client.close().catch(() => { });
                 throw error;
             }
         } else {
             // Use current connection
             const mongoDb = getMongoDb();
             if (!mongoDb) {
-                return res.status(503).json({ 
+                return res.status(503).json({
                     success: false,
-                    message: 'MongoDB no está conectado' 
+                    message: 'MongoDB no está conectado'
                 });
             }
-            
+
             const collectionList = await mongoDb.listCollections().toArray();
-            
+
             // Get stats for each collection
             const collectionsWithStats = await Promise.all(
                 collectionList.map(async (col) => {
@@ -1312,17 +1332,17 @@ app.post('/api/system/database/collections', async (req, res) => {
                     }
                 })
             );
-            
+
             res.json({
                 success: true,
                 collections: collectionsWithStats
             });
         }
     } catch (error) {
-        res.status(500).json({ 
+        res.status(500).json({
             success: false,
             message: 'Error al obtener colecciones',
-            detail: error.message 
+            detail: error.message
         });
     }
 });
@@ -2118,7 +2138,7 @@ app.post('/api/payments', (req, res) => {
                 if (selectErr) return res.status(500).json({ message: selectErr.message });
                 const savedPayment = mapPaymentRow(row);
 
-                upsertCalendarEvent({
+                await upsertCalendarEvent({
                     title: `Pago ${savedPayment.invoice} - ${savedPayment.client}`.trim(),
                     start: savedPayment.createdAt || new Date().toISOString(),
                     end: savedPayment.createdAt || null,
@@ -2297,7 +2317,7 @@ app.post('/api/contracts', (req, res) => {
                 if (selectErr) return res.status(500).json({ message: selectErr.message });
                 const newContract = mapContractRow(row);
 
-                upsertCalendarEvent({
+                await upsertCalendarEvent({
                     title: `Contrato: ${newContract.title}`.trim(),
                     start: newContract.startDate || newContract.createdAt || new Date().toISOString(),
                     end: newContract.endDate || null,
@@ -3580,7 +3600,9 @@ app.post('/api/tickets', (req, res) => {
         audioNotes = [],
         assignedTo = null,
         assignedGroupId = null,
+        visitData = null,
     } = req.body;
+    const skipCalendarSync = req.body?.skipCalendarSync === true;
     if (!clientId || !title || !priority) {
         return res.status(400).json({ message: 'Client, title, and priority are required.' });
     }
@@ -3591,9 +3613,11 @@ app.post('/api/tickets', (req, res) => {
     const annotationsText = JSON.stringify(Array.isArray(annotations) ? annotations : []);
     const attachmentsText = JSON.stringify(Array.isArray(attachments) ? attachments : []);
     const audioNotesText = JSON.stringify(Array.isArray(audioNotes) ? audioNotes : []);
+    const visitDataText = visitData ? JSON.stringify(visitData) : null;
+
     db.run(
-        'INSERT INTO tickets (client_id, title, priority, status, annotations, amount, visit, description, attachments, audioNotes, assigned_to, assigned_group) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        [numericClientId, title, priority, status, annotationsText, amount, visit ? 1 : 0, description || null, attachmentsText, audioNotesText, assignedTo || null, assignedGroupId || null],
+        'INSERT INTO tickets (client_id, title, priority, status, annotations, amount, visit, description, attachments, audioNotes, assigned_to, assigned_group, visit_data) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [numericClientId, title, priority, status, annotationsText, amount, visit ? 1 : 0, description || null, attachmentsText, audioNotesText, assignedTo || null, assignedGroupId || null, visitDataText],
         function (err) {
             if (err) return res.status(500).json({ message: err.message });
             const ticketId = this.lastID;
@@ -3606,18 +3630,42 @@ app.post('/api/tickets', (req, res) => {
                     recipients.push(newTicket.clientEmail);
                 }
 
+                // Determinar fechas para el calendario
+                let calStart = newTicket.createdAt || new Date().toISOString();
+                let calEnd = calStart;
 
-                upsertCalendarEvent({
-                    title: `Ticket #${newTicket.id}: ${newTicket.title}`,
-                    start: newTicket.createdAt || new Date().toISOString(),
-                    end: newTicket.createdAt || null,
-                    location: newTicket.clientName ? `Cliente: ${newTicket.clientName}` : null,
-                    sourceType: 'ticket',
-                    sourceId: newTicket.id,
-                    locked: true,
-                }).catch((calendarErr) => {
-                    console.error('No se pudo crear el evento de calendario para el ticket:', calendarErr?.message || calendarErr);
-                });
+                if (newTicket.visitData) {
+                    const vd = newTicket.visitData;
+                    if (vd.visitDate) {
+                        if (vd.visitStart) {
+                            calStart = `${vd.visitDate}T${vd.visitStart}`;
+                        } else {
+                            calStart = `${vd.visitDate}T08:00:00`;
+                        }
+
+                        if (vd.visitEnd) {
+                            calEnd = `${vd.visitDate}T${vd.visitEnd}`;
+                        } else {
+                            calEnd = calStart;
+                        }
+                    }
+                }
+
+                if (!skipCalendarSync) {
+                    try {
+                        await upsertCalendarEvent({
+                            title: `Ticket #${newTicket.id}: ${newTicket.title}`,
+                            start: calStart,
+                            end: calEnd,
+                            location: newTicket.clientName ? `Cliente: ${newTicket.clientName}` : null,
+                            sourceType: 'ticket',
+                            sourceId: newTicket.id,
+                            locked: false,
+                        });
+                    } catch (calendarErr) {
+                        console.error('No se pudo crear el evento de calendario para el ticket:', calendarErr?.message || calendarErr);
+                    }
+                }
 
                 // Enviar notificación automática
                 sendAutoNotification(
@@ -3669,6 +3717,7 @@ app.put('/api/tickets/:id', (req, res) => {
                     ? req.body.audioNotes
                     : parseJsonColumn(existing.audioNotes, [])
             ),
+            visit_data: req.body.visitData ? JSON.stringify(req.body.visitData) : existing.visit_data,
             assignedTo: req.body.assignedTo !== undefined ? req.body.assignedTo : existing.assigned_to,
             assignedGroupId:
                 req.body.assignedGroupId !== undefined
@@ -3677,7 +3726,7 @@ app.put('/api/tickets/:id', (req, res) => {
         };
         db.run(
             `UPDATE tickets
-       SET title = ?, status = ?, priority = ?, amount = ?, visit = ?, annotations = ?, description = ?, attachments = ?, audioNotes = ?, assigned_to = ?, assigned_group = ?, updatedAt = CURRENT_TIMESTAMP
+    SET title = ?, status = ?, priority = ?, amount = ?, visit = ?, annotations = ?, description = ?, attachments = ?, audioNotes = ?, visit_data = ?, assigned_to = ?, assigned_group = ?, updatedAt = CURRENT_TIMESTAMP
        WHERE id = ?`,
             [
                 payload.title,
@@ -3689,6 +3738,7 @@ app.put('/api/tickets/:id', (req, res) => {
                 payload.description,
                 payload.attachments,
                 payload.audioNotes,
+                payload.visit_data,
                 payload.assignedTo,
                 payload.assignedGroupId,
                 req.params.id,
@@ -3701,6 +3751,33 @@ app.put('/api/tickets/:id', (req, res) => {
 
                     if (row?.status === 'Facturar') {
                         ensurePendingPaymentForTicket(row);
+                    }
+
+                    // Sincronizar con calendario
+                    let calStart = updatedTicket.createdAt || new Date().toISOString();
+                    let calEnd = calStart;
+                    if (updatedTicket.visitData) {
+                        const vd = updatedTicket.visitData;
+                        if (vd.visitDate) {
+                            if (vd.visitStart) calStart = `${vd.visitDate}T${vd.visitStart}`;
+                            else calStart = `${vd.visitDate}T08:00:00`;
+                            if (vd.visitEnd) calEnd = `${vd.visitDate}T${vd.visitEnd}`;
+                            else calEnd = calStart;
+                        }
+                    }
+
+                    try {
+                        await upsertCalendarEvent({
+                            title: `Ticket #${updatedTicket.id}: ${updatedTicket.title}`,
+                            start: calStart,
+                            end: calEnd,
+                            location: updatedTicket.clientName ? `Cliente: ${updatedTicket.clientName}` : null,
+                            sourceType: 'ticket',
+                            sourceId: updatedTicket.id,
+                            locked: false,
+                        });
+                    } catch (err) {
+                        console.error('Error actualizando calendario desde ticket:', err);
                     }
 
                     // Enviar notificación si cambió el estado o si se solicitó explícitamente
@@ -3742,9 +3819,39 @@ app.put('/api/tickets/:id', (req, res) => {
 });
 
 app.delete('/api/tickets/:id', (req, res) => {
-    db.run('DELETE FROM tickets WHERE id = ?', [req.params.id], function (err) {
+    const ticketId = req.params.id;
+    db.run('DELETE FROM tickets WHERE id = ?', [ticketId], function (err) {
         if (err) return res.status(500).json({ message: err.message });
         if (this.changes === 0) return res.status(404).json({ message: 'Ticket not found' });
+
+        db.run(
+            'DELETE FROM calendar_events WHERE source_type = ? AND source_id = ?',
+            ['ticket', ticketId],
+            function (eventErr) {
+                if (eventErr) {
+                    console.error('Error removing calendar event for deleted ticket:', eventErr);
+                } else if (this.changes > 0) {
+                    logEvent({
+                        user: req.user ? req.user.email : 'system',
+                        action: 'delete',
+                        resource: 'calendar_event',
+                        details: `Evento vinculado eliminado para ticket ${ticketId}`,
+                        status: 'success',
+                        ip: req.ip,
+                    }).catch(() => {});
+                }
+            }
+        );
+
+        logEvent({
+            user: req.user ? req.user.email : 'system',
+            action: 'delete',
+            resource: 'ticket',
+            details: `Ticket eliminado manualmente (ID: ${ticketId})`,
+            status: 'success',
+            ip: req.ip,
+        }).catch(() => {});
+
         res.json({ message: 'Ticket deleted successfully.' });
     });
 });
@@ -3773,11 +3880,7 @@ app.get('/api/calendar-events', (req, res) => {
     `;
     db.all(query, (err, rows) => {
         if (err) return res.status(500).json({ message: err.message });
-        res.json(rows.map(row => ({
-            ...mapCalendarEventRow(row),
-            assignedTo: row.ticket_assigned_to || null,
-            assignedGroup: row.ticket_assigned_group || null
-        })));
+        res.json(rows.map(mapCalendarEventRow));
     });
 });
 
@@ -3835,7 +3938,7 @@ app.put('/api/calendar-events/:id', (req, res) => {
     db.get('SELECT * FROM calendar_events WHERE id = ?', [req.params.id], (getErr, existing) => {
         if (getErr) return res.status(500).json({ message: getErr.message });
         if (!existing) return res.status(404).json({ message: 'Evento no encontrado.' });
-        if (existing.locked && req.body?.force !== true) {
+        if (existing.locked && req.body?.force !== true && existing.source_type !== 'ticket') {
             return res.status(403).json({ message: 'Evento bloqueado. Modificalo desde su origen.' });
         }
         const payload = {
@@ -3846,14 +3949,30 @@ app.put('/api/calendar-events/:id', (req, res) => {
             sourceType: req.body.sourceType ?? existing.source_type ?? 'manual',
             sourceId: req.body.sourceId ?? existing.source_id ?? null,
             locked: req.body.locked ?? existing.locked ?? 0,
+            clientId: req.body.clientId ?? existing.client_id ?? null,
+            assignedTo: req.body.assignedTo ?? existing.assigned_to ?? null,
+            assignedGroup: req.body.assignedGroup ?? existing.assigned_group ?? null,
         };
         db.run(
-            `UPDATE calendar_events SET title = ?, location = ?, start = ?, end = ?, source_type = ?, source_id = ?, locked = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?`,
-            [payload.title, payload.location, payload.start, payload.end, payload.sourceType, payload.sourceId, payload.locked ? 1 : 0, req.params.id],
+            `UPDATE calendar_events SET title = ?, location = ?, start = ?, end = ?, source_type = ?, source_id = ?, locked = ?, client_id = ?, assigned_to = ?, assigned_group = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?`,
+            [
+                payload.title,
+                payload.location,
+                payload.start,
+                payload.end,
+                payload.sourceType,
+                payload.sourceId,
+                payload.locked ? 1 : 0,
+                payload.clientId,
+                payload.assignedTo,
+                payload.assignedGroup,
+                req.params.id,
+            ],
             function (updateErr) {
                 if (updateErr) return res.status(500).json({ message: updateErr.message });
-                db.get('SELECT * FROM calendar_events WHERE id = ?', [req.params.id], async (selectErr, row) => {
+                getCalendarEventWithDetails(req.params.id, async (selectErr, row) => {
                     if (selectErr) return res.status(500).json({ message: selectErr.message });
+                    if (!row) return res.status(404).json({ message: 'Evento no encontrado.' });
                     const updatedEvent = mapCalendarEventRow(row);
 
                     await logEvent({
@@ -3878,18 +3997,51 @@ app.delete('/api/calendar-events/:id', (req, res) => {
         if (existing.locked) {
             return res.status(403).json({ message: 'Evento bloqueado. Modificalo desde su origen.' });
         }
-        db.run('DELETE FROM calendar_events WHERE id = ?', [req.params.id], function (deleteErr) {
-            if (deleteErr) return res.status(500).json({ message: deleteErr.message });
-            logEvent({
-                user: req.user ? req.user.email : 'system',
-                action: 'delete',
-                resource: 'calendar_event',
-                details: { eventId: req.params.id, title: existing.title },
-                status: 'success',
-                ip: req.ip
-            }).catch(() => { });
-            res.json({ message: 'Evento eliminado.' });
-        });
+        const deleteAssociatedTicket = () => {
+            return new Promise((resolve, reject) => {
+                if (existing.source_type === 'ticket' && existing.source_id) {
+                    db.run('DELETE FROM tickets WHERE id = ?', [existing.source_id], function (ticketErr) {
+                        if (ticketErr) {
+                            return reject(ticketErr);
+                        }
+                        if (this.changes > 0) {
+                            logEvent({
+                                user: req.user ? req.user.email : 'system',
+                                action: 'delete',
+                                resource: 'ticket',
+                                details: `Ticket eliminado vía calendario (ID: ${existing.source_id})`,
+                                status: 'success',
+                                ip: req.ip
+                            }).catch(() => {});
+                        } else {
+                            console.warn(`Calendar event ${existing.id} referenced ticket ${existing.source_id} that was already gone.`);
+                        }
+                        resolve();
+                    });
+                } else {
+                    resolve();
+                }
+            });
+        };
+
+        const deleteEvent = () => {
+            db.run('DELETE FROM calendar_events WHERE id = ?', [req.params.id], function (deleteErr) {
+                if (deleteErr) return res.status(500).json({ message: deleteErr.message });
+                logEvent({
+                    user: req.user ? req.user.email : 'system',
+                    action: 'delete',
+                    resource: 'calendar_event',
+                    details: { eventId: req.params.id, title: existing.title },
+                    status: 'success',
+                    ip: req.ip
+                }).catch(() => { });
+                res.json({ message: 'Evento eliminado.' });
+            });
+        };
+
+        deleteAssociatedTicket()
+            .then(deleteEvent)
+            .catch((err) => res.status(500).json({ message: err.message }));
     });
 });
 
