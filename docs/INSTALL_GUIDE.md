@@ -107,13 +107,12 @@ DEFAULT_ADMIN_EMAIL=admin@adminflow.uy
 DEFAULT_ADMIN_PASSWORD=admin
 
 # MongoDB (REQUERIDO)
-# Opción 1: MongoDB Local
+# Opción    # Base de Datos (Local)
 MONGODB_URI=mongodb://localhost:27017
-MONGODB_DB=adminflow
+# Base de Datos (Remota / Atlas)
+# MONGODB_URI=mongodb+srv://user:pass@cluster.mongodb.net/adminflow
 
-# Opción 2: MongoDB Atlas (Cloud)
-# MONGODB_URI=mongodb+srv://usuario:password@cluster0.xxxxx.mongodb.net/adminflow?retryWrites=true&w=majority
-# MONGODB_DB=adminflow
+MONGODB_DB=adminflow
 
 # Email SMTP (Opcional - para notificaciones)
 EMAIL_HOST=smtp.gmail.com
