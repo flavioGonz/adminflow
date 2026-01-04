@@ -127,7 +127,7 @@ router.get('/stack', async (req, res) => {
     const wahaStart = Date.now();
     try {
         const db = getMongoDb();
-        const config = await db.collection('configs').findOne({ type: 'chatbot' });
+        const config = await db.collection('configurations').findOne({ module: 'chatbot' });
 
         // Use configured URL or fallback to default known IP
         const wahaUrl = (config && config.data && config.data.waha_url)

@@ -254,11 +254,46 @@ Almacena un historial de las notificaciones enviadas.
 -   `message`: `String` - Contenido del mensaje enviado.
 -   `metadata`: `Object` - Datos adicionales asociados a la notificación.
 
-### Colección: `configs`
+### Colección: `configurations`
 
 Guarda configuraciones modulares del sistema.
 
 -   `_id`: `ObjectId` - Clave primaria.
--   `module`: `String` - Nombre del módulo de configuración (ej. "notifications", "database"). Es único.
+-   `module`: `String` - Nombre del módulo de configuración (ej. "notifications", "chatbot", "database"). Es único.
 -   `data`: `Object` - Objeto JSON con la configuración específica del módulo.
 -   `updatedAt`: `Date` - Fecha de última modificación.
+
+### Colección: `workflows`
+
+Almacena las definiciones de los flujos de trabajo visuales (React Flow).
+
+-   `_id`: `ObjectId` - Clave primaria.
+-   `type`: `String` - Tipo de flujo (ej. "ticket_flow").
+-   `nodes`: `Array` - Nodos del diagrama.
+-   `edges`: `Array` - Conexiones del diagrama.
+-   `updatedAt`: `Date` - Fecha de actualización.
+
+### Colección: `client_accesses`
+
+Almacena credenciales y accesos de clientes ( Espejo o Migración de SQLite `repository`).
+
+-   `clientId`: `Integer` - ID del cliente.
+-   `tipo_equipo`: `String` - Tipo de recurso.
+-   `user`: `String` - Usuario.
+-   `pass`: `String` - Contraseña.
+
+---
+
+## 3. Colecciones Espejo (Sincronización)
+
+Para permitir escalabilidad y funcionalidades avanzadas, el sistema mantiene colecciones en MongoDB que reflejan las tablas principales de SQLite:
+
+*   `clients`
+*   `tickets`
+*   `budgets`
+*   `contracts`
+*   `payments`
+*   `products`
+*   `calendar_events`
+
+Estas colecciones comparten una estructura similar a sus contrapartes SQL pero aprovechan la flexibilidad de documentos JSON para campos adicionales como `metadata`, `logs` o `custom_fields`.
