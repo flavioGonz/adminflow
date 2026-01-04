@@ -418,9 +418,67 @@ Actualiza un pago.
 ### `DELETE /api/payments/:id`
 
 Elimina un pago.
-
 -   **Autenticación:** Requerida.
 -   **Success Response (200):** `{"message": "Payment deleted"}`.
 
 ---
+
+## Estado del Sistema (`/api/status`)
+
+Endpoints para monitoreo de infraestructura.
+
+### `GET /api/status/stack`
+
+Devuelve el estado de salud de los componentes críticos.
+
+-   **Autenticación:** Requerida.
+-   **Success Response (200):**
+    ```json
+    {
+      "server": { "status": "online", "timestamp": 123456789 },
+      "database": { "status": "connected", "latency": 15 },
+      "waha": { "status": "connected", "latency": 50 }
+    }
+    ```
+
+---
+
+## Chatbot (`/api/chatbot`)
+
+Gestión de la integración con Waha (WhatsApp).
+
+### `GET /api/chatbot/config`
+
+Obtiene la configuración actual del bot.
+
+-   **Success Response (200):** `ChatbotConfig`
+
+### `POST /api/chatbot/config`
+
+Actualiza la configuración.
+
+-   **Request Body:**
+    ```json
+    {
+      "enabled": true,
+      "waha_url": "http://waha:3000",
+      "modules": { "clients": true, "tickets": true }
+    }
+    ```
+
+### `POST /api/chatbot/test`
+
+Prueba la conexión con la instancia de Waha.
+
+-   **Success Response (200):** `{"success": true, "message": "..."}`
+-   **Error Response (500):** `{"success": false, "error": "..."}`
+
+### `GET /api/chatbot/logs`
+
+Obtiene los logs recientes de actividad del bot.
+
+-   **Success Response (200):** `Array<LogEntry>`
+
+---
+
 *Nota: Esta documentación es un resumen. Existen más endpoints para productos, repositorio, calendario y sistema que siguen patrones similares de CRUD. Para ver la lista completa y detalles específicos, se recomienda consultar el código fuente en `server/index.js`.*

@@ -1,6 +1,6 @@
-# 📦 Guía de Instalación de AdminFlow en Nuevo PC
+# 📦 Guía de Instalación de AdminFlow
 
-Esta guía te ayudará a instalar AdminFlow en un nuevo equipo desde cero.
+Esta guía te ayudará a instalar AdminFlow desde cero, cubriendo entornos Windows y Linux, configuración de bases de datos y el chatbot Waha.
 
 ---
 
