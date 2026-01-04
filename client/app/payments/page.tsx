@@ -790,10 +790,10 @@ export default function PaymentsPage() {
       const matchesCurrency =
         currencyFilter === "todos" || payment.currency === currencyFilter;
       const matchesSearch =
-        payment.invoice.toLowerCase().includes(term) ||
-        payment.client.toLowerCase().includes(term) ||
-        (payment.concept && payment.concept.toLowerCase().includes(term)) ||
-        (payment.ticketTitle && payment.ticketTitle.toLowerCase().includes(term));
+        payment.invoice?.toLowerCase().includes(term) ||
+        payment.client?.toLowerCase().includes(term) ||
+        payment.concept?.toLowerCase().includes(term) ||
+        payment.ticketTitle?.toLowerCase().includes(term);
 
       let matchesDate = true;
       const paymentDate = new Date(payment.createdAt);
@@ -1290,193 +1290,193 @@ export default function PaymentsPage() {
                 onScroll={handleScroll}
               >
                 <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead onClick={() => requestSort("createdAt")}>
-                    <button className="flex items-center gap-2 cursor-pointer font-semibold text-slate-800">
-                      <CalendarCheck className="h-4 w-4" />
-                      Fecha
-                      <ArrowUpDown className="h-4 w-4 text-slate-500" />
-                    </button>
-                  </TableHead>
-                  <TableHead onClick={() => requestSort("invoice")}>
-                    <button className="flex items-center gap-2 cursor-pointer font-semibold text-slate-800">
-                      <Hash className="h-4 w-4" />
-                      Factura
-                      <ArrowUpDown className="h-4 w-4 text-slate-500" />
-                    </button>
-                  </TableHead>
-                  <TableHead onClick={() => requestSort("client")}>
-                    <button className="flex items-center gap-2 cursor-pointer font-semibold text-slate-800">
-                      <User className="h-4 w-4" />
-                      Cliente
-                      <ArrowUpDown className="h-4 w-4 text-slate-500" />
-                    </button>
-                  </TableHead>
-                  <TableHead onClick={() => requestSort("ticketTitle")}>
-                    <button className="flex items-center gap-2 cursor-pointer font-semibold text-slate-800">
-                      <FileText className="h-4 w-4" />
-                      Ticket
-                      <ArrowUpDown className="h-4 w-4 text-slate-500" />
-                    </button>
-                  </TableHead>
-                  <TableHead onClick={() => requestSort("concept")}>
-                    <button className="flex items-center gap-2 cursor-pointer font-semibold text-slate-800">
-                      <FileText className="h-4 w-4" />
-                      Concepto
-                      <ArrowUpDown className="h-4 w-4 text-slate-500" />
-                    </button>
-                  </TableHead>
-                  <TableHead onClick={() => requestSort("status")}>
-                    <button className="flex items-center gap-2 cursor-pointer font-semibold text-slate-800">
-                      <CreditCard className="h-4 w-4" />
-                      Estado
-                      <ArrowUpDown className="h-4 w-4 text-slate-500" />
-                    </button>
-                  </TableHead>
-                  <TableHead onClick={() => requestSort("amount")}>
-                    <button className="flex items-center gap-2 cursor-pointer font-semibold text-slate-800">
-                      <DollarSign className="h-4 w-4" />
-                      Monto
-                      <ArrowUpDown className="h-4 w-4 text-slate-500" />
-                    </button>
-                  </TableHead>
-                  <TableHead>
-                    <div className="flex items-center gap-2">
-                      <CreditCard className="h-4 w-4" />
-                      Método
-                    </div>
-                  </TableHead>
-                  <TableHead className="text-right">
-                    <div className="flex items-center gap-2 justify-end">
-                      Acciones
-                    </div>
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TablePageTransition pageKey={visibleCount}>
-                {visiblePayments.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={9} className="p-6 text-center">
-                      No existen pagos para el criterio actual.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  visiblePayments.map((payment) => (
-                    <TableRow key={payment.id}>
-                      <TableCell>
-                        <div className="flex items-center gap-2 text-sm">
-                          <CalendarCheck className="h-4 w-4 text-muted-foreground" />
-                          {new Date(payment.createdAt).toLocaleDateString()}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-col text-sm">
-                          <span className="flex items-center gap-2">
-                            <Hash className="h-4 w-4 text-muted-foreground" />
-                            {payment.invoice}
-                          </span>
-                          {payment.note && (
-                            <span className="text-xs text-muted-foreground">
-                              {payment.note}
-                            </span>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {payment.clientId ? (
-                          <Link
-                            href={`/clients/${payment.clientId}`}
-                            className="text-primary hover:underline"
-                          >
-                            {payment.client}
-                          </Link>
-                        ) : (
-                          payment.client
-                        )}
-                      </TableCell>
-                      <TableCell>{payment.ticketTitle || "Sin ticket"}</TableCell>
-                      <TableCell>
-                        <span className="text-sm text-slate-700">
-                          {payment.concept || "Sin concepto"}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={statusVariant[payment.status]}
-                          className={statusBadgeClasses[payment.status]}
-                        >
-                          {payment.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead onClick={() => requestSort("createdAt")}>
+                        <button className="flex items-center gap-2 cursor-pointer font-semibold text-slate-800">
+                          <CalendarCheck className="h-4 w-4" />
+                          Fecha
+                          <ArrowUpDown className="h-4 w-4 text-slate-500" />
+                        </button>
+                      </TableHead>
+                      <TableHead onClick={() => requestSort("invoice")}>
+                        <button className="flex items-center gap-2 cursor-pointer font-semibold text-slate-800">
+                          <Hash className="h-4 w-4" />
+                          Factura
+                          <ArrowUpDown className="h-4 w-4 text-slate-500" />
+                        </button>
+                      </TableHead>
+                      <TableHead onClick={() => requestSort("client")}>
+                        <button className="flex items-center gap-2 cursor-pointer font-semibold text-slate-800">
+                          <User className="h-4 w-4" />
+                          Cliente
+                          <ArrowUpDown className="h-4 w-4 text-slate-500" />
+                        </button>
+                      </TableHead>
+                      <TableHead onClick={() => requestSort("ticketTitle")}>
+                        <button className="flex items-center gap-2 cursor-pointer font-semibold text-slate-800">
+                          <FileText className="h-4 w-4" />
+                          Ticket
+                          <ArrowUpDown className="h-4 w-4 text-slate-500" />
+                        </button>
+                      </TableHead>
+                      <TableHead onClick={() => requestSort("concept")}>
+                        <button className="flex items-center gap-2 cursor-pointer font-semibold text-slate-800">
+                          <FileText className="h-4 w-4" />
+                          Concepto
+                          <ArrowUpDown className="h-4 w-4 text-slate-500" />
+                        </button>
+                      </TableHead>
+                      <TableHead onClick={() => requestSort("status")}>
+                        <button className="flex items-center gap-2 cursor-pointer font-semibold text-slate-800">
+                          <CreditCard className="h-4 w-4" />
+                          Estado
+                          <ArrowUpDown className="h-4 w-4 text-slate-500" />
+                        </button>
+                      </TableHead>
+                      <TableHead onClick={() => requestSort("amount")}>
+                        <button className="flex items-center gap-2 cursor-pointer font-semibold text-slate-800">
+                          <DollarSign className="h-4 w-4" />
+                          Monto
+                          <ArrowUpDown className="h-4 w-4 text-slate-500" />
+                        </button>
+                      </TableHead>
+                      <TableHead>
                         <div className="flex items-center gap-2">
-                          {payment.currency === "UYU" && (
-                            <ReactCountryFlag
-                              svg
-                              countryCode="UY"
-                              className="inline-block h-4 w-5"
-                              aria-label="Uruguay"
-                            />
-                          )}
-                          {payment.currency === "USD" && (
-                            <ReactCountryFlag
-                              svg
-                              countryCode="US"
-                              className="inline-block h-4 w-5"
-                              aria-label="Estados Unidos"
-                            />
-                          )}
-                          <span className="text-slate-800 font-semibold">
-                            {formatCurrencyValue(payment.amount, payment.currency)}
-                          </span>
+                          <CreditCard className="h-4 w-4" />
+                          Método
                         </div>
-                      </TableCell>
-                      <TableCell>
-                        {payment.status === "Pagado" ? (
-                          <Badge variant="secondary">
-                            {payment.method || "Sin método"}
-                          </Badge>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">-</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          {payment.status !== "Pagado" && payment.status !== "Pagado Facturado" && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="gap-2"
-                              type="button"
-                              onClick={() => openConfirmDialog(payment)}
-                            >
-                              <CheckCircle className="h-4 w-4" />
-                              Confirmar pago
-                            </Button>
-                          )}
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            type="button"
-                            onClick={() => openEditDialog(payment)}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            type="button"
-                            onClick={() => handleDeletePayment(payment.id)}
-                          >
-                            <Trash2 className="h-4 w-4 text-red-500" />
-                          </Button>
+                      </TableHead>
+                      <TableHead className="text-right">
+                        <div className="flex items-center gap-2 justify-end">
+                          Acciones
                         </div>
-                      </TableCell>
+                      </TableHead>
                     </TableRow>
-                  ))
-                )}
-              </TablePageTransition>
+                  </TableHeader>
+                  <TablePageTransition pageKey={visibleCount}>
+                    {visiblePayments.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={9} className="p-6 text-center">
+                          No existen pagos para el criterio actual.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      visiblePayments.map((payment) => (
+                        <TableRow key={payment.id}>
+                          <TableCell>
+                            <div className="flex items-center gap-2 text-sm">
+                              <CalendarCheck className="h-4 w-4 text-muted-foreground" />
+                              {new Date(payment.createdAt).toLocaleDateString()}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex flex-col text-sm">
+                              <span className="flex items-center gap-2">
+                                <Hash className="h-4 w-4 text-muted-foreground" />
+                                {payment.invoice}
+                              </span>
+                              {payment.note && (
+                                <span className="text-xs text-muted-foreground">
+                                  {payment.note}
+                                </span>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            {payment.clientId ? (
+                              <Link
+                                href={`/clients/${payment.clientId}`}
+                                className="text-primary hover:underline"
+                              >
+                                {payment.client}
+                              </Link>
+                            ) : (
+                              payment.client
+                            )}
+                          </TableCell>
+                          <TableCell>{payment.ticketTitle || "Sin ticket"}</TableCell>
+                          <TableCell>
+                            <span className="text-sm text-slate-700">
+                              {payment.concept || "Sin concepto"}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              variant={statusVariant[payment.status]}
+                              className={statusBadgeClasses[payment.status]}
+                            >
+                              {payment.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              {payment.currency === "UYU" && (
+                                <ReactCountryFlag
+                                  svg
+                                  countryCode="UY"
+                                  className="inline-block h-4 w-5"
+                                  aria-label="Uruguay"
+                                />
+                              )}
+                              {payment.currency === "USD" && (
+                                <ReactCountryFlag
+                                  svg
+                                  countryCode="US"
+                                  className="inline-block h-4 w-5"
+                                  aria-label="Estados Unidos"
+                                />
+                              )}
+                              <span className="text-slate-800 font-semibold">
+                                {formatCurrencyValue(payment.amount, payment.currency)}
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            {payment.status === "Pagado" ? (
+                              <Badge variant="secondary">
+                                {payment.method || "Sin método"}
+                              </Badge>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">-</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              {payment.status !== "Pagado" && payment.status !== "Pagado Facturado" && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="gap-2"
+                                  type="button"
+                                  onClick={() => openConfirmDialog(payment)}
+                                >
+                                  <CheckCircle className="h-4 w-4" />
+                                  Confirmar pago
+                                </Button>
+                              )}
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                type="button"
+                                onClick={() => openEditDialog(payment)}
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                type="button"
+                                onClick={() => handleDeletePayment(payment.id)}
+                              >
+                                <Trash2 className="h-4 w-4 text-red-500" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TablePageTransition>
                 </Table>
                 {hasMoreResults && (
                   <div className="px-4 py-3 text-center text-xs text-slate-500">

@@ -100,4 +100,74 @@ router.get('/logs', (req, res) => {
     res.json({ lines: readRecentLogs(limit), timestamp: new Date().toISOString() });
 });
 
+router.get('/stack', async (req, res) => {
+    const result = {
+        server: { status: 'online', timestamp: Date.now() },
+        database: { status: 'unknown', latency: 0 },
+        waha: { status: 'unknown', latency: 0 }
+    };
+
+    // Check MongoDB
+    const mongoStart = Date.now();
+    try {
+        const db = getMongoDb();
+        if (db) {
+            await db.command({ ping: 1 });
+            result.database.status = 'connected';
+        } else {
+            result.database.status = 'disconnected';
+        }
+    } catch (err) {
+        result.database.status = 'error';
+        console.error('Stack status mongo error:', err.message);
+    }
+    result.database.latency = Date.now() - mongoStart;
+
+    // Check Waha
+    const wahaStart = Date.now();
+    try {
+        const db = getMongoDb();
+        const config = await db.collection('configs').findOne({ type: 'chatbot' });
+
+        // Use configured URL or fallback to default known IP
+        const wahaUrl = (config && config.data && config.data.waha_url)
+            ? config.data.waha_url
+            : "http://192.168.99.104:3000";
+
+        if (wahaUrl) {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 3000); // 3s timeout
+
+            // Normalize URL
+            const baseUrl = wahaUrl.replace(/\/$/, "");
+
+            // Try fetching health check or dashboard or root
+            // GET is more reliable than HEAD for some servers
+            const pingUrl = `${baseUrl}/dashboard`;
+
+            try {
+                await fetch(pingUrl, {
+                    method: 'GET',
+                    signal: controller.signal
+                });
+                clearTimeout(timeout);
+                // If we get a response (200, 404, 500), it's reachable.
+                result.waha.status = 'connected';
+            } catch (fetchErr) {
+                // Retry with root if dashboard fails?
+                // For now, assume network error
+                clearTimeout(timeout);
+                result.waha.status = 'disconnected';
+            }
+        } else {
+            result.waha.status = 'disabled';
+        }
+    } catch (err) {
+        result.waha.status = 'error';
+    }
+    result.waha.latency = Date.now() - wahaStart;
+
+    res.json(result);
+});
+
 module.exports = router;

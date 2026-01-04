@@ -34,6 +34,7 @@ import {
 import { PageHeader } from "@/components/layout/page-header";
 import ReactCountryFlag from "react-country-flag";
 import { toast } from "sonner";
+import { generateId } from "@/lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -58,6 +59,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { RichTextEditor } from "@/components/ui/rich-text-editor";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -70,6 +72,7 @@ import {
 import { Group } from "@/types/group";
 import { API_URL } from "@/lib/http";
 import { TicketsTimeline } from "@/components/tickets/tickets-timeline";
+import { getStatusConfig, useTicketStatuses, isVisitStatus } from "@/lib/ticket-utils";
 
 const formatDateTime = (value?: string) =>
   value
@@ -115,33 +118,7 @@ const getPriorityBadgeVariant = (value: TicketPriority) => {
   return "secondary";
 };
 
-const statusIcons: Record<string, React.ComponentType<{ className?: string }>> = {
-  "Nuevo": PlusCircle,
-  "Abierto": FolderOpen,
-  "En proceso": Loader2,
-  "Visita": MapPin,
-  "Visita - Coordinar": MapPin,
-  "Visita Programada": Calendar,
-  "Visita Realizada": CheckCircle2,
-  "Revision Cerrar Visita": Activity,
-  "Resuelto": CheckCircle2,
-  "Facturar": Receipt,
-  "Pagado": DollarSign,
-};
-
-const statusColors: Record<string, string> = {
-  "Nuevo": "text-sky-500",
-  "Abierto": "text-blue-500",
-  "En proceso": "text-amber-500",
-  "Visita": "text-purple-500",
-  "Visita - Coordinar": "text-purple-500",
-  "Visita Programada": "text-indigo-500",
-  "Visita Realizada": "text-emerald-600",
-  "Revision Cerrar Visita": "text-orange-500",
-  "Resuelto": "text-emerald-600",
-  "Facturar": "text-orange-500",
-  "Pagado": "text-lime-600",
-};
+// statusIcons and statusColors removed, will use getStatusConfig
 
 const visitStatuses = [
   "Visita",
@@ -162,7 +139,18 @@ const priorityMeta: Record<
   Baja: { Icon: CheckCircle2, color: "text-emerald-600" },
 };
 
+// Normalize priority values to handle legacy/inconsistent data
+const normalizePriority = (priority: string | undefined | null): TicketPriority => {
+  if (!priority) return "Media"; // Default for undefined, null, or empty
+  const normalized = priority.toLowerCase();
+  if (normalized === "high" || normalized === "alta") return "Alta";
+  if (normalized === "low" || normalized === "baja") return "Baja";
+  // Default to "Media" for medium, medio, or any other value
+  return "Media";
+};
+
 export default function TicketDetailPage() {
+  const { statusOptions, transitions } = useTicketStatuses();
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const { data: session } = useSession();
@@ -197,7 +185,7 @@ export default function TicketDetailPage() {
   const [isLocked, setIsLocked] = useState(true);
   const [users, setUsers] = useState<{ id: string; name: string; email: string; avatar?: string }[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
-  // Declaración de groupsMap al nivel superior del componente
+
   const groupsMap = useMemo(() => {
     const map: Record<string, Group> = {};
     groups.forEach((group) => {
@@ -207,8 +195,10 @@ export default function TicketDetailPage() {
     });
     return map;
   }, [groups]);
+
   const [formAssignedTo, setFormAssignedTo] = useState<string | null>(null);
   const [formAssignedGroupId, setFormAssignedGroupId] = useState<string | null>(null);
+
   const currentUserProfile = useMemo(() => {
     const email = session?.user?.email?.toLowerCase();
     if (!email) return null;
@@ -219,6 +209,7 @@ export default function TicketDetailPage() {
       avatar: resolveAvatarUrl(matched.avatar),
     };
   }, [session?.user?.email, users]);
+
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -259,7 +250,7 @@ export default function TicketDetailPage() {
   useEffect(() => {
     if (!ticket) return;
     setFormStatus(ticket.status);
-    setFormPriority(ticket.priority);
+    setFormPriority(normalizePriority(ticket.priority));
     setFormVisit(Boolean(ticket.visit));
     setFormAmount(ticket.amount);
     setFormCurrency(ticket.amountCurrency ?? "UYU");
@@ -338,6 +329,7 @@ export default function TicketDetailPage() {
       setFormAssignedGroupId(ticket.assignedGroupId ?? null);
     }
   }, [ticket]);
+
   const assignedUser = useMemo(
     () => users.find((user) => user.email === formAssignedTo) ?? null,
     [users, formAssignedTo]
@@ -418,9 +410,64 @@ export default function TicketDetailPage() {
     );
   }, [formAnnotations]);
 
+  const filteredStatusOptions = useMemo(() => {
+    // 1. Determine allowed next statuses based on graph
+    const allowedNext = transitions[formStatus];
+
+    // 2. If no strict rules defined for this status, fallback to existing logic or all
+    //    (If the user hasn't drawn any arrows from this node, we assume open)
+    const candidates = allowedNext && allowedNext.length > 0
+      ? statusOptions.filter(s => allowedNext.includes(s) || s === formStatus)
+      : statusOptions;
+
+    // 3. Apply manual Visit Mode overlay if needed, or rely on graph?
+    //    The user wants "Avoid flow errors". Graph is the source of truth.
+    //    However, we must ensure "formVisit" toggle doesn't break things.
+    //    Actually, if the graph says "En Proceso" -> "Visita", then "Visita" is available.
+    //    The "formVisit" toggle controls the *Form Visibility*, not the status options anymore.
+
+    // Original logic for visit mode was:
+    // if (!formVisit) remove visit statuses.
+    // if (isVisitStatus) show ONLY visit + exit statuses.
+
+    // We can Combine them:
+    // If strict graph exists, use it.
+    // If NOT, use the old hardcoded logic as fallback.
+
+    if (allowedNext && allowedNext.length > 0) {
+      return candidates;
+    }
+
+    // Fallback if no graph edges
+    if (!formVisit) {
+      return statusOptions.filter(s => !isVisitStatus(s) || s === formStatus);
+    }
+    if (isVisitStatus(formStatus)) {
+      return statusOptions.filter(s => isVisitStatus(s) || s === "Resuelto" || s === "Facturar" || s === "Cerrado" || s === formStatus);
+    }
+
+    return statusOptions;
+  }, [statusOptions, transitions, formStatus, formVisit]);
+
   const handleSave = useCallback(
     async (overrides?: { annotations?: Ticket["annotations"] }) => {
       if (!ticket) return;
+
+      // START VALIDATION
+      if (!overrides?.annotations && ticket.status !== formStatus) {
+        const allowedNext = transitions[ticket.status];
+        const isValidMove = allowedNext && allowedNext.includes(formStatus);
+
+        // Strict check only if transitions are defined for this node
+        if (allowedNext && allowedNext.length > 0 && !isValidMove) {
+          toast.error(`Debe avanzar el flujo actual. Estado requerido: ${ticket.status}`);
+          // reset form status? Optional. User might want to see what they did wrong.
+          // setFormStatus(ticket.status);
+          return;
+        }
+      }
+      // END VALIDATION
+
       setIsSaving(true);
       try {
         let annotationsToSend = overrides?.annotations ?? formAnnotations ?? [];
@@ -434,7 +481,7 @@ export default function TicketDetailPage() {
             changes.push(`Prioridad: <strong>${ticket.priority}</strong> → <strong>${formPriority}</strong>`);
           }
           if (Boolean(ticket.visit) !== Boolean(formVisit)) {
-                changes.push(`Visita: <strong>${ticket.visit ? "Si" : "No"}</strong> → <strong>${formVisit ? "Si" : "No"}</strong>`);
+            changes.push(`Visita: <strong>${ticket.visit ? "Si" : "No"}</strong> → <strong>${formVisit ? "Si" : "No"}</strong>`);
           }
           const currentAmount = ticket.amount ?? 0;
           const currentCurrency = ticket.amountCurrency ?? "UYU";
@@ -446,7 +493,7 @@ export default function TicketDetailPage() {
             );
           }
           if ((ticket.description ?? "") !== (formDescription ?? "")) {
-                changes.push("Descripcion actualizada");
+            changes.push("Descripcion actualizada");
           }
           if ((ticket.assignedTo ?? null) !== (formAssignedTo ?? null)) {
             const oldUser = ticket.assignedTo || "Sin asignar";
@@ -539,7 +586,7 @@ export default function TicketDetailPage() {
         const message =
           err instanceof Error
             ? err.message
-          : "Ocurrio un error al guardar los cambios.";
+            : "Ocurrio un error al guardar los cambios.";
         toast.error(message);
         console.error("Error saving ticket:", err);
       } finally {
@@ -624,7 +671,7 @@ export default function TicketDetailPage() {
             const reader = new FileReader();
             reader.onload = () =>
               resolve({
-                id: crypto.randomUUID(),
+                id: generateId(),
                 name: file.name,
                 size: file.size,
                 type: file.type,
@@ -653,10 +700,7 @@ export default function TicketDetailPage() {
   const handleEditorImagePaste = useCallback(
     ({ file, dataUrl }: { file: File; dataUrl: string }) => {
       const attachment: TicketAttachment = {
-        id:
-          typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-            ? crypto.randomUUID()
-            : `clipboard-${Date.now()}`,
+        id: generateId(),
         name: file.name || `clipboard-image-${Date.now()}`,
         size: file.size,
         type: file.type || "image/png",
@@ -698,7 +742,7 @@ export default function TicketDetailPage() {
           ? Math.round((Date.now() - recordingStartRef.current) / 1000)
           : undefined;
         const newNote: TicketAudioNote = {
-          id: crypto.randomUUID(),
+          id: generateId(),
           createdAt: new Date().toISOString(),
           dataUrl: url,
           durationSeconds: duration,
@@ -710,7 +754,7 @@ export default function TicketDetailPage() {
       setIsRecording(true);
     } catch (err) {
       console.error("Recording error:", err);
-        toast.error("No se pudo iniciar la grabacion.");
+      toast.error("No se pudo iniciar la grabacion.");
     }
   }, []);
 
@@ -733,10 +777,6 @@ export default function TicketDetailPage() {
       toast.error("No se pudo reproducir la nota de voz.");
     });
   }, []);
-
-  const isVisitStatus = visitStatuses.includes(
-    formStatus as (typeof visitStatuses)[number]
-  );
 
   const handleOpenAttachment = useCallback((attachment: TicketAttachment) => {
     window.open(attachment.url ?? attachment.dataUrl ?? "#", "_blank");
@@ -797,6 +837,9 @@ export default function TicketDetailPage() {
   // Debug: log ticket and annotation data to diagnose RangeError
   console.log("[DEBUG] Ticket Data:", ticket);
   console.log("[DEBUG] Annotations:", sortedAnnotations);
+
+
+
   return (
     <div className="space-y-5 p-6">
       <PageHeader
@@ -889,7 +932,7 @@ export default function TicketDetailPage() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1.25fr_0.75fr]">
-        {isVisitStatus ? (
+        {formVisit ? (
           <section className="space-y-5 rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm">
             <div className="flex items-center justify-between">
               <div>
@@ -901,7 +944,7 @@ export default function TicketDetailPage() {
             </div>
             <VisitForm
               value={ticket?.visitData ?? {}}
-              onChange={() => {}}
+              onChange={() => { }}
               disabled={isLocked}
             />
           </section>
@@ -966,7 +1009,7 @@ export default function TicketDetailPage() {
             <RichTextEditor
               value={noteDraft}
               onChange={setNoteDraft}
-                placeholder="Describe la intervencion, acciones, resultados o bloqueos."
+              placeholder="Describe la intervencion, acciones, resultados o bloqueos."
               direction="ltr"
               className="min-h-[220px]"
               onImagePaste={handleEditorImagePaste}
@@ -996,7 +1039,23 @@ export default function TicketDetailPage() {
             </Button>
           </div>
 
+
           <div className="space-y-4">
+            <div className="flex items-center space-x-2 border p-3 rounded-lg bg-slate-50">
+              <Switch
+                id="visit-mode"
+                checked={formVisit}
+                onCheckedChange={setFormVisit}
+                disabled={isLocked}
+              />
+              <Label htmlFor="visit-mode" className="flex flex-col cursor-pointer">
+                <span>Requiere Visita Tecnica</span>
+                <span className="font-normal text-[0.7rem] text-muted-foreground">
+                  Habilita el flujo de estados de visita y el formulario tecnico.
+                </span>
+              </Label>
+            </div>
+
             <div className="grid gap-3 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="status">Estado</Label>
@@ -1011,8 +1070,7 @@ export default function TicketDetailPage() {
                     <SelectValue>
                       <div className="flex items-center gap-2">
                         {(() => {
-                          const Icon = statusIcons[formStatus] ?? Loader2;
-                          const color = statusColors[formStatus] ?? "text-slate-500";
+                          const { icon: Icon, color } = getStatusConfig(formStatus);
                           return <Icon className={`h-4 w-4 ${color}`} />;
                         })()}
                         <span className="leading-none">{formStatus}</span>
@@ -1020,28 +1078,8 @@ export default function TicketDetailPage() {
                     </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
-                    {[
-                      "Nuevo",
-                      "Abierto",
-                      "En proceso",
-                      "En proceso de soporte",
-                      "Visita",
-                      "Visita - Coordinar",
-                      "Visita Programada",
-                      "Visita Realizada",
-                      "Revision Cerrar Visita",
-                      "Pendiente de Coordinacion",
-                      "Pendiente de Cliente",
-                      "Pendiente de Tercero",
-                      "Pendiente de Facturacion",
-                      "Pendiente de Pago",
-                      "Cerrado",
-                      "Resuelto",
-                      "Facturar",
-                      "Pagado"
-                    ].map((status) => {
-                      const Icon = statusIcons[status as TicketStatus] ?? Loader2;
-                      const color = statusColors[status as TicketStatus] ?? "text-slate-500";
+                    {filteredStatusOptions.map((status) => {
+                      const { icon: Icon, color } = getStatusConfig(status);
                       return (
                         <SelectItem key={status} value={status}>
                           <div className="flex items-center gap-2">
@@ -1067,7 +1105,7 @@ export default function TicketDetailPage() {
                     <SelectValue>
                       <div className="flex items-center gap-2">
                         {(() => {
-                          const meta = priorityMeta[formPriority];
+                          const meta = priorityMeta[formPriority] || priorityMeta["Media"];
                           const Icon = meta.Icon;
                           return <Icon className={`h-4 w-4 ${meta.color}`} />;
                         })()}
@@ -1077,7 +1115,7 @@ export default function TicketDetailPage() {
                   </SelectTrigger>
                   <SelectContent>
                     {priorityOptions.map((priority) => {
-                      const meta = priorityMeta[priority];
+                      const meta = priorityMeta[priority] || priorityMeta["Media"];
                       const Icon = meta.Icon;
                       return (
                         <SelectItem key={priority} value={priority}>
@@ -1301,9 +1339,9 @@ export default function TicketDetailPage() {
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm font-semibold">Timeline de notas</p>
-              <p className="text-xs text-muted-foreground">
-                Anotaciones ordenadas por fecha (ultimo registro primero).
-              </p>
+            <p className="text-xs text-muted-foreground">
+              Anotaciones ordenadas por fecha (ultimo registro primero).
+            </p>
           </div>
         </div>
         <div className="mt-4 max-h-[360px] overflow-y-auto pr-2">
@@ -1451,4 +1489,3 @@ export default function TicketDetailPage() {
     </div >
   );
 }
-

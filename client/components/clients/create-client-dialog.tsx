@@ -21,6 +21,9 @@ import { toast } from "sonner";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Client } from "@/types/client";
 import { API_URL } from "@/lib/http";
+import { fetchAllContracts, updateContract } from "@/lib/api-contracts";
+import { Combobox } from "@/components/ui/combobox";
+import { Contract } from "@/types/contract";
 
 interface CreateClientDialogProps {
   onClientCreated: (client: Client) => void;
@@ -38,6 +41,27 @@ export function CreateClientDialog({ onClientCreated }: CreateClientDialogProps)
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [availableContracts, setAvailableContracts] = useState<Contract[]>([]);
+  const [selectedContractId, setSelectedContractId] = useState<string | undefined>();
+  const [loadingContracts, setLoadingContracts] = useState(false);
+
+  React.useEffect(() => {
+    if (isOpen) {
+      const loadContracts = async () => {
+        setLoadingContracts(true);
+        try {
+          const contracts = await fetchAllContracts();
+          // Filter out contracts that already have a client
+          setAvailableContracts(contracts.filter(c => !c.clientId || c.clientId === ""));
+        } catch (error) {
+          console.error("Error loading contracts:", error);
+        } finally {
+          setLoadingContracts(false);
+        }
+      };
+      loadContracts();
+    }
+  }, [isOpen]);
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -112,6 +136,21 @@ export function CreateClientDialog({ onClientCreated }: CreateClientDialogProps)
         }
       }
 
+      // 3. Link contract if selected
+      if (contract && selectedContractId) {
+        try {
+          await updateContract(selectedContractId, {
+            clientId: newClient.id,
+            clientName: newClient.name,
+            status: "Activo"
+          });
+          toast.success("Contrato vinculado exitosamente.");
+        } catch (contractError) {
+          console.error("Error linking contract:", contractError);
+          toast.error("Cliente creado, pero no se pudo vincular el contrato.");
+        }
+      }
+
       onClientCreated(newClient);
       toast.success("Cliente creado exitosamente.");
       setIsOpen(false);
@@ -127,6 +166,7 @@ export function CreateClientDialog({ onClientCreated }: CreateClientDialogProps)
       setNotificationsEnabled(true);
       setAvatarFile(null);
       setAvatarPreview(null);
+      setSelectedContractId(undefined);
     } catch (error: any) {
       console.error("Error creating client:", error);
       toast.error(`Error al crear el cliente: ${error.message}`);
@@ -251,6 +291,22 @@ export function CreateClientDialog({ onClientCreated }: CreateClientDialogProps)
                     Tiene contrato activo
                   </Label>
                 </div>
+
+                {contract && (
+                  <div className="pl-6 space-y-2">
+                    <Label className="text-xs text-muted-foreground">Vincular Contrato Existente</Label>
+                    <Combobox
+                      options={availableContracts.map(c => ({
+                        value: c.id,
+                        label: `${c.title} - ${c.clientName || 'Sin cliente'}`
+                      }))}
+                      value={selectedContractId}
+                      onValueChange={setSelectedContractId}
+                      placeholder={loadingContracts ? "Cargando contratos..." : "Seleccionar contrato..."}
+                      searchPlaceholder="Buscar por título..."
+                    />
+                  </div>
+                )}
 
                 <div className="flex items-center space-x-2">
                   <Checkbox

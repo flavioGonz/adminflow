@@ -428,7 +428,7 @@ export default function CalendarPage() {
   useEffect(() => {
     if (!calendarRef.current) return;
     const handle = setTimeout(() => {
-      calendarRef.current?.getApi().render();
+      calendarRef.current?.getApi().updateSize();
     }, 0);
     return () => clearTimeout(handle);
   }, [weeklyWeather, showWeather]);
@@ -575,7 +575,7 @@ export default function CalendarPage() {
             setSaving(false);
             return;
           }
-          const ticketPayload = {
+          const ticketPayload: any = {
             clientId: selectedClientId,
             title: decorateCalendarTicketTitle(draft.title),
             status: "Visita Programada",

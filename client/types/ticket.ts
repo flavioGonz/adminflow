@@ -16,7 +16,10 @@ export type TicketStatus =
   | "Cerrado"
   | "Resuelto"
   | "Facturar"
-  | "Pagado";
+  | "Pagado"
+  | "Re abierto"
+  | "Esperando cliente"
+  | "Evaluación";
 
 export type TicketPriority = "Alta" | "Media" | "Baja";
 
@@ -69,4 +72,5 @@ export interface Ticket {
   assignedTo?: string | null;
   assignedGroupId?: string | null;
   updatedAt?: string;
+  visitData?: any;
 }

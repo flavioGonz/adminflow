@@ -48,9 +48,9 @@ export default function VisitForm({ value, onChange, disabled }: Props) {
   const escapeHtml = (text?: string) =>
     text
       ? text
-          .replace(/&/g, "&amp;")
-          .replace(/</g, "&lt;")
-          .replace(/>/g, "&gt;")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
       : "";
 
   const formatDate = (date?: string) => {
@@ -557,14 +557,14 @@ export default function VisitForm({ value, onChange, disabled }: Props) {
               onCheckedChange={setPendingEnabled}
               disabled={disabled}
             />
-            <span>{pendingEnabled ? "SÃ­" : "No"}</span>
+            <span>{pendingEnabled ? "Sí" : "No"}</span>
           </div>
         </div>
         <Textarea
           value={safeValue.pendingItems}
           onChange={(e) => set({ pendingItems: e.target.value })}
           disabled={disabled || !pendingEnabled}
-          placeholder="DescripciÃ³n de pendientes, una por lÃ­nea"
+          placeholder="Descripción de pendientes, una por línea"
           className="bg-white/50 focus:bg-white transition-colors min-h-[80px]"
         />
       </div>
@@ -581,14 +581,14 @@ export default function VisitForm({ value, onChange, disabled }: Props) {
               onCheckedChange={setInvoiceEnabled}
               disabled={disabled}
             />
-            <span>{invoiceEnabled ? "SÃ­" : "No"}</span>
+            <span>{invoiceEnabled ? "Sí" : "No"}</span>
           </div>
         </div>
         <Textarea
           value={safeValue.invoiceItems}
           onChange={(e) => set({ invoiceItems: e.target.value })}
           disabled={disabled || !invoiceEnabled}
-          placeholder="DescripciÃ³n de items para facturar, una por lÃ­nea"
+          placeholder="Descripción de items para facturar, una por línea"
           className="bg-white/50 focus:bg-white transition-colors min-h-[80px]"
         />
       </div>
@@ -604,7 +604,7 @@ export default function VisitForm({ value, onChange, disabled }: Props) {
         <div className="print:flex print:justify-between print:items-center print:border-b print:border-slate-200 print:pb-4">
           <div>
             <p className="print:text-[10px] print:uppercase print:tracking-[0.4em] text-slate-500">Ficha de visita</p>
-            <h2 className="print:text-2xl print:font-bold">Informe de intervenciÃ³n</h2>
+            <h2 className="print:text-2xl print:font-bold">Informe de intervención</h2>
           </div>
           <div className="print:text-right print:text-xs text-slate-600">
             <p>{value.visitDate || "Fecha pendiente"}</p>
@@ -612,7 +612,7 @@ export default function VisitForm({ value, onChange, disabled }: Props) {
           </div>
         </div>
         <div className="print:grid print:grid-cols-2 print:gap-4 print:mt-4">
-          {["Copia tÃ©cnico", "Copia cliente"].map((title) => (
+          {["Copia técnico", "Copia cliente"].map((title) => (
             <div key={title} className="print:border print:border-slate-200 print:rounded-2xl print:p-4 print:shadow-sm print:bg-slate-50">
               <p className="print:text-xs print:uppercase print:tracking-[0.4em] text-slate-500">{title}</p>
               <h3 className="print:text-lg print:font-semibold print:mt-1">{title}</h3>
@@ -620,10 +620,10 @@ export default function VisitForm({ value, onChange, disabled }: Props) {
                 <p><strong>Datos:</strong> {value.visitNotes || "Sin notas registradas"}</p>
                 <p><strong>Pendientes:</strong> {value.pendingItems || "No aplica"}</p>
                 <p><strong>Items facturar:</strong> {value.invoiceItems || "No aplica"}</p>
-                <p><strong>Observaciones:</strong> Lugar seguro para el tÃ©cnico</p>
+                <p><strong>Observaciones:</strong> Lugar seguro para el técnico</p>
               </div>
               <div className="print:mt-3 print:text-[10px] print:text-slate-500 print:space-y-1">
-                <p>Firma tÃ©cnico: ________________________</p>
+                <p>Firma técnico: ________________________</p>
                 <p>Firma cliente: ________________________</p>
               </div>
             </div>
@@ -637,6 +637,7 @@ export default function VisitForm({ value, onChange, disabled }: Props) {
           }
           .print\\:bg-white {
             background: white !important;
+            -webkit-print-color-adjust: exact !important;
           }
           .print\\:text-black {
             color: black !important;
@@ -652,5 +653,3 @@ export default function VisitForm({ value, onChange, disabled }: Props) {
     </div>
   );
 }
-
-

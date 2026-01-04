@@ -59,6 +59,16 @@ import { updateClient } from "@/lib/api-clients";
 import { API_URL } from "@/lib/http";
 import "leaflet/dist/leaflet.css";
 import { ShinyText } from "@/components/ui/shiny-text";
+import autoTable from "jspdf-autotable";
+import { jsPDF } from "jspdf";
+import * as XLSX from "xlsx";
+import { Client } from "@/types/client";
+import { Ticket } from "@/types/ticket";
+import { Payment } from "@/types/payment";
+import { Contract } from "@/types/contract";
+import type L from "leaflet";
+import { EditTicketDialog } from "@/components/clients/edit-ticket-dialog";
+import { CreatePaymentDialog } from "@/components/clients/create-payment-dialog";
 
 const DEFAULT_POSITION: [number, number] = [-34.9, -56.1];
 
@@ -75,11 +85,11 @@ function MapCard({
   onLocationSave?: (lat: number, lng: number) => void;
 }) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
-  const mapInstanceRef = useRef<any>(null);
-  const markerRef = useRef<any>(null);
+  const mapInstanceRef = useRef<L.Map | null>(null);
+  const markerRef = useRef<L.Marker | null>(null);
   const [isLocked, setIsLocked] = useState(true);
   const [isClient, setIsClient] = useState(false);
-  const pinIconRef = useRef<any>(null);
+  const pinIconRef = useRef<L.DivIcon | null>(null);
 
   useEffect(() => {
     setIsClient(true);
@@ -148,13 +158,13 @@ function MapCard({
 
     const updateMap = async () => {
       const newPos = getClientPosition(client);
-      markerRef.current.setLatLng(newPos);
-      mapInstanceRef.current.setView(newPos);
+      markerRef.current?.setLatLng(newPos);
+      mapInstanceRef.current?.setView(newPos);
 
       if (isLocked) {
-        markerRef.current.dragging?.disable();
+        markerRef.current?.dragging?.disable();
       } else {
-        markerRef.current.dragging?.enable();
+        markerRef.current?.dragging?.enable();
       }
     };
 
@@ -190,34 +200,6 @@ function MapCard({
     </section>
   );
 }
-import autoTable from "jspdf-autotable";
-import { jsPDF } from "jspdf";
-import * as XLSX from "xlsx";
-
-interface Client {
-  id: string;
-  name: string;
-  alias?: string;
-  rut?: string;
-  email: string;
-  phone?: string;
-  address?: string;
-  avatarUrl?: string;
-  contract?: boolean;
-  latitude?: number;
-  longitude?: number;
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-interface Ticket {
-  id: string;
-  title?: string;
-  subject?: string;
-  status: string;
-  createdAt: string;
-}
-
 interface RepositoryItem {
   id: string;
   equipo: string;
@@ -227,26 +209,6 @@ interface RepositoryItem {
   comentarios: string;
   createdAt?: string;
   updatedAt?: string;
-}
-
-interface Payment {
-  id: string;
-  amount: number;
-  status?: string;
-  createdAt: string;
-  description?: string;
-  method?: string;
-}
-
-interface ClientContract {
-  id: string;
-  title: string;
-  status?: string;
-  startDate?: string;
-  endDate?: string;
-  amount?: number;
-  createdAt?: string;
-  currency?: string;
 }
 
 type MovementType = "Ticket" | "Pago" | "Repositorio" | "Contrato";
@@ -267,8 +229,8 @@ interface CardField {
   type?: "text" | "email" | "tel" | "textarea" | "select";
   placeholder?: string;
   options?: { label: string; value: string }[];
-  parse?: (value: string) => Client[keyof Client];
-  format?: (value: Client[keyof Client]) => string;
+  parse?: (value: string) => any;
+  format?: (value: any) => string;
   icon?: LucideIcon;
 }
 
@@ -293,7 +255,6 @@ const formatCurrency = (value: number, currency = "ARS") =>
     maximumFractionDigits: 0,
   }).format(value);
 
-const CONTRACT_NONE_VALUE = "__none__";
 export default function ClientDetailPage() {
   const params = useParams();
   const rawId = params?.id;
@@ -305,7 +266,7 @@ export default function ClientDetailPage() {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [repositoryItems, setRepositoryItems] = useState<RepositoryItem[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
-  const [contracts, setContracts] = useState<ClientContract[]>([]);
+  const [contracts, setContracts] = useState<Contract[]>([]);
   const [selectedContractId, setSelectedContractId] = useState<string | null>(
     null
   );
@@ -323,8 +284,8 @@ export default function ClientDetailPage() {
   const [movementFilterType, setMovementFilterType] = useState<MovementType | "Todos">("Todos");
   const [movementStatusFilter, setMovementStatusFilter] = useState<string>("Todos");
   const [movementSearch, setMovementSearch] = useState("");
-  const [movementPage, setMovementPage] = useState(1);
-  const MOVEMENTS_PAGE_SIZE = 6;
+  const [isTicketDialogOpen, setIsTicketDialogOpen] = useState(false);
+  const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
 
   const fetchClient = useCallback(async () => {
     if (!id) return;
@@ -480,7 +441,7 @@ export default function ClientDetailPage() {
       rows.push({
         id: ticket.id,
         type: "Ticket",
-        description: ticket.title ?? ticket.subject ?? "Ticket sin Titulo",
+        description: ticket.title ?? "Ticket sin Titulo",
         status: ticket.status,
         date: ticket.createdAt,
       })
@@ -490,10 +451,11 @@ export default function ClientDetailPage() {
       rows.push({
         id: payment.id,
         type: "Pago",
-        description: payment.description ?? "Pago registrado",
+        description: payment.concept ?? "Pago registrado",
         status: payment.status,
         date: payment.createdAt,
         amount: payment.amount,
+        reference: payment.currency,
       })
     );
 
@@ -513,7 +475,7 @@ export default function ClientDetailPage() {
         id: contract.id,
         type: "Contrato",
         description: contract.title,
-        status: contract.status,
+        status: contract.status || "Pendiente",
         date: contract.startDate ?? contract.createdAt,
         amount: contract.amount,
       })
@@ -543,24 +505,16 @@ export default function ClientDetailPage() {
     const text = movementSearch.trim().toLowerCase();
     const searched = text
       ? statusFiltered.filter((row) =>
-          row.description.toLowerCase().includes(text) ||
-          row.status?.toLowerCase().includes(text) ||
-          row.reference?.toLowerCase().includes(text)
-        )
+        row.description.toLowerCase().includes(text) ||
+        row.status?.toLowerCase().includes(text) ||
+        row.reference?.toLowerCase().includes(text)
+      )
       : statusFiltered;
 
     return searched;
   }, [movementRows, movementFilterType, movementStatusFilter, movementSearch]);
 
-  useEffect(() => {
-    setMovementPage(1);
-  }, [movementFilterType, movementStatusFilter, movementSearch]);
 
-  const totalMovementPages = Math.max(1, Math.ceil(filteredMovements.length / MOVEMENTS_PAGE_SIZE));
-  const paginatedMovements = filteredMovements.slice(
-    (movementPage - 1) * MOVEMENTS_PAGE_SIZE,
-    movementPage * MOVEMENTS_PAGE_SIZE
-  );
 
   const movementTypeMeta: Record<MovementType, { icon: LucideIcon; color: string; bg: string; extra?: string }> = {
     Ticket: { icon: TicketIcon, color: "text-sky-600", bg: "bg-sky-50" },
@@ -713,35 +667,35 @@ export default function ClientDetailPage() {
     href?: string;
     onClick?: () => void;
   }> = [
-    {
-      title: "Datos / Accesos",
-      description: "Credenciales y dispositivos",
-      icon: Lock,
-      href: `/clients/${client.id}/repository/access`,
-      accent: "from-blue-50 to-indigo-50",
-    },
-    {
-      title: "Bóbeda de Archivos",
-      description: "Documentos y archivos del cliente",
-      icon: FolderArchive,
-      href: `/repository?search=${encodeURIComponent(client.name)}`,
-      accent: "from-slate-50 to-slate-100",
-    },
-    {
-      title: "Diagramas",
-      description: "Diagramas de red en Excalidraw",
-      icon: Network,
-      href: `/clients/${client.id}/diagram`,
-      accent: "from-emerald-50 to-teal-50",
-    },
-    {
-      title: "Implementaciones",
-      description: "Proyectos e implementaciones del cliente",
-      icon: Rocket,
-      href: `/clients/${client.id}/implementation`,
-      accent: "from-purple-50 to-pink-50",
-    },
-  ];
+      {
+        title: "Datos / Accesos",
+        description: "Credenciales y dispositivos",
+        icon: Lock,
+        href: `/clients/${client.id}/repository/access`,
+        accent: "from-blue-50 to-indigo-50",
+      },
+      {
+        title: "Bóbeda de Archivos",
+        description: "Documentos y archivos del cliente",
+        icon: FolderArchive,
+        href: `/repository?search=${encodeURIComponent(client.name)}`,
+        accent: "from-slate-50 to-slate-100",
+      },
+      {
+        title: "Diagramas",
+        description: "Diagramas de red en Excalidraw",
+        icon: Network,
+        href: `/clients/${client.id}/diagram`,
+        accent: "from-emerald-50 to-teal-50",
+      },
+      {
+        title: "Implementaciones",
+        description: "Proyectos e implementaciones del cliente",
+        icon: Rocket,
+        href: `/clients/${client.id}/implementation`,
+        accent: "from-purple-50 to-pink-50",
+      },
+    ];
 
   return (
     <div className="space-y-6 p-6">
@@ -806,6 +760,8 @@ export default function ClientDetailPage() {
           selectedContractId={selectedContractId}
           onContractSelect={setSelectedContractId}
           payments={payments}
+          onCreateTicket={() => setIsTicketDialogOpen(true)}
+          onRegisterPayment={() => setIsPaymentDialogOpen(true)}
         />
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="flex items-center gap-2 mb-3">
@@ -961,7 +917,7 @@ export default function ClientDetailPage() {
                   className="h-8 w-40 border-0 bg-transparent text-xs focus-visible:ring-0"
                 />
               </div>
-              <Select value={movementFilterType} onValueChange={(v) => setMovementFilterType(v as MovementType | "Todos")}> 
+              <Select value={movementFilterType} onValueChange={(v) => setMovementFilterType(v as MovementType | "Todos")}>
                 <SelectTrigger className="h-8 w-[130px] border-slate-200 text-xs">
                   <SelectValue placeholder="Tipo" />
                 </SelectTrigger>
@@ -973,7 +929,7 @@ export default function ClientDetailPage() {
                   <SelectItem value="Contrato">Contratos</SelectItem>
                 </SelectContent>
               </Select>
-              <Select value={movementStatusFilter} onValueChange={(v) => setMovementStatusFilter(v)}> 
+              <Select value={movementStatusFilter} onValueChange={(v) => setMovementStatusFilter(v)}>
                 <SelectTrigger className="h-8 w-[150px] border-slate-200 text-xs">
                   <SelectValue placeholder="Estado" />
                 </SelectTrigger>
@@ -1009,7 +965,7 @@ export default function ClientDetailPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 bg-white">
-                      {paginatedMovements.map((movement) => {
+                      {filteredMovements.map((movement) => {
                         const meta = movementTypeMeta[movement.type];
                         const tone = statusTone(movement.status);
                         const dateLabel = movement.date
@@ -1067,30 +1023,6 @@ export default function ClientDetailPage() {
                   </table>
                 </div>
               </div>
-
-              <div className="flex items-center justify-between border-t border-slate-200 pt-3 text-sm text-slate-600">
-                <span>
-                  Página {movementPage} de {totalMovementPages} · {filteredMovements.length} registros
-                </span>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={movementPage === 1}
-                    onClick={() => setMovementPage((p) => Math.max(1, p - 1))}
-                  >
-                    Anterior
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={movementPage === totalMovementPages}
-                    onClick={() => setMovementPage((p) => Math.min(totalMovementPages, p + 1))}
-                  >
-                    Siguiente
-                  </Button>
-                </div>
-              </div>
             </div>
           )}
         </section>
@@ -1128,7 +1060,7 @@ export default function ClientDetailPage() {
               </div>
             </div>
             <div className="space-y-2">
-              {tickets.slice(0, 4).map((ticket) => (
+              {tickets.map((ticket) => (
                 <div
                   key={ticket.id}
                   className="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700"
@@ -1189,7 +1121,7 @@ export default function ClientDetailPage() {
               </div>
             </div>
             <div className="space-y-2">
-              {payments.slice(0, 4).map((payment) => (
+              {payments.map((payment) => (
                 <div
                   key={payment.id}
                   className="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700"
@@ -1221,7 +1153,33 @@ export default function ClientDetailPage() {
         </div>
       </section>
 
-    </div >
+      <EditTicketDialog
+        mode="create"
+        isOpen={isTicketDialogOpen}
+        onOpenChange={setIsTicketDialogOpen}
+        onTicketCreated={(newTicket: Ticket) => {
+          setTickets(prev => [newTicket, ...prev]);
+          setIsTicketDialogOpen(false);
+          toast.success("Ticket creado correctamente");
+          fetchTickets(); // Refresh list from server to get full data
+        }}
+        initialClientId={client.id}
+        initialClientName={client.name}
+        initialClient={client}
+      />
+
+      <CreatePaymentDialog
+        clientId={client.id}
+        clientName={client.name}
+        isOpen={isPaymentDialogOpen}
+        onOpenChange={setIsPaymentDialogOpen}
+        onPaymentCreated={(newPayment: Payment) => {
+          setPayments((prev) => [newPayment, ...prev]);
+          setIsPaymentDialogOpen(false);
+          fetchPayments(); // Refresh list from server
+        }}
+      />
+    </div>
   );
 }
 
@@ -1413,10 +1371,12 @@ function EditableClientCard({
 }
 
 interface ContractSelectionCardProps {
-  contracts: ClientContract[];
+  contracts: Contract[];
   selectedContractId: string | null;
   onContractSelect: (id: string | null) => void;
   payments: Payment[];
+  onCreateTicket: () => void;
+  onRegisterPayment: () => void;
 }
 
 function ContractSelectionCard({
@@ -1424,6 +1384,8 @@ function ContractSelectionCard({
   selectedContractId,
   onContractSelect,
   payments,
+  onCreateTicket,
+  onRegisterPayment,
 }: ContractSelectionCardProps) {
   const selectedContract = contracts.find(
     (contract) => contract.id === selectedContractId
@@ -1499,7 +1461,7 @@ function ContractSelectionCard({
                         </span>
                       </div>
                       <span className="font-semibold text-slate-900">
-                        {formatCurrency(payment.amount)}
+                        {formatCurrency(payment.amount, payment.currency)}
                       </span>
                     </div>
                   ))}
@@ -1510,6 +1472,27 @@ function ContractSelectionCard({
             </div>
           </div>
         )}
+
+        <div className="grid grid-cols-2 gap-2 mt-auto">
+          <Button
+            variant="outline"
+            size="sm"
+            className="bg-white border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 gap-1.5 h-9"
+            onClick={onRegisterPayment}
+          >
+            <DollarSign className="h-3.5 w-3.5" />
+            Registrar Pago
+          </Button>
+          <Button
+            variant="default"
+            size="sm"
+            className="bg-emerald-600 text-white hover:bg-emerald-700 gap-1.5 h-9"
+            onClick={onCreateTicket}
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Nuevo Ticket
+          </Button>
+        </div>
       </div>
     </section>
   );

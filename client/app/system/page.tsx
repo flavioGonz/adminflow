@@ -37,6 +37,7 @@ import {
   Wand2,
   Trash2,
   Code,
+  Workflow,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -59,8 +60,9 @@ import { ShinyText } from "@/components/ui/shiny-text";
 import { API_URL } from "@/lib/http";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Upload } from "lucide-react";
-import { BackupManager } from "@/components/system/backup-manager";
-import { DatabaseManager } from "@/components/system/database-manager";
+import { FullDatabaseManager } from "@/components/database/full-database-manager";
+import { ChatbotConfig } from "@/components/system/chatbot-config";
+import TicketFlowEditor from "@/components/system/ticket-flow-editor";
 import UsersManagementPage, { UsersManagementRef } from "@/components/users/users-management";
 import { useRef } from "react";
 import {
@@ -202,7 +204,6 @@ export default function SystemPage() {
   const [auditFilterType, setAuditFilterType] = useState("all");
   const [auditFilterStatus, setAuditFilterStatus] = useState("all");
 
-  // Roles disponibles
   const availableRoles = ["admin", "manager", "editor", "viewer", "support"];
 
   const slugifyValue = (value: string) =>
@@ -212,6 +213,113 @@ export default function SystemPage() {
       .replace(/[\u0300-\u036f]/g, "")
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "");
+
+  // --- COMPONENTES DE UI SOBRIOS ---
+
+  const SystemNav = () => {
+    const tabs = [
+      { id: 'users', label: 'Usuarios', icon: Users },
+      { id: 'database', label: 'Base de Datos', icon: Database },
+      { id: 'notifications', label: 'Notificaciones', icon: Bell },
+      { id: 'chatbot', label: 'Chatbot', icon: MessageCircle },
+      { id: 'audit', label: 'Auditoría', icon: Activity },
+      { id: 'ticket_flows', label: 'Flujos Tickets', icon: Workflow },
+    ];
+
+    return (
+      <div className="border-b border-slate-200 bg-white -mx-6 -mt-6 mb-6 px-6">
+        <nav className="flex space-x-8">
+          {tabs.map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id || (tab.id === 'users' && (activeTab === 'users' || activeTab === 'groups' || activeTab === 'roles')) || (tab.id === 'database' && (activeTab === 'database' || activeTab === 'backups')) || (tab.id === 'notifications' && (activeTab === 'channels' || activeTab === 'templates'));
+
+            return (
+              <button
+                key={tab.id}
+                onClick={() => {
+                  if (tab.id === 'users') setActiveTab('users');
+                  else if (tab.id === 'database') setActiveTab('database');
+                  else if (tab.id === 'notifications') setActiveTab('channels');
+                  else setActiveTab(tab.id);
+                }}
+                className={cn(
+                  "relative px-1 py-4 text-sm font-medium transition-all flex items-center gap-2",
+                  isActive
+                    ? "text-slate-900 border-b-2 border-slate-900"
+                    : "text-slate-500 hover:text-slate-900 hover:border-slate-300 border-b-2 border-transparent"
+                )}
+              >
+                <Icon className="h-4 w-4" />
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
+        </nav>
+      </div>
+    );
+  };
+
+  const SubNav = () => {
+    if (activeTab === 'users' || activeTab === 'groups' || activeTab === 'roles') {
+      const sections = [
+        { id: 'users', label: 'Usuarios' },
+        { id: 'groups', label: 'Grupos' },
+        { id: 'roles', label: 'Roles' },
+      ];
+      return (
+        <div className="flex gap-4 mb-6 border-b border-slate-100 pb-2">
+          {sections.map(s => (
+            <button
+              key={s.id}
+              onClick={() => {
+                setActiveTab('users');
+                setUserSection(s.id as any);
+              }}
+              className={cn(
+                "px-3 py-1 text-xs font-semibold rounded-md transition-colors",
+                userSection === s.id
+                  ? "bg-slate-900 text-white"
+                  : "text-slate-500 hover:bg-slate-100"
+              )}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+      );
+    }
+
+    if (activeTab === 'database' || activeTab === 'backups') {
+      return null; // El nuevo FullDatabaseManager ya integra todo, no necesitamos sub-nav extra aquí si queremos simplificar, o podemos dejarlo si el usuario quiere saltar a secciones, pero el requerimiento pide mostrar "ese módulo".
+    }
+
+    if (activeTab === 'channels' || activeTab === 'templates') {
+      return (
+        <div className="flex gap-4 mb-6 border-b border-slate-100 pb-2">
+          <button
+            onClick={() => setActiveTab('channels')}
+            className={cn(
+              "px-3 py-1 text-xs font-semibold rounded-md transition-colors",
+              activeTab === 'channels' ? "bg-slate-900 text-white" : "text-slate-500 hover:bg-slate-100"
+            )}
+          >
+            Canales
+          </button>
+          <button
+            onClick={() => setActiveTab('templates')}
+            className={cn(
+              "px-3 py-1 text-xs font-semibold rounded-md transition-colors",
+              activeTab === 'templates' ? "bg-slate-900 text-white" : "text-slate-500 hover:bg-slate-100"
+            )}
+          >
+            Plantillas
+          </button>
+        </div>
+      );
+    }
+
+    return null;
+  };
 
   const resetGroupForm = (group: Group | null = null) => {
     const baseName = group?.name || "";
@@ -978,49 +1086,19 @@ _Enviado automáticamente por AdminFlow_`,
       </div>
 
 
+      {/* Nueva Navegación Sobria */}
+      <SystemNav />
 
       <div className="space-y-6">
+        <SubNav />
+
         {activeTab === "users" && (
-          <Tabs value={userSection} onValueChange={(v) => setUserSection(v as any)} className="space-y-4">
+          <div className="space-y-4">
             <div className="flex flex-col xl:flex-row items-start xl:items-center justify-between gap-4">
-
               <div className="flex flex-wrap items-center gap-4">
-                {/* Botones de Navegación Principal */}
-                <div className="flex items-center gap-1 border-r pr-4 mr-2">
-                  <Button variant="default" size="sm" className="gap-2" onClick={() => setActiveTab("users")}>
-                    <Users className="h-4 w-4" /> Usuarios
-                  </Button>
-                  <Button variant="ghost" size="sm" className="gap-2" onClick={() => setActiveTab("channels")}>
-                    <Bell className="h-4 w-4" /> Canales
-                  </Button>
-                  <Button variant="ghost" size="sm" className="gap-2" onClick={() => setActiveTab("templates")}>
-                    <LayoutTemplate className="h-4 w-4" /> Plantillas
-                  </Button>
-                  <Button variant="ghost" size="sm" className="gap-2" onClick={() => setActiveTab("database")}>
-                    <Database className="h-4 w-4" /> Base de Datos
-                  </Button>
-                  <Button variant="ghost" size="sm" className="gap-2" onClick={() => setActiveTab("backups")}>
-                    <Database className="h-4 w-4" /> Respaldos
-                  </Button>
-                  <Link href="/mongo-servers">
-                    <Button variant="ghost" size="sm" className="gap-2">
-                      <Server className="h-4 w-4" /> Servidores MongoDB
-                    </Button>
-                  </Link>
-                </div>
-
-                {/* Tabs Secundarias (Usuarios / Grupos / Roles) */}
-                <TabsList className="bg-muted/60">
-                  <TabsTrigger value="users" className="gap-2">
-                    <User className="h-4 w-4" /> Usuarios
-                  </TabsTrigger>
-                  <TabsTrigger value="groups" className="gap-2">
-                    <Users className="h-4 w-4" /> Grupos
-                  </TabsTrigger>
-                  <TabsTrigger value="roles" className="gap-2">
-                    <Shield className="h-4 w-4" /> Roles
-                  </TabsTrigger>
-                </TabsList>
+                <h2 className="text-xl font-bold tracking-tight capitalize">
+                  Gestión de {userSection}
+                </h2>
               </div>
 
               <div className="flex items-center gap-2">
@@ -1053,11 +1131,8 @@ _Enviado automáticamente por AdminFlow_`,
               </div>
             </div>
 
-            <TabsContent value="users" className="m-0 mt-4">
-              <UsersManagementPage ref={usersPageRef} />
-            </TabsContent>
-
-            <TabsContent value="groups" className="m-0 mt-4">
+            {userSection === "users" && <UsersManagementPage ref={usersPageRef} />}
+            {userSection === "groups" && (
               <Card>
                 <CardContent className="p-0">
                   <Table>
@@ -1145,10 +1220,10 @@ _Enviado automáticamente por AdminFlow_`,
                   </Table>
                 </CardContent>
               </Card>
-            </TabsContent>
+            )}
 
-            <TabsContent value="roles" className="m-0 mt-4">
-              <Card className="bg-white shadow-sm">
+            {userSection === "roles" && (
+              <Card className="bg-white shadow-sm border-none">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Shield className="h-5 w-5 text-indigo-500" />
@@ -1161,50 +1236,33 @@ _Enviado automáticamente por AdminFlow_`,
                     <table className="w-full">
                       <thead>
                         <tr className="border-b">
-                          <th className="text-left p-3 font-semibold">Módulo / Acción</th>
-                          <th className="text-center p-3 font-semibold">
-                            <div className="flex flex-col items-center gap-1">
-                              <span>Admin</span>
-                              <Badge variant="secondary" className="text-xs">
-                                {users.filter((u) => u.roles?.includes("admin")).length}
-                              </Badge>
-                            </div>
-                          </th>
-                          <th className="text-center p-3 font-semibold">
-                            <div className="flex flex-col items-center gap-1">
-                              <span>Manager</span>
-                              <Badge variant="secondary" className="text-xs">
-                                {users.filter((u) => u.roles?.includes("manager")).length}
-                              </Badge>
-                            </div>
-                          </th>
-                          <th className="text-center p-3 font-semibold">
-                            <div className="flex flex-col items-center gap-1">
-                              <span>Editor</span>
-                              <Badge variant="secondary" className="text-xs">
-                                {users.filter((u) => u.roles?.includes("editor")).length}
-                              </Badge>
-                            </div>
-                          </th>
-                          <th className="text-center p-3 font-semibold">
-                            <div className="flex flex-col items-center gap-1">
-                              <span>Viewer</span>
-                              <Badge variant="secondary" className="text-xs">
-                                {users.filter((u) => u.roles?.includes("viewer")).length}
-                              </Badge>
-                            </div>
-                          </th>
+                          <th className="text-left p-3 font-semibold text-slate-900">Módulo / Acción</th>
+                          <th className="text-center p-3 font-semibold text-slate-900">Admin</th>
+                          <th className="text-center p-3 font-semibold text-slate-900">Manager</th>
+                          <th className="text-center p-3 font-semibold text-slate-900">Editor</th>
+                          <th className="text-center p-3 font-semibold text-slate-900">Viewer</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {/* Dashboard */}
+                        <tr className="border-b bg-slate-50/50">
+                          <td className="p-3 font-semibold" colSpan={5}>Dashboard</td>
+                        </tr>
+                        <tr className="border-b hover:bg-slate-50/30">
+                          <td className="p-3 pl-6">Ver dashboard</td>
+                          {[1, 2, 3, 4].map(i => (
+                            <td key={i} className="text-center p-3">
+                              <CheckCircle className="h-5 w-5 text-emerald-500 mx-auto" />
+                            </td>
+                          ))}
+                        </tr>
+                        {/* Clientes */}
                         <tr className="border-b bg-slate-50">
                           <td className="p-3 font-semibold" colSpan={5}>
-                            Dashboard
+                            Clientes
                           </td>
                         </tr>
                         <tr className="border-b hover:bg-slate-50">
-                          <td className="p-3 pl-6">Ver dashboard</td>
+                          <td className="p-3 pl-6">Ver clientes</td>
                           <td className="text-center p-3">
                             <CheckCircle className="h-5 w-5 text-emerald-500 mx-auto" />
                           </td>
@@ -1218,35 +1276,101 @@ _Enviado automáticamente por AdminFlow_`,
                             <CheckCircle className="h-5 w-5 text-emerald-500 mx-auto" />
                           </td>
                         </tr>
-                        {/* Mas filas de permisos si fuera necesario, acortado para evitar reemplazar todo el archivo */}
+                        <tr className="border-b hover:bg-slate-50">
+                          <td className="p-3 pl-6">Crear/Editar clientes</td>
+                          <td className="text-center p-3">
+                            <CheckCircle className="h-5 w-5 text-emerald-500 mx-auto" />
+                          </td>
+                          <td className="text-center p-3">
+                            <CheckCircle className="h-5 w-5 text-emerald-500 mx-auto" />
+                          </td>
+                          <td className="text-center p-3">
+                            <CheckCircle className="h-5 w-5 text-emerald-500 mx-auto" />
+                          </td>
+                          <td className="text-center p-3">
+                            <X className="h-5 w-5 text-red-400 mx-auto" />
+                          </td>
+                        </tr>
+                        <tr className="border-b hover:bg-slate-50">
+                          <td className="p-3 pl-6">Eliminar clientes</td>
+                          <td className="text-center p-3">
+                            <CheckCircle className="h-5 w-5 text-emerald-500 mx-auto" />
+                          </td>
+                          <td className="text-center p-3">
+                            <X className="h-5 w-5 text-red-400 mx-auto" />
+                          </td>
+                          <td className="text-center p-3">
+                            <X className="h-5 w-5 text-red-400 mx-auto" />
+                          </td>
+                          <td className="text-center p-3">
+                            <X className="h-5 w-5 text-red-400 mx-auto" />
+                          </td>
+                        </tr>
+
+                        {/* Sistema */}
+                        <tr className="border-b bg-slate-50">
+                          <td className="p-3 font-semibold" colSpan={5}>
+                            Sistema
+                          </td>
+                        </tr>
+                        <tr className="border-b hover:bg-slate-50">
+                          <td className="p-3 pl-6">Gestión de usuarios</td>
+                          <td className="text-center p-3">
+                            <CheckCircle className="h-5 w-5 text-emerald-500 mx-auto" />
+                          </td>
+                          <td className="text-center p-3">
+                            <X className="h-5 w-5 text-red-400 mx-auto" />
+                          </td>
+                          <td className="text-center p-3">
+                            <X className="h-5 w-5 text-red-400 mx-auto" />
+                          </td>
+                          <td className="text-center p-3">
+                            <X className="h-5 w-5 text-red-400 mx-auto" />
+                          </td>
+                        </tr>
+                        <tr className="border-b hover:bg-slate-50">
+                          <td className="p-3 pl-6">Configuración de canales</td>
+                          <td className="text-center p-3">
+                            <CheckCircle className="h-5 w-5 text-emerald-500 mx-auto" />
+                          </td>
+                          <td className="text-center p-3">
+                            <X className="h-5 w-5 text-red-400 mx-auto" />
+                          </td>
+                          <td className="text-center p-3">
+                            <X className="h-5 w-5 text-red-400 mx-auto" />
+                          </td>
+                          <td className="text-center p-3">
+                            <X className="h-5 w-5 text-red-400 mx-auto" />
+                          </td>
+                        </tr>
+                        <tr className="border-b hover:bg-slate-50">
+                          <td className="p-3 pl-6">Ver auditoría</td>
+                          <td className="text-center p-3">
+                            <CheckCircle className="h-5 w-5 text-emerald-500 mx-auto" />
+                          </td>
+                          <td className="text-center p-3">
+                            <CheckCircle className="h-5 w-5 text-emerald-500 mx-auto" />
+                          </td>
+                          <td className="text-center p-3">
+                            <X className="h-5 w-5 text-red-400 mx-auto" />
+                          </td>
+                          <td className="text-center p-3">
+                            <X className="h-5 w-5 text-red-400 mx-auto" />
+                          </td>
+                        </tr>
                       </tbody>
                     </table>
                   </div>
                 </CardContent>
               </Card>
-            </TabsContent>
-          </Tabs>
+            )}
+          </div>
         )}
+
 
         {/* Section: Canales */}
         {activeTab === "channels" && (
           <div className="space-y-4 animate-in fade-in duration-300">
-            <div className="flex flex-wrap items-center gap-4 mb-2">
-              <div className="flex items-center gap-1 border-r pr-4 mr-2">
-                <Button variant="ghost" size="sm" className="gap-2" onClick={() => setActiveTab("users")}>
-                  <Users className="h-4 w-4" /> Usuarios
-                </Button>
-                <Button variant="default" size="sm" className="gap-2" onClick={() => setActiveTab("channels")}>
-                  <Bell className="h-4 w-4" /> Canales
-                </Button>
-                <Button variant="ghost" size="sm" className="gap-2" onClick={() => setActiveTab("templates")}>
-                  <LayoutTemplate className="h-4 w-4" /> Plantillas
-                </Button>
-                <Button variant="ghost" size="sm" className="gap-2" onClick={() => setActiveTab("backups")}>
-                  <Database className="h-4 w-4" /> Respaldos
-                </Button>
-              </div>
-            </div>
 
             <div className="flex items-center justify-between">
               <div>
@@ -1637,22 +1761,6 @@ _Enviado automáticamente por AdminFlow_`,
         {/* Section: Plantillas */}
         {activeTab === "templates" && (
           <div className="space-y-6 animate-in fade-in duration-300">
-            <div className="flex flex-wrap items-center gap-4 mb-2">
-              <div className="flex items-center gap-1 border-r pr-4 mr-2">
-                <Button variant="ghost" size="sm" className="gap-2" onClick={() => setActiveTab("users")}>
-                  <Users className="h-4 w-4" /> Usuarios
-                </Button>
-                <Button variant="ghost" size="sm" className="gap-2" onClick={() => setActiveTab("channels")}>
-                  <Bell className="h-4 w-4" /> Canales
-                </Button>
-                <Button variant="default" size="sm" className="gap-2" onClick={() => setActiveTab("templates")}>
-                  <LayoutTemplate className="h-4 w-4" /> Plantillas
-                </Button>
-                <Button variant="ghost" size="sm" className="gap-2" onClick={() => setActiveTab("backups")}>
-                  <Database className="h-4 w-4" /> Respaldos
-                </Button>
-              </div>
-            </div>
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-semibold">
@@ -2047,51 +2155,25 @@ _Enviado automáticamente por AdminFlow_`,
 
         {activeTab === "database" && (
           <div className="space-y-6 animate-in fade-in duration-300">
-            <div className="flex flex-wrap items-center gap-4 mb-2">
-              <div className="flex items-center gap-1 border-r pr-4 mr-2">
-                <Button variant="ghost" size="sm" className="gap-2" onClick={() => setActiveTab("users")}>
-                  <Users className="h-4 w-4" /> Usuarios
-                </Button>
-                <Button variant="ghost" size="sm" className="gap-2" onClick={() => setActiveTab("channels")}>
-                  <Bell className="h-4 w-4" /> Canales
-                </Button>
-                <Button variant="ghost" size="sm" className="gap-2" onClick={() => setActiveTab("templates")}>
-                  <LayoutTemplate className="h-4 w-4" /> Plantillas
-                </Button>
-                <Button variant="default" size="sm" className="gap-2" onClick={() => setActiveTab("database")}>
-                  <Database className="h-4 w-4" /> Base de Datos
-                </Button>
-                <Button variant="ghost" size="sm" className="gap-2" onClick={() => setActiveTab("backups")}>
-                  <Database className="h-4 w-4" /> Respaldos
-                </Button>
-              </div>
-            </div>
-            <DatabaseManager />
+            <FullDatabaseManager />
           </div>
         )}
 
         {activeTab === "backups" && (
           <div className="space-y-6 animate-in fade-in duration-300">
-            <div className="flex flex-wrap items-center gap-4 mb-2">
-              <div className="flex items-center gap-1 border-r pr-4 mr-2">
-                <Button variant="ghost" size="sm" className="gap-2" onClick={() => setActiveTab("users")}>
-                  <Users className="h-4 w-4" /> Usuarios
-                </Button>
-                <Button variant="ghost" size="sm" className="gap-2" onClick={() => setActiveTab("channels")}>
-                  <Bell className="h-4 w-4" /> Canales
-                </Button>
-                <Button variant="ghost" size="sm" className="gap-2" onClick={() => setActiveTab("templates")}>
-                  <LayoutTemplate className="h-4 w-4" /> Plantillas
-                </Button>
-                <Button variant="ghost" size="sm" className="gap-2" onClick={() => setActiveTab("database")}>
-                  <Database className="h-4 w-4" /> Base de Datos
-                </Button>
-                <Button variant="default" size="sm" className="gap-2" onClick={() => setActiveTab("backups")}>
-                  <Database className="h-4 w-4" /> Respaldos
-                </Button>
-              </div>
-            </div>
-            <BackupManager />
+            <FullDatabaseManager />
+          </div>
+        )}
+
+        {activeTab === "chatbot" && (
+          <div className="space-y-6 animate-in fade-in duration-300">
+            <ChatbotConfig />
+          </div>
+        )}
+
+        {activeTab === "ticket_flows" && (
+          <div className="space-y-6 animate-in fade-in duration-300">
+            <TicketFlowEditor />
           </div>
         )}
       </div>

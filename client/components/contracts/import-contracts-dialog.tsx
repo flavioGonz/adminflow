@@ -9,6 +9,7 @@ import { Contract } from "@/types/contract";
 import { toast } from "sonner";
 import { useState } from "react";
 import * as XLSX from "xlsx";
+import { generateId } from "@/lib/utils";
 
 interface ImportContractsDialogProps {
   onImportComplete: () => void;
@@ -44,7 +45,7 @@ export function ImportContractsDialog({ onImportComplete, children }: ImportCont
         const json = XLSX.utils.sheet_to_json(worksheet);
 
         const contractsToImport: Contract[] = json.map((item: any) => ({
-          id: crypto.randomUUID(),
+          id: generateId(),
           clientId: item['ID Cliente'] || '',
           clientName: item['Cliente'] || '',
           title: item['Título'] || '',

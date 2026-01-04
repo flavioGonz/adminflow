@@ -176,10 +176,15 @@ const implementationRoutes = require('./routes/implementation');
 const mongoServersRoutes = require('./routes/mongo-servers');
 const statusRoutes = require('./routes/status');
 const supportArticlesRoutes = require('./routes/support/articles');
+const chatbotRoutes = require('./routes/chatbot');
+const fileManagerRoutes = require('./routes/file-manager');
+const workflowRoutes = require('./routes/workflows');
 const { checkInstallation } = require('./middleware/checkInstallation');
 
 // Installation routes (always accessible)
 app.use('/api/install', installRoutes);
+app.use('/api/chatbot', chatbotRoutes);
+app.use('/api/files/:clientId', fileManagerRoutes);
 
 // Check if system is installed before allowing other routes
 app.use('/api', checkInstallation);
@@ -193,6 +198,7 @@ app.use('/api/database', databaseRoutes);
 app.use('/api/mongo-servers', mongoServersRoutes);
 app.use('/api/status', statusRoutes);
 app.use('/api/support', supportArticlesRoutes);
+app.use('/api/workflows', workflowRoutes);
 
 
 const MongoStore = require('connect-mongo');
@@ -1597,106 +1603,67 @@ app.get('/api/notifications/config', async (req, res) => {
 // Client routes
 app.get('/api/clients', async (req, res) => {
     try {
-        // Get all clients from SQLite
+        // Optimize SQLite: Get clients and latest contract title in ONE query using subquery
         const clients = await new Promise((resolve, reject) => {
-            db.all('SELECT * FROM clients', [], (err, rows) => {
+            const query = `
+                SELECT c.*,
+                (SELECT title FROM contracts WHERE client_id = c.id ORDER BY createdAt DESC LIMIT 1) as contractTitle
+                FROM clients c
+            `;
+            db.all(query, [], (err, rows) => {
                 if (err) reject(err);
                 else resolve(rows);
             });
         });
 
-        // Get contract titles for ALL clients (check contracts table, not just contract flag)
-        const clientsWithContracts = await Promise.all(clients.map(async (client) => {
-            // Always check for contracts in the contracts table
-            const contractTitle = await new Promise((resolve) => {
-                db.get(
-                    'SELECT title FROM contracts WHERE client_id = ? ORDER BY createdAt DESC LIMIT 1',
-                    [client.id],
-                    (err, row) => {
-                        if (err) {
-                            console.log(`Error getting contract for client ${client.id}:`, err);
-                            resolve(null);
-                        } else if (!row) {
-                            // No contract found - this is normal, not all clients have contracts
-                            resolve(null);
-                        } else {
-                            console.log(`Found contract for client ${client.id}: ${row.title}`);
-                            resolve(row.title);
-                        }
-                    }
-                );
-            });
-            return { ...client, contract: contractTitle };
+        // Map contractTitle to the 'contract' property to match previous behavior (Client type expects logic)
+        // Note: The schema has 'contract' as int (boolean), but this endpoint overrides it with the title string.
+        const mappedClients = clients.map(client => ({
+            ...client,
+            contract: client.contractTitle || null
         }));
 
-        // Try to add indicators from MongoDB if available
+        // Optimize MongoDB: Bulk fetch indicators
         const mongoDb = getMongoDb();
         if (mongoDb) {
             try {
-                const clientsWithIndicators = await Promise.all(clientsWithContracts.map(async (client) => {
-                    let hasDiagram = false;
-                    let hasAccess = false;
-                    let hasFiles = false;
-                    let hasImplementation = false;
+                const clientIds = mappedClients.map(c => String(c.id));
 
-                    try {
-                        // Check for diagram
-                        const diagram = await mongoDb.collection('client_diagrams').findOne({
-                            clientId: client.id.toString()
-                        });
-                        hasDiagram = !!diagram;
-                    } catch (e) {
-                        // Silently ignore
-                    }
+                // Execute all MongoDB checks in parallel using distinct + $in
+                const [diagrams, accesses, files, implementations] = await Promise.all([
+                    mongoDb.collection('client_diagrams').distinct('clientId', { clientId: { $in: clientIds } }),
+                    mongoDb.collection('client_accesses').distinct('clientId', { clientId: { $in: clientIds } }),
+                    mongoDb.collection('repository_items').distinct('clientId', { clientId: { $in: clientIds } }),
+                    mongoDb.collection('client_implementations').distinct('clientId', { clientId: { $in: clientIds } })
+                ]);
 
-                    try {
-                        // Check for access records - FIXED: changed from 'client_access' to 'client_accesses'
-                        const access = await mongoDb.collection('client_accesses').findOne({
-                            clientId: client.id.toString()
-                        });
-                        hasAccess = !!access;
-                    } catch (e) {
-                        // Silently ignore
-                    }
+                // Create Sets for O(1) lookup
+                // Convert values to string to ensure matching (ids are strings in Mongo)
+                const diagramSet = new Set(diagrams.map(String));
+                const accessSet = new Set(accesses.map(String));
+                const fileSet = new Set(files.map(String));
+                const implementationSet = new Set(implementations.map(String));
 
-                    try {
-                        // Check for files in repository
-                        const files = await mongoDb.collection('repository_items').findOne({
-                            clientId: client.id.toString()
-                        });
-                        hasFiles = !!files;
-                    } catch (e) {
-                        // Silently ignore
-                    }
-
-                    try {
-                        const implementation = await mongoDb.collection('client_implementations').findOne({
-                            clientId: client.id.toString()
-                        });
-                        hasImplementation = !!implementation;
-                    } catch (e) {
-                        // Silently ignore
-                    }
-
+                const finalClients = mappedClients.map(client => {
+                    const cid = String(client.id);
                     return {
                         ...client,
-                        hasDiagram,
-                        hasAccess,
-                        hasFiles,
-                        hasImplementation
+                        hasDiagram: diagramSet.has(cid),
+                        hasAccess: accessSet.has(cid),
+                        hasFiles: fileSet.has(cid),
+                        hasImplementation: implementationSet.has(cid)
                     };
-                }));
+                });
 
-                return res.json(clientsWithIndicators);
+                return res.json(finalClients);
             } catch (mongoError) {
-                console.warn('MongoDB query failed, returning clients without indicators:', mongoError.message);
-                // If MongoDB fails, return clients without indicators
-                return res.json(clientsWithContracts);
+                console.warn('MongoDB bulk query failed, returning clients without indicators:', mongoError.message);
+                return res.json(mappedClients);
             }
         }
 
-        // No MongoDB, return clients with contracts
-        res.json(clientsWithContracts);
+        // No MongoDB, return clients with contracts only
+        res.json(mappedClients);
     } catch (err) {
         console.error('Error fetching clients:', err);
         res.status(500).json({ message: err.message });
@@ -3509,9 +3476,28 @@ app.delete('/api/products/:id', (req, res) => {
         .catch((error) => res.status(500).json({ message: error.message }));
 });
 
+const TICKET_LIST_SELECT_BASE = `
+  SELECT
+    t.id,
+    t.client_id as clientId,
+    t.title,
+    t.status,
+    t.priority,
+    t.amount,
+    t.visit,
+    t.assigned_to as assignedTo,
+    t.assigned_group as assignedGroupId,
+    t.createdAt,
+    t.updatedAt,
+    c.name as clientName,
+    c.contract as hasActiveContract
+  FROM tickets t
+  JOIN clients c ON t.client_id = c.id
+`;
+
 // Ticket routes
 app.get('/api/tickets', (req, res) => {
-    db.all(`${TICKET_SELECT_BASE} ORDER BY t.createdAt DESC`, [], (err, rows) => {
+    db.all(`${TICKET_LIST_SELECT_BASE} ORDER BY t.createdAt DESC`, [], (err, rows) => {
         if (err) return res.status(500).json({ message: err.message });
         res.json(rows.map(mapTicketRow));
     });
@@ -3838,7 +3824,7 @@ app.delete('/api/tickets/:id', (req, res) => {
                         details: `Evento vinculado eliminado para ticket ${ticketId}`,
                         status: 'success',
                         ip: req.ip,
-                    }).catch(() => {});
+                    }).catch(() => { });
                 }
             }
         );
@@ -3850,7 +3836,7 @@ app.delete('/api/tickets/:id', (req, res) => {
             details: `Ticket eliminado manualmente (ID: ${ticketId})`,
             status: 'success',
             ip: req.ip,
-        }).catch(() => {});
+        }).catch(() => { });
 
         res.json({ message: 'Ticket deleted successfully.' });
     });
@@ -4012,7 +3998,7 @@ app.delete('/api/calendar-events/:id', (req, res) => {
                                 details: `Ticket eliminado vía calendario (ID: ${existing.source_id})`,
                                 status: 'success',
                                 ip: req.ip
-                            }).catch(() => {});
+                            }).catch(() => { });
                         } else {
                             console.warn(`Calendar event ${existing.id} referenced ticket ${existing.source_id} that was already gone.`);
                         }

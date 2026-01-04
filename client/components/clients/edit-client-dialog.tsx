@@ -19,6 +19,9 @@ import { User, Tag, CreditCard, Mail, Phone, Home, FileSignature, Bell, Upload, 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { toast } from "sonner";
 import { API_URL } from "@/lib/http";
+import { fetchAllContracts, updateContract } from "@/lib/api-contracts";
+import { Combobox } from "@/components/ui/combobox";
+import { Contract } from "@/types/contract";
 
 interface Client {
   id: string;
@@ -54,6 +57,33 @@ export function EditClientDialog({ client, onClientUpdated, children }: EditClie
   const [avatarUrl, setAvatarUrl] = useState(client.avatarUrl ?? "");
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(client.avatarUrl ?? null);
+  const [availableContracts, setAvailableContracts] = useState<Contract[]>([]);
+  const [selectedContractId, setSelectedContractId] = useState<string | undefined>();
+  const [loadingContracts, setLoadingContracts] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      const loadContracts = async () => {
+        setLoadingContracts(true);
+        try {
+          const contracts = await fetchAllContracts();
+          // Show contracts that are either unassigned OR already assigned to THIS client
+          setAvailableContracts(contracts.filter(c => !c.clientId || c.clientId === "" || c.clientId === client.id));
+
+          // If the client already has a contract linked, select it
+          const linked = contracts.find(c => c.clientId === client.id);
+          if (linked) {
+            setSelectedContractId(linked.id);
+          }
+        } catch (error) {
+          console.error("Error loading contracts:", error);
+        } finally {
+          setLoadingContracts(false);
+        }
+      };
+      loadContracts();
+    }
+  }, [isOpen, client.id]);
 
   useEffect(() => {
     setName(client.name ?? "");
@@ -145,6 +175,48 @@ export function EditClientDialog({ client, onClientUpdated, children }: EditClie
       }
 
       const result = await response.json();
+
+      // 3. Manage contract linkage: unlink previous if changed or deselected
+      const currentlyLinked = availableContracts.find(c => c.clientId === client.id);
+
+      if (contract && selectedContractId) {
+        // If we choose a DIFFERENT contract, unlink the previous one first
+        if (currentlyLinked && currentlyLinked.id !== selectedContractId) {
+          try {
+            await updateContract(currentlyLinked.id, {
+              clientId: "",
+              clientName: "",
+              status: "Pendiente"
+            });
+          } catch (err) {
+            console.error("Error unlinking previous contract:", err);
+          }
+        }
+
+        try {
+          await updateContract(selectedContractId, {
+            clientId: result.id,
+            clientName: result.name,
+            status: "Activo"
+          });
+        } catch (contractError) {
+          console.error("Error linking contract:", contractError);
+          toast.error("Cliente actualizado, pero no se pudo vincular el contrato.");
+        }
+      } else if (!contract && currentlyLinked) {
+        // If contract checkbox was unchecked, unlink any existing contract association
+        try {
+          await updateContract(currentlyLinked.id, {
+            clientId: "",
+            clientName: "",
+            status: "Pendiente"
+          });
+        } catch (unlinkError) {
+          console.error("Error unlinking contract:", unlinkError);
+          toast.error("No se pudo desvincular el contrato anterior.");
+        }
+      }
+
       onClientUpdated(result); // Pass the updated client from the server
       toast.success("Cliente actualizado exitosamente.");
       setIsOpen(false);
@@ -266,6 +338,22 @@ export function EditClientDialog({ client, onClientUpdated, children }: EditClie
                     Tiene contrato activo
                   </Label>
                 </div>
+
+                {contract && (
+                  <div className="pl-6 space-y-2">
+                    <Label className="text-xs text-muted-foreground">Vincular/Cambiar Contrato</Label>
+                    <Combobox
+                      options={availableContracts.map(c => ({
+                        value: c.id,
+                        label: `${c.title} - ${c.clientName || 'Sin cliente'}`
+                      }))}
+                      value={selectedContractId}
+                      onValueChange={setSelectedContractId}
+                      placeholder={loadingContracts ? "Cargando contratos..." : "Seleccionar contrato..."}
+                      searchPlaceholder="Buscar por título..."
+                    />
+                  </div>
+                )}
 
                 <div className="flex items-center space-x-2">
                   <Checkbox
