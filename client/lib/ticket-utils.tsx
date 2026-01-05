@@ -59,7 +59,7 @@ export const useTicketStatuses = () => {
                 // Process Edges for Transitions
                 if (data.edges && Array.isArray(data.edges) && data.nodes) {
                     const transitionMap: Record<string, string[]> = {};
-                    const nodeMap = new Map(data.nodes.map((n: any) => [n.id, n.data.label]));
+                    const nodeMap = new Map<string, string>(data.nodes.map((n: any) => [n.id, String(n.data.label || "")]));
 
                     data.edges.forEach((edge: any) => {
                         const fromLabel = nodeMap.get(edge.source);
