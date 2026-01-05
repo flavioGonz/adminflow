@@ -58,37 +58,46 @@ pm2 startup
 
 ## 🔄 Cómo Actualizar tu Versión Existente
 
-Si ya tienes el sistema corriendo en `/home/adminflow` (sea Ubuntu, Alpine o cualquier Linux), sigue estos pasos:
+### Problemas Comunes y Soluciones
 
-### 1. Descargar Cambios
+#### 1. Error de Git: "Local changes would be overwritten"
+Si ves este error, significa que hay archivos modificados en el servidor que entran en conflicto con la actualización. Para **forzar** la actualización (borrando cambios locales no guardados):
+
 ```bash
-cd /home/adminflow
+git reset --hard origin/main
 git pull origin main
 ```
 
-### 2. Actualizar Dependencias (Backend)
+#### 2. Error de NPM: "ERESOLVE could not resolve" (React 19)
+Si usas React 19, algunas librerías antiguas pueden dar error. Usa la bandera `--legacy-peer-deps`.
+
+#### 3. PM2: "No process found"
+Si PM2 dice que no hay procesos, es porque no están corriendo o el entorno se reinició. Debes iniciarlos de cero.
+
+### ✅ COMANDO DE ACTUALIZACIÓN (Recomendado)
+
+Copia y pega este bloque completo en tu terminal (Linux/Alpine):
+
 ```bash
+# 1. Forzar descarga de última versión
+cd /home/adminflow
+git fetch --all
+git reset --hard origin/main
+
+# 2. Reinstalar Backend (Ignorando versiones estrictas)
 cd server
-npm install
-# Si hubo cambios en la estructura de DB, reinicia el servicio
-pm2 restart adminflow-api
-```
+npm install --legacy-peer-deps
 
-### 3. Actualizar Frontend (Requerido para cambios visuales)
-```bash
+# 3. Reinstalar y Reconstruir Frontend
 cd ../client
-npm install
+npm install --legacy-peer-deps
 npm run build
-# Reiniciar servicio web para servir la nueva build
-pm2 restart adminflow-web
-```
 
-### Resumen Rápido (One-Liner)
-Puedes copiar y pegar esto si ya estás en la carpeta raíz:
-
-```bash
-git pull origin main && \
-cd server && npm install && \
-cd ../client && npm install && npm run build && \
-pm2 restart all
+# 4. Reiniciar Servicios (Forzando reinicio si PM2 perdió los procesos)
+cd ..
+npm install -g pm2
+pm2 delete all || true
+cd server && pm2 start npm --name "adminflow-api" -- start
+cd ../client && pm2 start npm --name "adminflow-web" -- start
+pm2 save
 ```
