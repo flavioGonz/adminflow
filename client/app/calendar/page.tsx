@@ -428,6 +428,7 @@ export default function CalendarPage() {
   useEffect(() => {
     if (!calendarRef.current) return;
     const handle = setTimeout(() => {
+      // Force layout update on weather change
       calendarRef.current?.getApi().updateSize();
     }, 0);
     return () => clearTimeout(handle);
@@ -743,7 +744,7 @@ export default function CalendarPage() {
       setSelectedClientId(null);
     }
   }, [modalOpen]);
- 
+
   useEffect(() => {
     if (draft.start) {
       setFormattedStart(
@@ -829,9 +830,9 @@ export default function CalendarPage() {
     const clientName = clientId ? clientMap[clientId] : undefined;
     const startTimeLabel = arg.event.start
       ? new Intl.DateTimeFormat("es-UY", {
-          hour: "2-digit",
-          minute: "2-digit",
-        }).format(arg.event.start)
+        hour: "2-digit",
+        minute: "2-digit",
+      }).format(arg.event.start)
       : "--:--";
 
     const isAuto = sourceType !== "manual";
@@ -849,7 +850,7 @@ export default function CalendarPage() {
         className={`flex h-full w-full min-h-full flex-col justify-center rounded-md border px-2 py-1 text-xs font-semibold shadow-sm transition-all overflow-hidden cursor-pointer hover:brightness-95 ${bgColor}`}
       >
         <div className="flex items-center gap-1.5 w-full">
-            {assignedUser ? (
+          {assignedUser ? (
             <Avatar className="h-7 w-7 border border-white/20 shadow-sm shrink-0">
               <AvatarImage src={assignedUser.avatar ? `${API_URL.replace(/\/api\/?$/, "")}${assignedUser.avatar}` : undefined} />
               <AvatarFallback className="text-[9px] bg-slate-900/10 text-slate-700">{assignedUser.name?.substring(0, 2).toUpperCase()}</AvatarFallback>
@@ -1029,11 +1030,10 @@ export default function CalendarPage() {
 
       <div
         ref={containerRef}
-        className={`w-full px-6 pb-0 transition-all duration-300 ${
-          isFullscreen
+        className={`w-full px-6 pb-0 transition-all duration-300 ${isFullscreen
             ? "fixed inset-0 z-50 bg-white p-6"
             : "h-[calc(100vh-140px)]"
-        }`}
+          }`}
       >
         <div className="h-full">
           <FullCalendar
@@ -1047,9 +1047,9 @@ export default function CalendarPage() {
               center: "",
               right: "",
             }}
-          buttonText={{
-            today: "Hoy",
-            month: "Mes",
+            buttonText={{
+              today: "Hoy",
+              month: "Mes",
               week: "Semana",
               day: "Día",
             }}
@@ -1208,15 +1208,15 @@ export default function CalendarPage() {
                   <User2 className="h-4 w-4 mr-2" />
                 </Combobox>
                 <div className="space-y-3 pt-3">
-                <div className="flex items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50/60 px-3 py-3">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">Convertir a ticket</p>
-                    <p className="text-[11px] text-amber-700/70">Convierte este evento en un ticket de visita programada.</p>
+                  <div className="flex items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50/60 px-3 py-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">Convertir a ticket</p>
+                      <p className="text-[11px] text-amber-700/70">Convierte este evento en un ticket de visita programada.</p>
+                    </div>
+                    <Switch id="convert-ticket" checked={isTicket} onCheckedChange={setIsTicket} className="data-[state=checked]:bg-amber-500" />
                   </div>
-                  <Switch id="convert-ticket" checked={isTicket} onCheckedChange={setIsTicket} className="data-[state=checked]:bg-amber-500" />
-                </div>
-                {isTicket && (
-                  <div className="space-y-3 rounded-2xl border border-slate-200 bg-white/70 p-3">
+                  {isTicket && (
+                    <div className="space-y-3 rounded-2xl border border-slate-200 bg-white/70 p-3">
                       <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Asignar visita</p>
                       <Select
                         value={assignedTo ? `user:${assignedTo}` : assignedGroupId ? `group:${assignedGroupId}` : "none"}
