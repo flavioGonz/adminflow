@@ -728,6 +728,13 @@ const handleMultiStepFlow = async (from, text, url, session, apiKey, delay = 400
             if (state.step === 'CLIENT') {
                 const clients = await searchClients(text);
                 if (clients.length === 0) return await sendReply(url, session, from, `❌ No encontré al cliente "${text}". Intenta con otro nombre o "cancelar".`, apiKey, delay);
+
+                // Si hay múltiples coincidencias exacta no debería pasar (por la lógica de searchClients), pero si es parcial sí.
+                if (clients.length > 1) {
+                    let list = clients.map(c => `👤 ${c.name}`).join('\n');
+                    return await sendReply(url, session, from, `⚠️ Encontré varios clientes con ese nombre:\n\n${list}\n\nPor favor, sé más específico (Nombre completo).`, apiKey, delay);
+                }
+
                 const c = clients[0];
                 state.data = { clientId: c.id, clientName: c.name, hasContract: c.contract };
                 state.step = 'SUBJECT';
@@ -992,8 +999,20 @@ const getTicketById = (ticketId) => {
 
 const searchClients = (query) => {
     return new Promise((resolve) => {
-        db.all(`SELECT * FROM clients WHERE name LIKE ? OR phone LIKE ? OR alias LIKE ? LIMIT 3`, [`%${query}%`, `%${query}%`, `%${query}%`], (err, rows) => {
-            resolve(rows || []);
+        if (!query || typeof query !== 'string') return resolve([]);
+        const cleanQuery = query.toLowerCase().trim();
+
+        // 1. Intento de búsqueda exacta primero
+        db.get(`SELECT * FROM clients WHERE lower(name) = ?`, [cleanQuery], (err, row) => {
+            if (!err && row) {
+                // Si hay coincidencia exacta, devolvemos solo ese
+                resolve([row]);
+            } else {
+                // 2. Si no, búsqueda parcial (LIKE)
+                db.all(`SELECT * FROM clients WHERE lower(name) LIKE ? OR phone LIKE ? OR lower(alias) LIKE ? LIMIT 5`, [`%${cleanQuery}%`, `%${cleanQuery}%`, `%${cleanQuery}%`], (err, rows) => {
+                    resolve(rows || []);
+                });
+            }
         });
     });
 };
