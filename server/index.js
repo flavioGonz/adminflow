@@ -2985,159 +2985,307 @@ app.post('/api/budgets', async (req, res) => {
     }
 });
 
-app.put('/api/budgets/:id', (req, res) => {
-    db.get('SELECT * FROM budgets WHERE id = ?', [req.params.id], (err, existing) => {
-        if (err) return res.status(500).json({ message: err.message });
-        if (!existing) return res.status(404).json({ message: 'Budget not found' });
-        const parsedClientId = Number(req.body.clientId ?? existing.client_id);
-        const clientId = Number.isNaN(parsedClientId) ? existing.client_id : parsedClientId;
-        const sectionsPayload = Array.isArray(req.body.sections)
-            ? JSON.stringify(req.body.sections)
-            : existing.sections;
-        const assignedTo =
-            req.body.assignedTo !== undefined ? req.body.assignedTo : existing.assigned_to;
-        const assignedGroupId =
-            req.body.assignedGroupId !== undefined ? req.body.assignedGroupId : existing.assigned_group;
-        const payload = {
-            title: req.body.title ?? existing.title,
-            description: req.body.description ?? existing.description,
-            amount: req.body.amount ?? existing.amount,
-            status: req.body.status ?? existing.status,
-            clientId,
-            sections: sectionsPayload,
-            assignedTo,
-            assignedGroupId,
-        };
-        db.run(
-            `UPDATE budgets
-       SET title = ?, description = ?, amount = ?, status = ?, client_id = ?, sections = ?, assigned_to = ?, assigned_group = ?, updatedAt = CURRENT_TIMESTAMP
-       WHERE id = ?`,
-            [
-                payload.title,
-                payload.description,
-                payload.amount,
-                payload.status,
-                payload.clientId,
-                payload.sections,
-                payload.assignedTo,
-                payload.assignedGroupId,
-                req.params.id,
-            ],
-            function (updateErr) {
-                if (updateErr) return res.status(500).json({ message: updateErr.message });
-                db.get(`${BUDGET_SELECT_BASE} WHERE budgets.id = ?`, [req.params.id], async (selectErr, row) => {
-                    if (selectErr) return res.status(500).json({ message: selectErr.message });
-                    const updatedBudget = mapBudgetRow(row);
+app.put('/api/budgets/:id', async (req, res) => {
+    const engine = getCurrentDbEngine();
+    const id = req.params.id;
 
-                    // Enviar notificación si cambió el estado
-                    if (existing.status !== payload.status) {
-                        let eventId = null;
-                        if (payload.status === 'Aprobado' || payload.status === 'Confirmado') {
-                            eventId = 'budget_approved';
-                        } else if (payload.status === 'Rechazado' || payload.status === 'Cancelado') {
-                            eventId = 'budget_rejected';
-                        }
+    try {
+        if (engine === 'mongodb') {
+            const mongoDb = getMongoDb();
+            if (!mongoDb) return res.status(503).json({ message: 'MongoDB disconnected' });
 
-                        if (eventId) {
-                            sendAutoNotification(
-                                eventId,
-                                `Presupuesto ${payload.status.toLowerCase()}: ${updatedBudget.title} - Cliente: ${updatedBudget.clientName}`,
-                                updatedBudget,
-                                []
-                            ).catch(err => console.error('Error en notificación:', err));
-                        }
+            const { ObjectId } = require('mongodb');
+            const filter = ObjectId.isValid(id) ? { _id: new ObjectId(id) } : { id };
+
+            const existing = await mongoDb.collection('budgets').findOne(filter);
+            if (!existing) return res.status(404).json({ message: 'Budget not found' });
+
+            const clientId = req.body.clientId || existing.clientId;
+
+            const updates = {
+                title: req.body.title ?? existing.title,
+                description: req.body.description ?? existing.description,
+                amount: req.body.amount ?? existing.amount,
+                status: req.body.status ?? existing.status,
+                clientId: String(clientId),
+                sections: req.body.sections ?? existing.sections,
+                assignedTo: req.body.assignedTo !== undefined ? req.body.assignedTo : existing.assignedTo,
+                assignedGroupId: req.body.assignedGroupId !== undefined ? req.body.assignedGroupId : existing.assignedGroupId,
+                updatedAt: new Date()
+            };
+
+            await mongoDb.collection('budgets').updateOne(filter, { $set: updates });
+            const updatedDoc = await mongoDb.collection('budgets').findOne(filter);
+
+            // Client info
+            let clientName = '';
+            let clientEmail = '';
+            let clientPhone = '';
+
+            if (updatedDoc.clientId) {
+                const client = await mongoDb.collection('clients').findOne({
+                    $or: [
+                        { id: Number(updatedDoc.clientId) }, // Try number
+                        { _id: ObjectId.isValid(updatedDoc.clientId) ? new ObjectId(updatedDoc.clientId) : null }, // Try ObjectId
+                        { id: String(updatedDoc.clientId) } // Try string
+                    ]
+                });
+                if (client) {
+                    clientName = client.name;
+                    clientEmail = client.email;
+                    clientPhone = client.phone;
+                }
+            }
+
+            const mapped = {
+                ...updatedDoc,
+                id: String(updatedDoc._id),
+                clientName,
+                clientEmail,
+                clientPhone
+            };
+
+            if (existing.status !== updates.status) {
+                const eventId = updates.status === 'Aceptado' ? 'budget_accepted' :
+                    updates.status === 'Rechazado' ? 'budget_rejected' : null;
+
+                if (eventId) {
+                    sendAutoNotification(
+                        eventId,
+                        `Presupuesto ${updates.status.toLowerCase()}: ${mapped.title} - Cliente: ${mapped.clientName}`,
+                        mapped,
+                        []
+                    ).catch(err => console.error('Error en notificacion:', err));
+                }
+            }
+
+            logEvent({
+                user: 'system',
+                action: 'update',
+                resource: 'budget',
+                details: { budgetId: mapped.id, title: mapped.title, status: mapped.status },
+                ip: req.ip
+            }).catch(() => { });
+
+            return res.json(mapped);
+
+        } else {
+            // SQLite Fallback
+            db.get('SELECT * FROM budgets WHERE id = ?', [req.params.id], (err, existing) => {
+                if (err) return res.status(500).json({ message: err.message });
+                if (!existing) return res.status(404).json({ message: 'Budget not found' });
+                const parsedClientId = Number(req.body.clientId ?? existing.client_id);
+                const clientId = Number.isNaN(parsedClientId) ? existing.client_id : parsedClientId;
+                const sectionsPayload = Array.isArray(req.body.sections)
+                    ? JSON.stringify(req.body.sections)
+                    : existing.sections;
+                const assignedTo =
+                    req.body.assignedTo !== undefined ? req.body.assignedTo : existing.assigned_to;
+                const assignedGroupId =
+                    req.body.assignedGroupId !== undefined ? req.body.assignedGroupId : existing.assigned_group;
+                const payload = {
+                    title: req.body.title ?? existing.title,
+                    description: req.body.description ?? existing.description,
+                    amount: req.body.amount ?? existing.amount,
+                    status: req.body.status ?? existing.status,
+                    clientId,
+                    sections: sectionsPayload,
+                    assignedTo,
+                    assignedGroupId,
+                };
+                db.run(
+                    `UPDATE budgets
+               SET title = ?, description = ?, amount = ?, status = ?, client_id = ?, sections = ?, assigned_to = ?, assigned_group = ?, updatedAt = CURRENT_TIMESTAMP
+               WHERE id = ?`,
+                    [
+                        payload.title,
+                        payload.description,
+                        payload.amount,
+                        payload.status,
+                        payload.clientId,
+                        payload.sections,
+                        payload.assignedTo,
+                        payload.assignedGroupId,
+                        req.params.id,
+                    ],
+                    function (updateErr) {
+                        if (updateErr) return res.status(500).json({ message: updateErr.message });
+                        db.get(`${BUDGET_SELECT_BASE} WHERE budgets.id = ?`, [req.params.id], async (selectErr, row) => {
+                            if (selectErr) return res.status(500).json({ message: selectErr.message });
+                            const updatedBudget = mapBudgetRow(row);
+
+                            if (existing.status !== payload.status) {
+                                let eventId = null;
+                                if (payload.status === 'Aprobado' || payload.status === 'Confirmado') {
+                                    eventId = 'budget_approved';
+                                } else if (payload.status === 'Rechazado' || payload.status === 'Cancelado') {
+                                    eventId = 'budget_rejected';
+                                }
+
+                                if (eventId) {
+                                    sendAutoNotification(
+                                        eventId,
+                                        `Presupuesto ${payload.status.toLowerCase()}: ${updatedBudget.title} - Cliente: ${updatedBudget.clientName}`,
+                                        updatedBudget,
+                                        []
+                                    ).catch(err => console.error('Error en notificación:', err));
+                                }
+                            }
+
+                            res.json(updatedBudget);
+
+                            await logEvent({
+                                user: req.user ? req.user.email : 'system',
+                                action: 'update',
+                                resource: 'budget',
+                                details: { budgetId: updatedBudget.id, title: updatedBudget.title, status: updatedBudget.status },
+                                ip: req.ip
+                            });
+                        });
                     }
-
-                    res.json(updatedBudget);
-
-                    await logEvent({
-                        user: req.user ? req.user.email : 'system',
-                        action: 'update',
-                        resource: 'budget',
-                        details: { budgetId: updatedBudget.id, title: updatedBudget.title, status: updatedBudget.status },
-                        ip: req.ip
-                    });
-                });
-            }
-        );
-    });
-});
-
-app.patch('/api/budgets/:id/assignment', (req, res) => {
-    db.get('SELECT * FROM budgets WHERE id = ?', [req.params.id], (err, existing) => {
-        if (err) return res.status(500).json({ message: err.message });
-        if (!existing) return res.status(404).json({ message: 'Budget not found' });
-        const assignedTo = req.body.assignedTo !== undefined ? req.body.assignedTo : existing.assigned_to;
-        const assignedGroupId =
-            req.body.assignedGroupId !== undefined ? req.body.assignedGroupId : existing.assigned_group;
-        db.run(
-            `UPDATE budgets
-       SET assigned_to = ?, assigned_group = ?, updatedAt = CURRENT_TIMESTAMP
-       WHERE id = ?`,
-            [
-                assignedTo ?? null,
-                assignedGroupId ?? null,
-                req.params.id,
-            ],
-            function (updateErr) {
-                if (updateErr) return res.status(500).json({ message: updateErr.message });
-                db.get(`${BUDGET_SELECT_BASE} WHERE budgets.id = ?`, [req.params.id], async (selectErr, row) => {
-                    if (selectErr) return res.status(500).json({ message: selectErr.message });
-                    const updatedBudget = mapBudgetRow(row);
-
-                    await logEvent({
-                        user: req.user ? req.user.email : 'system',
-                        action: 'update',
-                        resource: 'budget_assignment',
-                        details: {
-                            budgetId: updatedBudget.id,
-                            assignedTo: updatedBudget.assignedTo,
-                            assignedGroupId: updatedBudget.assignedGroupId,
-                        },
-                        ip: req.ip
-                    });
-
-                    res.json(updatedBudget);
-                });
-            }
-        );
-    });
-});
-
-app.delete('/api/budgets/:id', (req, res) => {
-    const budgetId = Number(req.params.id);
-    if (Number.isNaN(budgetId)) {
-        return res.status(400).json({ message: 'Identificador de presupuesto inválido.' });
+                );
+            });
+        }
+    } catch (e) {
+        res.status(500).json({ message: e.message });
     }
+});
 
-    db.get('SELECT file_path FROM budgets WHERE id = ?', [budgetId], (err, row) => {
-        if (err) return res.status(500).json({ message: err.message });
-        if (!row) return res.status(404).json({ message: 'Budget not found.' });
+app.patch('/api/budgets/:id/assignment', async (req, res) => {
+    const engine = getCurrentDbEngine();
+    const id = req.params.id;
 
-        if (row.file_path) {
-            const absolutePath = path.resolve(__dirname, row.file_path.replace(/^\//, ''));
-            fs.unlink(absolutePath, () => { });
+    if (engine === 'mongodb') {
+        try {
+            const mongoDb = getMongoDb();
+            if (!mongoDb) return res.status(503).json({ message: 'MongoDB disconnected' });
+            const { ObjectId } = require('mongodb');
+            const filter = ObjectId.isValid(id) ? { _id: new ObjectId(id) } : { id };
+
+            const updateDoc = { updatedAt: new Date() };
+            if (req.body.assignedTo !== undefined) updateDoc.assignedTo = req.body.assignedTo;
+            if (req.body.assignedGroupId !== undefined) updateDoc.assignedGroupId = req.body.assignedGroupId;
+
+            await mongoDb.collection('budgets').updateOne(filter, { $set: updateDoc });
+            const updatedDoc = await mongoDb.collection('budgets').findOne(filter);
+
+            return res.json({ ...updatedDoc, id: String(updatedDoc._id) });
+
+        } catch (e) {
+            res.status(500).json({ message: e.message });
+        }
+    } else {
+        db.get('SELECT * FROM budgets WHERE id = ?', [req.params.id], (err, existing) => {
+            if (err) return res.status(500).json({ message: err.message });
+            if (!existing) return res.status(404).json({ message: 'Budget not found' });
+            const assignedTo = req.body.assignedTo !== undefined ? req.body.assignedTo : existing.assigned_to;
+            const assignedGroupId =
+                req.body.assignedGroupId !== undefined ? req.body.assignedGroupId : existing.assigned_group;
+            db.run(
+                `UPDATE budgets
+           SET assigned_to = ?, assigned_group = ?, updatedAt = CURRENT_TIMESTAMP
+           WHERE id = ?`,
+                [
+                    assignedTo ?? null,
+                    assignedGroupId ?? null,
+                    req.params.id,
+                ],
+                function (updateErr) {
+                    if (updateErr) return res.status(500).json({ message: updateErr.message });
+                    db.get(`${BUDGET_SELECT_BASE} WHERE budgets.id = ?`, [req.params.id], async (selectErr, row) => {
+                        if (selectErr) return res.status(500).json({ message: selectErr.message });
+                        const updatedBudget = mapBudgetRow(row);
+
+                        await logEvent({
+                            user: req.user ? req.user.email : 'system',
+                            action: 'update',
+                            resource: 'budget_assignment',
+                            details: {
+                                budgetId: updatedBudget.id,
+                                assignedTo: updatedBudget.assignedTo,
+                                assignedGroupId: updatedBudget.assignedGroupId,
+                            },
+                            ip: req.ip
+                        });
+
+                        res.json(updatedBudget);
+                    });
+                }
+            );
+        });
+    }
+});
+
+app.delete('/api/budgets/:id', async (req, res) => {
+    const engine = getCurrentDbEngine();
+    const id = req.params.id;
+
+    if (engine === 'mongodb') {
+        try {
+            const mongoDb = getMongoDb();
+            if (!mongoDb) return res.status(503).json({ message: 'Disconnected' });
+            const { ObjectId } = require('mongodb');
+            const filter = ObjectId.isValid(id) ? { _id: new ObjectId(id) } : { id };
+
+            const doc = await mongoDb.collection('budgets').findOne(filter);
+            if (!doc) return res.status(404).json({ message: 'Budget not found' });
+
+            if (doc.file_path) {
+                const absolutePath = path.resolve(__dirname, doc.file_path.replace(/^\//, ''));
+                fs.unlink(absolutePath, () => { });
+            }
+
+            await mongoDb.collection('budgets').deleteOne(filter);
+
+            // Log event needs waiting? No catch is fine.
+            await logEvent({
+                user: 'system',
+                action: 'delete',
+                resource: 'budget',
+                details: { budgetId: id },
+                ip: req.ip
+            }).catch(() => { });
+
+            res.json({ message: 'Budget deleted successfully' });
+        } catch (e) {
+            res.status(500).json({ message: e.message });
+        }
+    } else {
+        const budgetId = Number(req.params.id);
+        if (Number.isNaN(budgetId)) {
+            return res.status(400).json({ message: 'Identificador de presupuesto inválido.' });
         }
 
-        db.run('DELETE FROM budget_items WHERE budget_id = ?', [budgetId], (itemsErr) => {
-            if (itemsErr) {
-                console.error('Failed to remove related budget items:', itemsErr);
+        db.get('SELECT file_path FROM budgets WHERE id = ?', [budgetId], (err, row) => {
+            if (err) return res.status(500).json({ message: err.message });
+            if (!row) return res.status(404).json({ message: 'Budget not found.' });
+
+            if (row.file_path) {
+                const absolutePath = path.resolve(__dirname, row.file_path.replace(/^\//, ''));
+                fs.unlink(absolutePath, () => { });
             }
-            db.run('DELETE FROM budgets WHERE id = ?', [budgetId], async (deleteErr) => {
-                if (deleteErr) return res.status(500).json({ message: deleteErr.message });
 
-                await logEvent({
-                    user: req.user ? req.user.email : 'system',
-                    action: 'delete',
-                    resource: 'budget',
-                    details: { budgetId: req.params.id },
-                    ip: req.ip
+            db.run('DELETE FROM budget_items WHERE budget_id = ?', [budgetId], (itemsErr) => {
+                if (itemsErr) {
+                    console.error('Failed to remove related budget items:', itemsErr);
+                }
+
+                db.run('DELETE FROM budgets WHERE id = ?', [budgetId], async (deleteErr) => {
+                    if (deleteErr) return res.status(500).json({ message: deleteErr.message });
+
+                    await logEvent({
+                        user: req.user ? req.user.email : 'system',
+                        action: 'delete',
+                        resource: 'budget',
+                        details: { budgetId: budgetId },
+                        ip: req.ip
+                    });
+
+                    res.json({ message: 'Budget deleted successfully.' });
                 });
-
-                res.json({ message: 'Budget deleted successfully.' });
             });
         });
-    });
+    }
 });
 
 app.post('/api/budgets/:id/cover', budgetShareUpload.single('cover'), (req, res) => {
