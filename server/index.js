@@ -2303,7 +2303,7 @@ app.get('/api/clients/:id/contracts', (req, res) => {
     });
 });
 
-app.post('/api/contracts', (req, res) => {
+app.post('/api/contracts', async (req, res) => {
     const {
         clientId,
         title,
@@ -2316,146 +2316,328 @@ app.post('/api/contracts', (req, res) => {
         amount,
         currency = 'ARS',
     } = req.body;
-    const numericClientId = Number(clientId);
-    if (!numericClientId || !title) {
+
+    if (!clientId || !title) {
         return res.status(400).json({ message: 'clientId and title are required.' });
     }
-    db.run(
-        `INSERT INTO contracts (client_id, contract_name, file_path, currency, title, description, startDate, endDate, status, sla, contractType, amount)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-            numericClientId,
-            title,
-            '',
-            currency || 'ARS',
-            title,
-            description || null,
-            startDate || null,
-            endDate || null,
-            status || null,
-            sla || null,
-            contractType || null,
-            amount ?? null,
-        ],
-        function (err) {
-            if (err) return res.status(500).json({ message: err.message });
-            const contractId = this.lastID;
-            db.get(`${CONTRACT_SELECT_BASE} WHERE contracts.id = ?`, [contractId], async (selectErr, row) => {
-                if (selectErr) return res.status(500).json({ message: selectErr.message });
-                const newContract = mapContractRow(row);
 
-                await upsertCalendarEvent({
-                    title: `Contrato: ${newContract.title}`.trim(),
-                    start: newContract.startDate || newContract.createdAt || new Date().toISOString(),
-                    end: newContract.endDate || null,
-                    location: newContract.clientName ? `Cliente: ${newContract.clientName}` : null,
-                    sourceType: 'contract',
-                    sourceId: newContract.id,
-                    locked: true,
-                }).catch((calendarErr) => {
-                    console.error('No se pudo crear el evento de calendario para el contrato:', calendarErr?.message || calendarErr);
-                });
+    const engine = getCurrentDbEngine();
+
+    try {
+        if (engine === 'mongodb') {
+            const mongoDb = getMongoDb();
+            if (!mongoDb) return res.status(503).json({ message: 'MongoDB disconnected' });
+
+            const newContract = {
+                clientId: String(clientId),
+                title,
+                contract_name: title, // maintain both
+                description: description || null,
+                startDate: startDate || null,
+                endDate: endDate || null,
+                status: status || null,
+                sla: sla || null,
+                contractType: contractType || null,
+                amount: amount ? Number(amount) : null,
+                currency: currency || 'ARS',
+                file_path: '',
+                createdAt: new Date(),
+                updatedAt: new Date()
+            };
+
+            const result = await mongoDb.collection('contracts').insertOne(newContract);
+
+            // Fetch client info
+            const client = await mongoDb.collection('clients').findOne({
+                $or: [
+                    { _id: isNaN(Number(clientId)) ? new ObjectId(clientId) : Number(clientId) },
+                    { id: isNaN(Number(clientId)) ? clientId : Number(clientId) }
+                ]
+            });
+
+            const fullContract = {
+                ...newContract,
+                id: String(result.insertedId),
+                _id: result.insertedId,
+                clientName: client?.name || '',
+                clientPhone: client?.phone || '',
+                clientEmail: client?.email || ''
+            };
+
+            await upsertCalendarEvent({
+                title: `Contrato: ${fullContract.title}`.trim(),
+                start: fullContract.startDate || fullContract.createdAt.toISOString(),
+                end: fullContract.endDate || null,
+                location: fullContract.clientName ? `Cliente: ${fullContract.clientName}` : null,
+                sourceType: 'contract',
+                sourceId: fullContract.id,
+                locked: true,
+            }).catch(e => console.error('Calendar error (Mongo):', e));
+
+            if (status === 'Firmado' || status === 'Activo') {
+                sendAutoNotification(
+                    'contract_signed',
+                    `Contrato firmado: ${fullContract.title} - Cliente: ${fullContract.clientName}`,
+                    fullContract,
+                    []
+                ).catch(err => console.error('Error en notificacion:', err));
+            }
+
+            logEvent({
+                user: 'system',
+                action: 'create',
+                resource: 'contract',
+                details: { contractId: fullContract.id, title: fullContract.title, clientId: fullContract.clientId },
+                ip: req.ip
+            }).catch(() => { });
+
+            return res.status(201).json(fullContract);
+
+        } else {
+            // SQLite Fallback
+            const numericClientId = Number(clientId);
+            if (!numericClientId) {
+                return res.status(400).json({ message: 'clientId must be a valid number (SQLite).' });
+            }
+            db.run(
+                `INSERT INTO contracts (client_id, contract_name, file_path, currency, title, description, startDate, endDate, status, sla, contractType, amount)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [
+                    numericClientId,
+                    title,
+                    '',
+                    currency || 'ARS',
+                    title,
+                    description || null,
+                    startDate || null,
+                    endDate || null,
+                    status || null,
+                    sla || null,
+                    contractType || null,
+                    amount ?? null,
+                ],
+                function (err) {
+                    if (err) return res.status(500).json({ message: err.message });
+                    const contractId = this.lastID;
+                    db.get(`${CONTRACT_SELECT_BASE} WHERE contracts.id = ?`, [contractId], async (selectErr, row) => {
+                        if (selectErr) return res.status(500).json({ message: selectErr.message });
+                        const newContract = mapContractRow(row);
+
+                        await upsertCalendarEvent({
+                            title: `Contrato: ${newContract.title}`.trim(),
+                            start: newContract.startDate || newContract.createdAt || new Date().toISOString(),
+                            end: newContract.endDate || null,
+                            location: newContract.clientName ? `Cliente: ${newContract.clientName}` : null,
+                            sourceType: 'contract',
+                            sourceId: newContract.id,
+                            locked: true,
+                        }).catch((calendarErr) => {
+                            console.error('No se pudo crear el evento de calendario para el contrato:', calendarErr?.message || calendarErr);
+                        });
 
 
-                // Enviar notificación si el contrato está firmado
-                if (status === 'Firmado' || status === 'Activo') {
-                    sendAutoNotification(
-                        'contract_signed',
-                        `Contrato firmado: ${newContract.title} - Cliente: ${newContract.clientName}`,
-                        newContract,
-                        []
-                    ).catch(err => console.error('Error en notificación:', err));
+                        // Enviar notificación si el contrato está firmado
+                        if (status === 'Firmado' || status === 'Activo') {
+                            sendAutoNotification(
+                                'contract_signed',
+                                `Contrato firmado: ${newContract.title} - Cliente: ${newContract.clientName}`,
+                                newContract,
+                                []
+                            ).catch(err => console.error('Error en notificación:', err));
+                        }
+
+                        await logEvent({
+                            user: req.user ? req.user.email : 'system',
+                            action: 'create',
+                            resource: 'contract',
+                            details: { contractId: newContract.id, title: newContract.title, clientId: newContract.clientId },
+                            ip: req.ip
+                        });
+
+                        res.status(201).json(newContract);
+                    });
                 }
+            );
+        }
+    } catch (e) {
+        res.status(500).json({ message: e.message });
+    }
+});
+
+app.put('/api/contracts/:id', async (req, res) => {
+    const engine = getCurrentDbEngine();
+    const id = req.params.id;
+
+    try {
+        if (engine === 'mongodb') {
+            const mongoDb = getMongoDb();
+            if (!mongoDb) return res.status(503).json({ message: 'MongoDB disconnected' });
+
+            const { ObjectId } = require('mongodb');
+            const filter = ObjectId.isValid(id) ? { _id: new ObjectId(id) } : { id };
+
+            const existing = await mongoDb.collection('contracts').findOne(filter);
+            if (!existing) return res.status(404).json({ message: 'Contract not found' });
+
+            const updates = {
+                contract_name: req.body.title ?? existing.contract_name ?? existing.title,
+                title: req.body.title ?? existing.title,
+                description: req.body.description ?? existing.description,
+                startDate: req.body.startDate ?? existing.startDate,
+                endDate: req.body.endDate ?? existing.endDate,
+                status: req.body.status ?? existing.status,
+                sla: req.body.sla ?? existing.sla,
+                contractType: req.body.contractType ?? existing.contractType,
+                amount: req.body.amount ?? existing.amount,
+                currency: req.body.currency ?? existing.currency ?? 'ARS',
+                updatedAt: new Date()
+            };
+
+            await mongoDb.collection('contracts').updateOne(filter, { $set: updates });
+            const updatedDoc = await mongoDb.collection('contracts').findOne(filter);
+
+            // Client info
+            let clientName = '';
+            if (updatedDoc.clientId) {
+                const client = await mongoDb.collection('clients').findOne({
+                    $or: [{ id: Number(updatedDoc.clientId) }, { _id: ObjectId.isValid(updatedDoc.clientId) ? new ObjectId(updatedDoc.clientId) : null }]
+                });
+                if (client) clientName = client.name;
+            }
+
+            const mapped = {
+                ...updatedDoc,
+                id: String(updatedDoc._id),
+                clientName
+            };
+
+            logEvent({
+                user: 'system',
+                action: 'update',
+                resource: 'contract',
+                details: { contractId: mapped.id, title: mapped.title },
+                ip: req.ip
+            }).catch(() => { });
+
+            return res.json(mapped);
+
+        } else {
+            // SQLite Fallback
+            db.get('SELECT * FROM contracts WHERE id = ?', [req.params.id], (err, existing) => {
+                if (err) return res.status(500).json({ message: err.message });
+                if (!existing) return res.status(404).json({ message: 'Contract not found' });
+                const payload = {
+                    contractName: req.body.title ?? existing.contract_name ?? existing.title,
+                    title: req.body.title ?? existing.title,
+                    description: req.body.description ?? existing.description,
+                    startDate: req.body.startDate ?? existing.startDate,
+                    endDate: req.body.endDate ?? existing.endDate,
+                    status: req.body.status ?? existing.status,
+                    sla: req.body.sla ?? existing.sla,
+                    contractType: req.body.contractType ?? existing.contractType,
+                    amount: req.body.amount ?? existing.amount,
+                    currency: req.body.currency ?? existing.currency ?? 'ARS',
+                };
+                db.run(
+                    `UPDATE contracts
+               SET contract_name = ?, title = ?, description = ?, startDate = ?, endDate = ?, status = ?, sla = ?, contractType = ?, amount = ?, currency = ?, updatedAt = CURRENT_TIMESTAMP
+               WHERE id = ?`,
+                    [
+                        payload.contractName,
+                        payload.title,
+                        payload.description,
+                        payload.startDate,
+                        payload.endDate,
+                        payload.status,
+                        payload.sla,
+                        payload.contractType,
+                        payload.amount,
+                        payload.currency,
+                        req.params.id,
+                    ],
+                    function (updateErr) {
+                        if (updateErr) return res.status(500).json({ message: updateErr.message });
+                        db.get(`${CONTRACT_SELECT_BASE} WHERE contracts.id = ?`, [req.params.id], async (selectErr, row) => {
+                            if (selectErr) return res.status(500).json({ message: selectErr.message });
+
+                            await logEvent({
+                                user: req.user ? req.user.email : 'system',
+                                action: 'update',
+                                resource: 'contract',
+                                details: { contractId: row.id, title: row.title },
+                                ip: req.ip
+                            });
+
+                            res.json(mapContractRow(row));
+                        });
+                    }
+                );
+            });
+        }
+    } catch (e) {
+        res.status(500).json({ message: e.message });
+    }
+});
+
+app.delete('/api/contracts/:id', async (req, res) => {
+    const engine = getCurrentDbEngine();
+    const id = req.params.id;
+
+    if (engine === 'mongodb') {
+        try {
+            const mongoDb = getMongoDb();
+            if (!mongoDb) return res.status(503).json({ message: 'MongoDB disconnected' });
+
+            const { ObjectId } = require('mongodb');
+            const filter = ObjectId.isValid(id) ? { _id: new ObjectId(id) } : { id };
+
+            const doc = await mongoDb.collection('contracts').findOne(filter);
+            if (!doc) return res.status(404).json({ message: 'Contract not found' });
+
+            if (doc.file_path) {
+                const absolutePath = path.resolve(__dirname, doc.file_path.replace(/^\//, ''));
+                fs.unlink(absolutePath, () => { });
+            }
+
+            await mongoDb.collection('contracts').deleteOne(filter);
+
+            logEvent({
+                user: 'system',
+                action: 'delete',
+                resource: 'contract',
+                details: { contractId: id },
+                ip: req.ip
+            }).catch(() => { });
+
+            return res.json({ message: 'Contract deleted successfully.' });
+
+        } catch (e) {
+            res.status(500).json({ message: e.message });
+        }
+
+    } else {
+        db.get('SELECT file_path FROM contracts WHERE id = ?', [req.params.id], (err, row) => {
+            if (err) return res.status(500).json({ message: err.message });
+            if (!row) return res.status(404).json({ message: 'Contract not found.' });
+            if (row.file_path) {
+                const absolutePath = path.resolve(__dirname, row.file_path.replace(/^\//, ''));
+                fs.unlink(absolutePath, () => { });
+            }
+            db.run('DELETE FROM contracts WHERE id = ?', [req.params.id], async (deleteErr) => {
+                if (deleteErr) return res.status(500).json({ message: deleteErr.message });
 
                 await logEvent({
                     user: req.user ? req.user.email : 'system',
-                    action: 'create',
+                    action: 'delete',
                     resource: 'contract',
-                    details: { contractId: newContract.id, title: newContract.title, clientId: newContract.clientId },
+                    details: { contractId: req.params.id },
                     ip: req.ip
                 });
 
-                res.status(201).json(newContract);
+                res.json({ message: 'Contract deleted successfully.' });
             });
-        }
-    );
-});
-
-app.put('/api/contracts/:id', (req, res) => {
-    db.get('SELECT * FROM contracts WHERE id = ?', [req.params.id], (err, existing) => {
-        if (err) return res.status(500).json({ message: err.message });
-        if (!existing) return res.status(404).json({ message: 'Contract not found' });
-        const payload = {
-            contractName: req.body.title ?? existing.contract_name ?? existing.title,
-            title: req.body.title ?? existing.title,
-            description: req.body.description ?? existing.description,
-            startDate: req.body.startDate ?? existing.startDate,
-            endDate: req.body.endDate ?? existing.endDate,
-            status: req.body.status ?? existing.status,
-            sla: req.body.sla ?? existing.sla,
-            contractType: req.body.contractType ?? existing.contractType,
-            amount: req.body.amount ?? existing.amount,
-            currency: req.body.currency ?? existing.currency ?? 'ARS',
-        };
-        db.run(
-            `UPDATE contracts
-       SET contract_name = ?, title = ?, description = ?, startDate = ?, endDate = ?, status = ?, sla = ?, contractType = ?, amount = ?, currency = ?, updatedAt = CURRENT_TIMESTAMP
-       WHERE id = ?`,
-            [
-                payload.contractName,
-                payload.title,
-                payload.description,
-                payload.startDate,
-                payload.endDate,
-                payload.status,
-                payload.sla,
-                payload.contractType,
-                payload.amount,
-                payload.currency,
-                req.params.id,
-            ],
-            function (updateErr) {
-                if (updateErr) return res.status(500).json({ message: updateErr.message });
-                db.get(`${CONTRACT_SELECT_BASE} WHERE contracts.id = ?`, [req.params.id], async (selectErr, row) => {
-                    if (selectErr) return res.status(500).json({ message: selectErr.message });
-
-                    await logEvent({
-                        user: req.user ? req.user.email : 'system',
-                        action: 'update',
-                        resource: 'contract',
-                        details: { contractId: row.id, title: row.title },
-                        ip: req.ip
-                    });
-
-                    res.json(mapContractRow(row));
-                });
-            }
-        );
-    });
-});
-
-app.delete('/api/contracts/:id', (req, res) => {
-    db.get('SELECT file_path FROM contracts WHERE id = ?', [req.params.id], (err, row) => {
-        if (err) return res.status(500).json({ message: err.message });
-        if (!row) return res.status(404).json({ message: 'Contract not found.' });
-        if (row.file_path) {
-            const absolutePath = path.resolve(__dirname, row.file_path.replace(/^\//, ''));
-            fs.unlink(absolutePath, () => { });
-        }
-        db.run('DELETE FROM contracts WHERE id = ?', [req.params.id], async (deleteErr) => {
-            if (deleteErr) return res.status(500).json({ message: deleteErr.message });
-
-            await logEvent({
-                user: req.user ? req.user.email : 'system',
-                action: 'delete',
-                resource: 'contract',
-                details: { contractId: req.params.id },
-                ip: req.ip
-            });
-
-            res.json({ message: 'Contract deleted successfully.' });
         });
-    });
+    }
 });
 
 app.post('/api/contracts/import', (req, res) => {
