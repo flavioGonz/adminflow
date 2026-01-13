@@ -1846,7 +1846,45 @@ app.post('/api/clients', async (req, res) => {
 });
 
 // GET /api/clients/:id - Get a single client
-app.get('/api/clients/:id', (req, res) => {
+// GET /api/clients/:id - Get a single client
+app.get('/api/clients/:id', async (req, res) => {
+    const engine = getCurrentDbEngine();
+
+    if (engine === 'mongodb') {
+        const mongoDb = getMongoDb();
+        if (!mongoDb) return res.status(503).json({ message: 'MongoDB disconnected' });
+        const id = req.params.id;
+
+        const { ObjectId } = require('mongodb');
+        const numId = Number(id);
+        const filter = {
+            $or: [
+                { id: !isNaN(numId) ? numId : id }, // Match stored numeric ID or string ID
+                { id: String(id) },                // Match string version of passed ID
+                { _id: ObjectId.isValid(id) ? new ObjectId(id) : null } // Match ObjectId (legacy links)
+            ]
+        };
+
+        try {
+            const client = await mongoDb.collection('clients').findOne(filter);
+            if (!client) return res.status(404).json({ message: 'Client not found' });
+
+            // Ensure ID returned is the robust one
+            const result = {
+                ...client,
+                id: client.id ? String(client.id) : String(client._id)
+            };
+            // Remove _id from response to avoid confusion? Or keep it. 
+            // mapClientRow usually returns id, name...
+            // Let's just return result.
+            res.json(result);
+
+        } catch (e) {
+            res.status(500).json({ message: e.message });
+        }
+        return;
+    }
+
     db.get('SELECT * FROM clients WHERE id = ?', [req.params.id], (err, row) => {
         if (err) return res.status(500).json({ message: err.message });
         if (!row) return res.status(404).json({ message: 'Client not found' });
