@@ -2205,18 +2205,63 @@ const mapRepositoryRow = (row) => ({
     updatedAt: row.updatedAt,
 });
 
-app.get('/api/clients/:id/repository', (req, res) => {
+app.get('/api/clients/:id/repository', async (req, res) => {
+    const engine = getCurrentDbEngine();
+    if (engine === 'mongodb') {
+        try {
+            const mongoDb = getMongoDb();
+            if (!mongoDb) return res.status(503).json({ message: 'MongoDB disconnected' });
+
+            const { ObjectId } = require('mongodb');
+            const id = req.params.id;
+
+            // 1. Resolve Client to get all its identifiers
+            const client = await mongoDb.collection('clients').findOne({
+                $or: [
+                    { id: id },
+                    { id: Number(id) }, // In case stored as number
+                    { _id: ObjectId.isValid(id) ? new ObjectId(id) : null }
+                ]
+            });
+
+            if (!client) return res.json([]); // Client not found, return empty repo
+
+            // 2. Search Repository using both ID and _id
+            const possibleIds = [String(id)];
+            if (client.id) possibleIds.push(String(client.id));
+            if (client._id) possibleIds.push(String(client._id));
+
+            const items = await mongoDb.collection('repository').find({
+                client_id: { $in: [...new Set(possibleIds)] }
+            }).toArray();
+
+            return res.json(items.map(item => ({
+                id: String(item._id),
+                clientId: String(item.client_id),
+                name: item.name || '',
+                type: item.type || '',
+                category: item.category || 'Documento',
+                format: item.format || '',
+                credential: item.credential || '',
+                notes: item.notes || '',
+                content: item.content || '',
+                fileName: item.file_name || '',
+                createdAt: item.createdAt,
+                updatedAt: item.updatedAt
+            })));
+
+        } catch (e) {
+            return res.status(500).json({ message: e.message });
+        }
+    }
+
     db.all('SELECT * FROM repository WHERE client_id = ?', [req.params.id], (err, rows) => {
         if (err) return res.status(500).json({ message: err.message });
         res.json(rows.map(mapRepositoryRow));
     });
 });
 
-app.post('/api/clients/:id/repository', (req, res) => {
-    const clientId = Number(req.params.id);
-    if (Number.isNaN(clientId)) {
-        return res.status(400).json({ message: 'clientId inválido' });
-    }
+app.post('/api/clients/:id/repository', async (req, res) => {
     const {
         name,
         type,
@@ -2227,9 +2272,50 @@ app.post('/api/clients/:id/repository', (req, res) => {
         content,
         fileName,
     } = req.body;
+
     if (!name || !type) {
         return res.status(400).json({ message: 'name y type son obligatorios' });
     }
+
+    const engine = getCurrentDbEngine();
+
+    if (engine === 'mongodb') {
+        try {
+            const mongoDb = getMongoDb();
+            if (!mongoDb) return res.status(503).json({ message: 'MongoDB disconnected' });
+
+            // We use the ID as provided in params, assuming it's the correct one to link to
+            // Ideally we should verify it exists, but for speed we trust the URL ID or Client's current ID.
+            const newItem = {
+                client_id: String(req.params.id),
+                name,
+                type,
+                category,
+                format: format || "",
+                credential: credential || "",
+                notes: notes || "",
+                content: content || "",
+                file_name: fileName || "",
+                createdAt: new Date(),
+                updatedAt: new Date()
+            };
+
+            const result = await mongoDb.collection('repository').insertOne(newItem);
+            return res.status(201).json({
+                ...newItem,
+                id: String(result.insertedId),
+                _id: result.insertedId
+            });
+        } catch (e) {
+            return res.status(500).json({ message: e.message });
+        }
+    }
+
+    const clientId = Number(req.params.id);
+    if (Number.isNaN(clientId)) {
+        return res.status(400).json({ message: 'clientId inválido' });
+    }
+
     db.run(
         `INSERT INTO repository (client_id, name, type, category, format, credential, notes, content, file_name)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -2254,20 +2340,67 @@ app.post('/api/clients/:id/repository', (req, res) => {
     );
 });
 
-app.put('/api/repository/:id', (req, res) => {
+app.put('/api/repository/:id', async (req, res) => {
+    const engine = getCurrentDbEngine();
+    const {
+        name,
+        type,
+        category,
+        format,
+        credential,
+        notes,
+        content,
+        fileName,
+    } = req.body;
+
+    if (engine === 'mongodb') {
+        try {
+            const mongoDb = getMongoDb();
+            const { ObjectId } = require('mongodb');
+            const id = req.params.id;
+            const filter = ObjectId.isValid(id) ? { _id: new ObjectId(id) } : { id };
+
+            const updateDoc = {
+                updatedAt: new Date()
+            };
+            if (name !== undefined) updateDoc.name = name;
+            if (type !== undefined) updateDoc.type = type;
+            if (category !== undefined) updateDoc.category = category;
+            if (format !== undefined) updateDoc.format = format;
+            if (credential !== undefined) updateDoc.credential = credential;
+            if (notes !== undefined) updateDoc.notes = notes;
+            if (content !== undefined) updateDoc.content = content;
+            if (fileName !== undefined) updateDoc.file_name = fileName;
+
+            await mongoDb.collection('repository').updateOne(filter, { $set: updateDoc });
+            const updated = await mongoDb.collection('repository').findOne(filter);
+
+            if (!updated) return res.status(404).json({ message: 'Entry no encontrada' });
+
+            return res.json({
+                id: String(updated._id),
+                clientId: String(updated.client_id),
+                name: updated.name || '',
+                type: updated.type || '',
+                category: updated.category || 'Documento',
+                format: updated.format || '',
+                credential: updated.credential || '',
+                notes: updated.notes || '',
+                content: updated.content || '',
+                fileName: updated.file_name || '',
+                createdAt: updated.createdAt,
+                updatedAt: updated.updatedAt
+            });
+
+        } catch (e) {
+            return res.status(500).json({ message: e.message });
+        }
+    }
+
     db.get('SELECT * FROM repository WHERE id = ?', [req.params.id], (err, existing) => {
         if (err) return res.status(500).json({ message: err.message });
         if (!existing) return res.status(404).json({ message: 'Entry no encontrada' });
-        const {
-            name,
-            type,
-            category,
-            format,
-            credential,
-            notes,
-            content,
-            fileName,
-        } = req.body;
+
         const updates = {
             name: name ?? existing.name,
             type: type ?? existing.type,
@@ -2304,7 +2437,24 @@ app.put('/api/repository/:id', (req, res) => {
     });
 });
 
-app.delete('/api/repository/:id', (req, res) => {
+app.delete('/api/repository/:id', async (req, res) => {
+    const engine = getCurrentDbEngine();
+    if (engine === 'mongodb') {
+        try {
+            const mongoDb = getMongoDb();
+            const { ObjectId } = require('mongodb');
+            const id = req.params.id;
+            const filter = ObjectId.isValid(id) ? { _id: new ObjectId(id) } : { id };
+
+            const result = await mongoDb.collection('repository').deleteOne(filter);
+            if (result.deletedCount === 0) return res.status(404).json({ message: 'Entry no encontrada' });
+
+            return res.json({ message: 'Entry eliminado' });
+        } catch (e) {
+            return res.status(500).json({ message: e.message });
+        }
+    }
+
     db.run('DELETE FROM repository WHERE id = ?', [req.params.id], function (err) {
         if (err) return res.status(500).json({ message: err.message });
         if (this.changes === 0) {
@@ -3225,11 +3375,11 @@ app.get('/api/budgets', async (req, res) => {
             // We need to fetch client names for the list view
             // Get unique client IDs
             const clientIds = [...new Set(budgets.map(b => b.clientId))];
+            const { ObjectId } = require('mongodb');
             const clients = await mongoDb.collection('clients').find({
                 $or: [
-                    { id: { $in: clientIds.map(Number) } },
-                    { _id: { $in: clientIds.filter(id => !isNaN(Number(id))).map(id => new ObjectId(id)) } },
-                    // Handle string IDs too just in case
+                    { id: { $in: clientIds.map(Number).filter(n => !isNaN(n)) } },
+                    { _id: { $in: clientIds.map(id => ObjectId.isValid(id) ? new ObjectId(id) : null).filter(Boolean) } },
                     { id: { $in: clientIds.map(String) } }
                 ]
             }).toArray();
@@ -3242,7 +3392,7 @@ app.get('/api/budgets', async (req, res) => {
                 const client = clientMap[String(b.clientId)] || {};
                 return {
                     ...b,
-                    id: String(b._id),
+                    id: String(b.id || b._id),
                     clientName: client.name || 'Unknown',
                     clientPhone: client.phone || '',
                     clientEmail: client.email || '',
@@ -3359,7 +3509,15 @@ app.post('/api/budgets', async (req, res) => {
             const mongoDb = getMongoDb();
             if (!mongoDb) return res.status(503).json({ message: 'MongoDB discoonected' });
 
+            const counter = await mongoDb.collection('counters').findOneAndUpdate(
+                { _id: 'budgetId' },
+                { $inc: { seq: 1 } },
+                { upsert: true, returnDocument: 'after' }
+            );
+            const seqId = counter ? counter.seq : 1;
+
             const newBudget = {
+                id: seqId,
                 clientId: String(clientId),
                 title,
                 description: description || null,
@@ -3384,7 +3542,7 @@ app.post('/api/budgets', async (req, res) => {
 
             const fullBudget = {
                 ...newBudget,
-                id: String(result.insertedId),
+                id: String(newBudget.id || result.insertedId),
                 _id: result.insertedId,
                 clientName: client?.name || '',
                 clientPhone: client?.phone || '',
@@ -5604,6 +5762,139 @@ app.post('/api/system/fix-ids', async (req, res) => {
         res.json({
             message: 'ID normalization complete',
             stats
+        });
+
+    } catch (e) {
+        res.status(500).json({ message: e.message });
+    }
+});
+
+app.post('/api/system/fix-budgets', async (req, res) => {
+    // Only for admin/system use
+    const engine = getCurrentDbEngine();
+    if (engine !== 'mongodb') {
+        return res.status(400).json({ message: 'Only available for MongoDB' });
+    }
+
+    try {
+        const mongoDb = getMongoDb();
+        if (!mongoDb) return res.status(503).json({ message: 'MongoDB disconnected' });
+
+        // initialize counter if needed
+        const existingBudgets = await mongoDb.collection('budgets').find({}).sort({ createdAt: 1 }).toArray();
+        let updatedCount = 0;
+
+        // Find max existing numeric ID if any, to start counter correctly
+        let maxId = 0;
+        existingBudgets.forEach(b => {
+            if (typeof b.id === 'number' && b.id > maxId) maxId = b.id;
+        });
+
+        // Update Counter
+        await mongoDb.collection('counters').updateOne(
+            { _id: 'budgetId' },
+            { $set: { seq: maxId } },
+            { upsert: true }
+        );
+
+        let currentSeq = maxId;
+
+        for (const budget of existingBudgets) {
+            if (typeof budget.id === 'number') continue;
+
+            currentSeq++;
+            await mongoDb.collection('budgets').updateOne(
+                { _id: budget._id },
+                { $set: { id: currentSeq } }
+            );
+            updatedCount++;
+        }
+
+        // Sync counter to final
+        await mongoDb.collection('counters').updateOne(
+            { _id: 'budgetId' },
+            { $set: { seq: currentSeq } },
+            { upsert: true }
+        );
+
+        res.json({ message: 'Budget IDs fixed', updated: updatedCount, lastId: currentSeq });
+
+    } catch (e) {
+        res.status(500).json({ message: e.message });
+    }
+});
+
+app.post('/api/system/fix-repository', async (req, res) => {
+    const engine = getCurrentDbEngine();
+    if (engine !== 'mongodb') {
+        return res.status(400).json({ message: 'Only available for MongoDB' });
+    }
+
+    try {
+        const mongoDb = getMongoDb();
+        if (!mongoDb) return res.status(503).json({ message: 'MongoDB disconnected' });
+
+        const { ObjectId } = require('mongodb');
+
+        const items = await mongoDb.collection('repository').find({}).toArray();
+        let updatedCount = 0;
+        let errorCount = 0;
+        const errors = [];
+
+        for (const item of items) {
+            try {
+                const currentClientId = item.client_id;
+                let client = null;
+
+                if (ObjectId.isValid(currentClientId)) {
+                    client = await mongoDb.collection('clients').findOne({
+                        _id: new ObjectId(currentClientId)
+                    });
+                }
+
+                if (!client) {
+                    client = await mongoDb.collection('clients').findOne({
+                        $or: [
+                            { id: currentClientId },
+                            { id: Number(currentClientId) },
+                            { id: String(currentClientId) }
+                        ]
+                    });
+                }
+
+                if (client && client.id) {
+                    const newClientId = String(client.id);
+
+                    if (newClientId !== currentClientId) {
+                        await mongoDb.collection('repository').updateOne(
+                            { _id: item._id },
+                            { $set: { client_id: newClientId } }
+                        );
+                        updatedCount++;
+                    }
+                } else {
+                    errors.push({
+                        itemId: String(item._id),
+                        itemName: item.name,
+                        oldClientId: currentClientId,
+                        error: 'Client not found'
+                    });
+                    errorCount++;
+                }
+            } catch (e) {
+                errors.push({
+                    itemId: String(item._id),
+                    error: e.message
+                });
+                errorCount++;
+            }
+        }
+
+        res.json({
+            message: 'Repository client IDs fixed',
+            updated: updatedCount,
+            errors: errorCount,
+            errorDetails: errors.slice(0, 10)
         });
 
     } catch (e) {
