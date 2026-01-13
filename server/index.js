@@ -1706,9 +1706,9 @@ app.get('/api/clients/:id/payments', async (req, res) => {
         if (engine === 'mongodb') {
             const mongoDb = getMongoDb();
             if (!mongoDb) return res.status(503).json({ message: 'MongoDB no está conectado' });
-            // Search by client_id (string)
+            // Search by clientId (consistent with camelCase in post)
             const payments = await mongoDb.collection('payments')
-                .find({ client_id: req.params.id })
+                .find({ clientId: req.params.id })
                 .sort({ createdAt: -1 })
                 .toArray();
             return res.json(payments);
@@ -1732,7 +1732,7 @@ app.get('/api/clients/:id/contracts', async (req, res) => {
             if (!mongoDb) return res.status(503).json({ message: 'MongoDB no está conectado' });
 
             const contracts = await mongoDb.collection('contracts')
-                .find({ client_id: req.params.id })
+                .find({ clientId: req.params.id })
                 .sort({ createdAt: -1 })
                 .toArray();
             return res.json(contracts);
@@ -2106,11 +2106,27 @@ app.delete('/api/repository/:id', (req, res) => {
 
 
 // Payments routes
-app.get('/api/payments', (req, res) => {
-    db.all('SELECT * FROM payments ORDER BY createdAt DESC', [], (err, rows) => {
-        if (err) return res.status(500).json({ message: err.message });
-        res.json(rows.map(mapPaymentRow));
-    });
+app.get('/api/payments', async (req, res) => {
+    const engine = getCurrentDbEngine();
+    if (engine === 'mongodb') {
+        try {
+            const mongoDb = getMongoDb();
+            if (!mongoDb) return res.status(503).json({ message: 'MongoDB disconnected' });
+
+            const payments = await mongoDb.collection('payments')
+                .find({})
+                .sort({ createdAt: -1 })
+                .toArray();
+            return res.json(payments);
+        } catch (e) {
+            res.status(500).json({ message: e.message });
+        }
+    } else {
+        db.all('SELECT * FROM payments ORDER BY createdAt DESC', [], (err, rows) => {
+            if (err) return res.status(500).json({ message: err.message });
+            res.json(rows.map(mapPaymentRow));
+        });
+    }
 });
 
 app.post('/api/payments', (req, res) => {
@@ -2289,18 +2305,57 @@ app.delete('/api/payments/:id', (req, res) => {
     });
 });
 
-app.get('/api/contracts', (req, res) => {
-    db.all(`${CONTRACT_SELECT_BASE} ORDER BY contracts.createdAt DESC`, [], (err, rows) => {
-        if (err) return res.status(500).json({ message: err.message });
-        res.json(rows.map(mapContractRow));
-    });
-});
+app.get('/api/contracts', async (req, res) => {
+    const engine = getCurrentDbEngine();
+    if (engine === 'mongodb') {
+        try {
+            const mongoDb = getMongoDb();
+            if (!mongoDb) return res.status(503).json({ message: 'MongoDB disconnected' });
 
-app.get('/api/clients/:id/contracts', (req, res) => {
-    db.all(`${CONTRACT_SELECT_BASE} WHERE contracts.client_id = ?`, [req.params.id], (err, rows) => {
-        if (err) return res.status(500).json({ message: err.message });
-        res.json(rows.map(mapContractRow));
-    });
+            const contracts = await mongoDb.collection('contracts')
+                .find({})
+                .sort({ createdAt: -1 })
+                .toArray();
+
+            // Map IDs and potential format diffs
+            const { ObjectId } = require('mongodb');
+            // Try to fetch clients to display names if needed (though list might not show client name if not requested or if implicit)
+            // But existing mapContractRow includes clientName from JOIN.
+            // We need client names.
+
+            const clientIds = [...new Set(contracts.map(c => c.clientId))];
+            const clients = await mongoDb.collection('clients').find({
+                $or: [
+                    { id: { $in: clientIds.map(Number).filter(n => !isNaN(n)) } },
+                    { _id: { $in: clientIds.map(id => ObjectId.isValid(id) ? new ObjectId(id) : null).filter(Boolean) } },
+                    { id: { $in: clientIds.map(String) } }
+                ]
+            }).toArray();
+
+            const clientMap = {};
+            clients.forEach(c => clientMap[String(c._id)] = c);
+            clients.forEach(c => clientMap[String(c.id)] = c);
+
+            const mapped = contracts.map(c => {
+                const client = clientMap[String(c.clientId)] || {};
+                return {
+                    ...c,
+                    id: String(c._id),
+                    clientName: client.name || ''
+                };
+            });
+
+            return res.json(mapped);
+
+        } catch (e) {
+            res.status(500).json({ message: e.message });
+        }
+    } else {
+        db.all(`${CONTRACT_SELECT_BASE} ORDER BY contracts.createdAt DESC`, [], (err, rows) => {
+            if (err) return res.status(500).json({ message: err.message });
+            res.json(rows.map(mapContractRow));
+        });
+    }
 });
 
 app.post('/api/contracts', async (req, res) => {
