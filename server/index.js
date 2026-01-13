@@ -2552,29 +2552,134 @@ const BUDGET_SELECT_BASE = `
 `;
 
 // Budget routes
-app.get('/api/budgets', (req, res) => {
-    db.all(`${BUDGET_SELECT_BASE} ORDER BY budgets.createdAt DESC`, [], (err, rows) => {
-        if (err) return res.status(500).json({ message: err.message });
-        res.json(rows.map(mapBudgetRow));
-    });
+app.get('/api/budgets', async (req, res) => {
+    const engine = getCurrentDbEngine();
+    try {
+        if (engine === 'mongodb') {
+            const mongoDb = getMongoDb();
+            if (!mongoDb) return res.status(503).json({ message: 'MongoDB no está conectado' });
+
+            // Simple fetch, without joining client data (would need aggregation)
+            // Frontend might need clientName.
+            // Let's implement a simple join manually or efficient lookup if critical.
+            // For now, raw budgets.
+            const budgets = await mongoDb.collection('budgets').find({}).sort({ createdAt: -1 }).toArray();
+
+            // We need to fetch client names for the list view
+            // Get unique client IDs
+            const clientIds = [...new Set(budgets.map(b => b.clientId))];
+            const clients = await mongoDb.collection('clients').find({
+                $or: [
+                    { id: { $in: clientIds.map(Number) } },
+                    { _id: { $in: clientIds.filter(id => !isNaN(Number(id))).map(id => new ObjectId(id)) } },
+                    // Handle string IDs too just in case
+                    { id: { $in: clientIds.map(String) } }
+                ]
+            }).toArray();
+
+            const clientMap = {};
+            clients.forEach(c => clientMap[String(c._id)] = c);
+            clients.forEach(c => clientMap[String(c.id)] = c); // fallback
+
+            const mapped = budgets.map(b => {
+                const client = clientMap[String(b.clientId)] || {};
+                return {
+                    ...b,
+                    id: String(b._id),
+                    clientName: client.name || 'Unknown',
+                    clientPhone: client.phone || '',
+                    clientEmail: client.email || '',
+                    sections: b.sections || []
+                };
+            });
+            return res.json(mapped);
+
+        } else {
+            db.all(`${BUDGET_SELECT_BASE} ORDER BY budgets.createdAt DESC`, [], (err, rows) => {
+                if (err) return res.status(500).json({ message: err.message });
+                res.json(rows.map(mapBudgetRow));
+            });
+        }
+    } catch (e) {
+        res.status(500).json({ message: e.message });
+    }
 });
 
-app.get('/api/budgets/:id', (req, res) => {
-    db.get(`${BUDGET_SELECT_BASE} WHERE budgets.id = ?`, [req.params.id], (err, row) => {
-        if (err) return res.status(500).json({ message: err.message });
-        if (!row) return res.status(404).json({ message: 'Budget not found' });
-        res.json(mapBudgetRow(row));
-    });
+app.get('/api/budgets/:id', async (req, res) => {
+    const engine = getCurrentDbEngine();
+    try {
+        if (engine === 'mongodb') {
+            const mongoDb = getMongoDb();
+            if (!mongoDb) return res.status(503).json({ message: 'MongoDB disconnected' });
+
+            const { ObjectId } = require('mongodb');
+            const id = req.params.id;
+            const filter = ObjectId.isValid(id) ? { _id: new ObjectId(id) } : { id };
+
+            const budget = await mongoDb.collection('budgets').findOne(filter);
+            if (!budget) return res.status(404).json({ message: 'Budget not found' });
+
+            // Fetch Client
+            let client = {};
+            if (budget.clientId) {
+                client = await mongoDb.collection('clients').findOne({
+                    $or: [{ id: Number(budget.clientId) }, { _id: ObjectId.isValid(budget.clientId) ? new ObjectId(budget.clientId) : null }]
+                }) || {};
+            }
+
+            return res.json({
+                ...budget,
+                id: String(budget._id),
+                clientName: client.name || '',
+                clientPhone: client.phone || '',
+                clientEmail: client.email || '',
+                sections: budget.sections || []
+            });
+
+        } else {
+            db.get(`${BUDGET_SELECT_BASE} WHERE budgets.id = ?`, [req.params.id], (err, row) => {
+                if (err) return res.status(500).json({ message: err.message });
+                if (!row) return res.status(404).json({ message: 'Budget not found' });
+                res.json(mapBudgetRow(row));
+            });
+        }
+    } catch (e) {
+        res.status(500).json({ message: e.message });
+    }
 });
 
-app.get('/api/clients/:id/budgets', (req, res) => {
-    db.all(`${BUDGET_SELECT_BASE} WHERE budgets.client_id = ?`, [req.params.id], (err, rows) => {
-        if (err) return res.status(500).json({ message: err.message });
-        res.json(rows.map(mapBudgetRow));
-    });
+app.get('/api/clients/:id/budgets', async (req, res) => {
+    const engine = getCurrentDbEngine();
+    if (engine === 'mongodb') {
+        try {
+            const mongoDb = getMongoDb();
+            if (!mongoDb) return res.status(503).json({ message: 'MongoDB disconnected' });
+
+            const budgets = await mongoDb.collection('budgets')
+                .find({ clientId: req.params.id })
+                .sort({ createdAt: -1 })
+                .toArray();
+
+            // Mapping (simplified, assuming client context is known by caller)
+            const mapped = budgets.map(b => ({
+                ...b,
+                id: String(b._id),
+                clientName: '',
+                sections: b.sections || []
+            }));
+            return res.json(mapped);
+        } catch (e) {
+            res.status(500).json({ message: e.message });
+        }
+    } else {
+        db.all(`${BUDGET_SELECT_BASE} WHERE budgets.client_id = ?`, [req.params.id], (err, rows) => {
+            if (err) return res.status(500).json({ message: err.message });
+            res.json(rows.map(mapBudgetRow));
+        });
+    }
 });
 
-app.post('/api/budgets', (req, res) => {
+app.post('/api/budgets', async (req, res) => {
     const {
         clientId,
         title,
@@ -2585,50 +2690,117 @@ app.post('/api/budgets', (req, res) => {
         assignedTo,
         assignedGroupId,
     } = req.body;
-    const numericClientId = Number(clientId);
-    if (!numericClientId || !title) {
+
+    if (!clientId || !title) {
         return res.status(400).json({ message: 'clientId and title are required.' });
     }
-    db.run(
-        `INSERT INTO budgets (client_id, title, description, amount, status, sections, assigned_to, assigned_group)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-            numericClientId,
-            title,
-            description || null,
-            amount ?? null,
-            status || null,
-            JSON.stringify(Array.isArray(sections) ? sections : []),
-            assignedTo ?? null,
-            assignedGroupId ?? null,
-        ],
-        function (err) {
-            if (err) return res.status(500).json({ message: err.message });
-            const budgetId = this.lastID;
-            db.get(`${BUDGET_SELECT_BASE} WHERE budgets.id = ?`, [budgetId], async (selectErr, row) => {
-                if (selectErr) return res.status(500).json({ message: selectErr.message });
-                const newBudget = mapBudgetRow(row);
 
-                // Enviar notificación automática
-                sendAutoNotification(
-                    'budget_created',
-                    `Nuevo presupuesto creado: ${newBudget.title} - Cliente: ${newBudget.clientName} - Monto: ${newBudget.amount}`,
-                    newBudget,
-                    []
-                ).catch(err => console.error('Error en notificación:', err));
+    const engine = getCurrentDbEngine();
 
-                await logEvent({
-                    user: req.user ? req.user.email : 'system',
-                    action: 'create',
-                    resource: 'budget',
-                    details: { budgetId: newBudget.id, title: newBudget.title, clientId: newBudget.clientId },
-                    ip: req.ip
-                });
+    try {
+        if (engine === 'mongodb') {
+            const mongoDb = getMongoDb();
+            if (!mongoDb) return res.status(503).json({ message: 'MongoDB discoonected' });
 
-                res.status(201).json(newBudget);
+            const newBudget = {
+                clientId: String(clientId),
+                title,
+                description: description || null,
+                amount: amount ?? null,
+                status: status || null,
+                sections: Array.isArray(sections) ? sections : [],
+                assignedTo: assignedTo ?? null,
+                assignedGroupId: assignedGroupId ?? null,
+                createdAt: new Date(),
+                updatedAt: new Date()
+            };
+
+            const result = await mongoDb.collection('budgets').insertOne(newBudget);
+
+            // Get client info for notification and response
+            const client = await mongoDb.collection('clients').findOne({
+                $or: [
+                    { _id: isNaN(Number(clientId)) ? new ObjectId(clientId) : Number(clientId) },
+                    { id: isNaN(Number(clientId)) ? clientId : Number(clientId) }
+                ]
             });
+
+            const fullBudget = {
+                ...newBudget,
+                id: String(result.insertedId),
+                _id: result.insertedId,
+                clientName: client?.name || '',
+                clientPhone: client?.phone || '',
+                clientEmail: client?.email || ''
+            };
+
+            sendAutoNotification(
+                'budget_created',
+                `Nuevo presupuesto creado: ${fullBudget.title} - Cliente: ${fullBudget.clientName} - Monto: ${fullBudget.amount}`,
+                fullBudget,
+                []
+            ).catch(err => console.error('Error en notificación:', err));
+
+            logEvent({
+                user: 'system',
+                action: 'create',
+                resource: 'budget',
+                details: { budgetId: fullBudget.id, title: fullBudget.title, clientId: fullBudget.clientId },
+                ip: req.ip
+            }).catch(() => { });
+
+            return res.status(201).json(fullBudget);
+
+        } else {
+            // SQLite Fallback
+            const numericClientId = Number(clientId);
+            if (!numericClientId) {
+                return res.status(400).json({ message: 'clientId must be a valid number (SQLite).' });
+            }
+            db.run(
+                `INSERT INTO budgets (client_id, title, description, amount, status, sections, assigned_to, assigned_group)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                [
+                    numericClientId,
+                    title,
+                    description || null,
+                    amount ?? null,
+                    status || null,
+                    JSON.stringify(Array.isArray(sections) ? sections : []),
+                    assignedTo ?? null,
+                    assignedGroupId ?? null,
+                ],
+                function (err) {
+                    if (err) return res.status(500).json({ message: err.message });
+                    const budgetId = this.lastID;
+                    db.get(`${BUDGET_SELECT_BASE} WHERE budgets.id = ?`, [budgetId], async (selectErr, row) => {
+                        if (selectErr) return res.status(500).json({ message: selectErr.message });
+                        const newBudget = mapBudgetRow(row);
+
+                        // Enviar notificación automática
+                        sendAutoNotification(
+                            'budget_created',
+                            `Nuevo presupuesto creado: ${newBudget.title} - Cliente: ${newBudget.clientName} - Monto: ${newBudget.amount}`,
+                            newBudget,
+                            []
+                        ).catch(err => console.error('Error en notificación:', err));
+
+                        await logEvent({
+                            user: req.user ? req.user.email : 'system',
+                            action: 'create',
+                            resource: 'budget',
+                            details: { budgetId: newBudget.id, title: newBudget.title, clientId: newBudget.clientId },
+                            ip: req.ip
+                        });
+
+                        res.status(201).json(newBudget);
+                    });
+                }
+            );
         }
-    );
+    } catch (e) {
+        res.status(500).json({ message: e.message });
+    }
 });
 
 app.put('/api/budgets/:id', (req, res) => {
@@ -3632,7 +3804,9 @@ app.delete('/api/groups/:id', async (req, res) => {
     }
 });
 
-app.post('/api/tickets', (req, res) => {
+// --- TICKET ROUTES FOR MONGODB/SQLITE ---
+
+app.post('/api/tickets', async (req, res) => {
     const {
         clientId,
         title,
@@ -3648,265 +3822,511 @@ app.post('/api/tickets', (req, res) => {
         assignedGroupId = null,
         visitData = null,
     } = req.body;
+
     const skipCalendarSync = req.body?.skipCalendarSync === true;
     if (!clientId || !title || !priority) {
         return res.status(400).json({ message: 'Client, title, and priority are required.' });
     }
-    const numericClientId = Number(clientId);
-    if (Number.isNaN(numericClientId)) {
-        return res.status(400).json({ message: 'clientId must be a valid number.' });
-    }
-    const annotationsText = JSON.stringify(Array.isArray(annotations) ? annotations : []);
-    const attachmentsText = JSON.stringify(Array.isArray(attachments) ? attachments : []);
-    const audioNotesText = JSON.stringify(Array.isArray(audioNotes) ? audioNotes : []);
-    const visitDataText = visitData ? JSON.stringify(visitData) : null;
 
-    db.run(
-        'INSERT INTO tickets (client_id, title, priority, status, annotations, amount, visit, description, attachments, audioNotes, assigned_to, assigned_group, visit_data) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        [numericClientId, title, priority, status, annotationsText, amount, visit ? 1 : 0, description || null, attachmentsText, audioNotesText, assignedTo || null, assignedGroupId || null, visitDataText],
-        function (err) {
-            if (err) return res.status(500).json({ message: err.message });
-            const ticketId = this.lastID;
-            db.get(`${TICKET_SELECT_BASE} WHERE t.id = ?`, [ticketId], async (selectErr, row) => {
-                if (selectErr) return res.status(500).json({ message: selectErr.message });
-                const newTicket = mapTicketRow(row);
+    const engine = getCurrentDbEngine();
 
-                const recipients = [];
-                if (newTicket.clientNotificationsEnabled && newTicket.clientEmail) {
-                    recipients.push(newTicket.clientEmail);
-                }
+    try {
+        if (engine === 'mongodb') {
+            const mongoDb = getMongoDb();
+            if (!mongoDb) return res.status(503).json({ message: 'MongoDB no está conectado' });
 
-                // Determinar fechas para el calendario
-                let calStart = newTicket.createdAt || new Date().toISOString();
-                let calEnd = calStart;
+            const newTicket = {
+                clientId: String(clientId),
+                title,
+                priority,
+                status,
+                annotations,
+                amount: amount ? Number(amount) : null,
+                visit: !!visit,
+                description: description || null,
+                attachments,
+                audioNotes,
+                assignedTo: assignedTo || null,
+                assignedGroupId: assignedGroupId || null,
+                visitData: visitData || null,
+                createdAt: new Date(),
+                updatedAt: new Date()
+            };
 
-                if (newTicket.visitData) {
-                    const vd = newTicket.visitData;
-                    if (vd.visitDate) {
-                        if (vd.visitStart) {
-                            calStart = `${vd.visitDate}T${vd.visitStart}`;
-                        } else {
-                            calStart = `${vd.visitDate}T08:00:00`;
-                        }
+            const result = await mongoDb.collection('tickets').insertOne(newTicket);
+            const ticketWithId = { ...newTicket, id: String(result.insertedId), _id: result.insertedId };
 
-                        if (vd.visitEnd) {
-                            calEnd = `${vd.visitDate}T${vd.visitEnd}`;
-                        } else {
-                            calEnd = calStart;
-                        }
-                    }
-                }
-
-                if (!skipCalendarSync) {
-                    try {
-                        await upsertCalendarEvent({
-                            title: `Ticket #${newTicket.id}: ${newTicket.title}`,
-                            start: calStart,
-                            end: calEnd,
-                            location: newTicket.clientName ? `Cliente: ${newTicket.clientName}` : null,
-                            sourceType: 'ticket',
-                            sourceId: newTicket.id,
-                            locked: false,
-                        });
-                    } catch (calendarErr) {
-                        console.error('No se pudo crear el evento de calendario para el ticket:', calendarErr?.message || calendarErr);
-                    }
-                }
-
-                // Enviar notificación automática
-                sendAutoNotification(
-                    'ticket_created',
-                    `Nuevo ticket creado: ${newTicket.title} - Cliente: ${newTicket.clientName}`,
-                    newTicket,
-                    recipients
-                ).catch(err => console.error('Error en notificación:', err));
-
-                // Registrar auditoría
-                logEvent({
-                    user: 'system', // Idealmente req.user.email si hubiera auth middleware aquí
-                    action: 'Crear Ticket',
-                    resource: 'ticket',
-                    details: `Ticket creado: ${newTicket.title} (ID: ${newTicket.id})`,
-                    status: 'success',
-                    ip: req.ip
-                });
-
-                res.status(201).json(newTicket);
+            // Fetch client data for notifications and response
+            const client = await mongoDb.collection('clients').findOne({
+                $or: [
+                    { _id: isNaN(Number(clientId)) ? new ObjectId(clientId) : Number(clientId) },
+                    { id: isNaN(Number(clientId)) ? clientId : Number(clientId) }
+                ]
             });
-        }
-    );
-});
 
-app.put('/api/tickets/:id', (req, res) => {
-    db.get('SELECT * FROM tickets WHERE id = ?', [req.params.id], (err, existing) => {
-        if (err) return res.status(500).json({ message: err.message });
-        if (!existing) return res.status(404).json({ message: 'Ticket not found' });
-        const payload = {
-            title: req.body.title ?? existing.title,
-            status: req.body.status ?? existing.status,
-            priority: req.body.priority ?? existing.priority,
-            amount: req.body.amount ?? existing.amount,
-            visit: req.body.visit !== undefined ? (req.body.visit ? 1 : 0) : existing.visit,
-            annotations: JSON.stringify(
-                Array.isArray(req.body.annotations)
-                    ? req.body.annotations
-                    : parseJsonColumn(existing.annotations, [])
-            ),
-            description: req.body.description ?? existing.description,
-            attachments: JSON.stringify(
-                Array.isArray(req.body.attachments)
-                    ? req.body.attachments
-                    : parseJsonColumn(existing.attachments, [])
-            ),
-            audioNotes: JSON.stringify(
-                Array.isArray(req.body.audioNotes)
-                    ? req.body.audioNotes
-                    : parseJsonColumn(existing.audioNotes, [])
-            ),
-            visit_data: req.body.visitData ? JSON.stringify(req.body.visitData) : existing.visit_data,
-            assignedTo: req.body.assignedTo !== undefined ? req.body.assignedTo : existing.assigned_to,
-            assignedGroupId:
-                req.body.assignedGroupId !== undefined
-                    ? req.body.assignedGroupId
-                    : existing.assigned_group,
-        };
-        db.run(
-            `UPDATE tickets
-    SET title = ?, status = ?, priority = ?, amount = ?, visit = ?, annotations = ?, description = ?, attachments = ?, audioNotes = ?, visit_data = ?, assigned_to = ?, assigned_group = ?, updatedAt = CURRENT_TIMESTAMP
-       WHERE id = ?`,
-            [
-                payload.title,
-                payload.status,
-                payload.priority,
-                payload.amount,
-                payload.visit,
-                payload.annotations,
-                payload.description,
-                payload.attachments,
-                payload.audioNotes,
-                payload.visit_data,
-                payload.assignedTo,
-                payload.assignedGroupId,
-                req.params.id,
-            ],
-            function (updateErr) {
-                if (updateErr) return res.status(500).json({ message: updateErr.message });
-                db.get(`${TICKET_SELECT_BASE} WHERE t.id = ?`, [req.params.id], async (selectErr, row) => {
-                    if (selectErr) return res.status(500).json({ message: selectErr.message });
-                    const updatedTicket = mapTicketRow(row);
+            const fullTicket = {
+                ...ticketWithId,
+                clientName: client?.name || '',
+                clientEmail: client?.email || '',
+                clientNotificationsEnabled: !!client?.notifications_enabled
+            };
 
-                    if (row?.status === 'Facturar') {
-                        ensurePendingPaymentForTicket(row);
-                    }
+            // Calendar Sync
+            let calStart = fullTicket.createdAt;
+            let calEnd = calStart;
+            if (fullTicket.visitData) {
+                const vd = fullTicket.visitData;
+                if (vd.visitDate) {
+                    calStart = vd.visitStart ? `${vd.visitDate}T${vd.visitStart}` : `${vd.visitDate}T08:00:00`;
+                    calEnd = vd.visitEnd ? `${vd.visitDate}T${vd.visitEnd}` : calStart;
+                }
+            }
 
-                    // Sincronizar con calendario
-                    let calStart = updatedTicket.createdAt || new Date().toISOString();
-                    let calEnd = calStart;
-                    if (updatedTicket.visitData) {
-                        const vd = updatedTicket.visitData;
-                        if (vd.visitDate) {
-                            if (vd.visitStart) calStart = `${vd.visitDate}T${vd.visitStart}`;
-                            else calStart = `${vd.visitDate}T08:00:00`;
-                            if (vd.visitEnd) calEnd = `${vd.visitDate}T${vd.visitEnd}`;
-                            else calEnd = calStart;
-                        }
-                    }
+            if (!skipCalendarSync) {
+                try {
+                    await upsertCalendarEvent({
+                        title: `Ticket #${fullTicket.id}: ${fullTicket.title}`,
+                        start: typeof calStart === 'string' ? calStart : calStart.toISOString(),
+                        end: typeof calEnd === 'string' ? calEnd : calEnd.toISOString(),
+                        location: fullTicket.clientName ? `Cliente: ${fullTicket.clientName}` : null,
+                        sourceType: 'ticket',
+                        sourceId: fullTicket.id,
+                        locked: false,
+                    });
+                } catch (calendarErr) {
+                    console.error('No se pudo crear evento calendario (Mongo):', calendarErr);
+                }
+            }
 
-                    try {
-                        await upsertCalendarEvent({
-                            title: `Ticket #${updatedTicket.id}: ${updatedTicket.title}`,
-                            start: calStart,
-                            end: calEnd,
-                            location: updatedTicket.clientName ? `Cliente: ${updatedTicket.clientName}` : null,
-                            sourceType: 'ticket',
-                            sourceId: updatedTicket.id,
-                            locked: false,
-                        });
-                    } catch (err) {
-                        console.error('Error actualizando calendario desde ticket:', err);
-                    }
+            // Notification
+            const recipients = [];
+            if (fullTicket.clientNotificationsEnabled && fullTicket.clientEmail) {
+                recipients.push(fullTicket.clientEmail);
+            }
+            sendAutoNotification(
+                'ticket_created',
+                `Nuevo ticket creado: ${fullTicket.title} - Cliente: ${fullTicket.clientName}`,
+                fullTicket,
+                recipients
+            ).catch(err => console.error('Error notif:', err));
 
-                    // Enviar notificación si cambió el estado o si se solicitó explícitamente
-                    const notifyClient = req.body.notifyClient === true;
-                    if (existing.status !== payload.status || notifyClient) {
-                        const eventId = payload.status === 'Cerrado' ? 'ticket_closed' : 'ticket_updated';
+            // Audit
+            logEvent({
+                user: 'system',
+                action: 'Create Ticket',
+                resource: 'ticket',
+                details: { ticketId: fullTicket.id, title: fullTicket.title },
+                status: 'success',
+                ip: req.ip
+            }).catch(() => { });
+
+            return res.status(201).json(fullTicket);
+
+        } else {
+            // SQLite Fallback
+            const numericClientId = Number(clientId);
+            if (Number.isNaN(numericClientId)) {
+                return res.status(400).json({ message: 'clientId must be a valid number.' });
+            }
+            const annotationsText = JSON.stringify(Array.isArray(annotations) ? annotations : []);
+            const attachmentsText = JSON.stringify(Array.isArray(attachments) ? attachments : []);
+            const audioNotesText = JSON.stringify(Array.isArray(audioNotes) ? audioNotes : []);
+            const visitDataText = visitData ? JSON.stringify(visitData) : null;
+
+            db.run(
+                'INSERT INTO tickets (client_id, title, priority, status, annotations, amount, visit, description, attachments, audioNotes, assigned_to, assigned_group, visit_data) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                [numericClientId, title, priority, status, annotationsText, amount, visit ? 1 : 0, description || null, attachmentsText, audioNotesText, assignedTo || null, assignedGroupId || null, visitDataText],
+                function (err) {
+                    if (err) return res.status(500).json({ message: err.message });
+                    const ticketId = this.lastID;
+                    db.get(`${TICKET_SELECT_BASE} WHERE t.id = ?`, [ticketId], async (selectErr, row) => {
+                        if (selectErr) return res.status(500).json({ message: selectErr.message });
+                        const newTicket = mapTicketRow(row);
 
                         const recipients = [];
-                        // Notificar si el cliente tiene notificaciones activadas O si se solicitó explícitamente
-                        // (Asumiendo que el checkbox 'notifyClient' fuerza el envío incluso si el cliente lo tiene desactivado globalmente, 
-                        // o podríamos requerir ambos. Por ahora, asumiremos que el checkbox es una acción intencional del usuario).
-                        if ((updatedTicket.clientNotificationsEnabled || notifyClient) && updatedTicket.clientEmail) {
-                            recipients.push(updatedTicket.clientEmail);
+                        if (newTicket.clientNotificationsEnabled && newTicket.clientEmail) {
+                            recipients.push(newTicket.clientEmail);
                         }
 
+                        // Determinar fechas para el calendario
+                        let calStart = newTicket.createdAt || new Date().toISOString();
+                        let calEnd = calStart;
+
+                        if (newTicket.visitData) {
+                            const vd = newTicket.visitData;
+                            if (vd.visitDate) {
+                                if (vd.visitStart) {
+                                    calStart = `${vd.visitDate}T${vd.visitStart}`;
+                                } else {
+                                    calStart = `${vd.visitDate}T08:00:00`;
+                                }
+
+                                if (vd.visitEnd) {
+                                    calEnd = `${vd.visitDate}T${vd.visitEnd}`;
+                                } else {
+                                    calEnd = calStart;
+                                }
+                            }
+                        }
+
+                        if (!skipCalendarSync) {
+                            try {
+                                await upsertCalendarEvent({
+                                    title: `Ticket #${newTicket.id}: ${newTicket.title}`,
+                                    start: calStart,
+                                    end: calEnd,
+                                    location: newTicket.clientName ? `Cliente: ${newTicket.clientName}` : null,
+                                    sourceType: 'ticket',
+                                    sourceId: newTicket.id,
+                                    locked: false,
+                                });
+                            } catch (calendarErr) {
+                                console.error('No se pudo crear el evento de calendario para el ticket:', calendarErr?.message || calendarErr);
+                            }
+                        }
+
+                        // Enviar notificación automática
                         sendAutoNotification(
-                            eventId,
-                            `Ticket actualizado: ${updatedTicket.title} - Estado: ${payload.status} - Cliente: ${updatedTicket.clientName}`,
-                            updatedTicket,
+                            'ticket_created',
+                            `Nuevo ticket creado: ${newTicket.title} - Cliente: ${newTicket.clientName}`,
+                            newTicket,
                             recipients
                         ).catch(err => console.error('Error en notificación:', err));
-                    }
 
-                    // Registrar auditoría
-                    logEvent({
-                        user: 'system',
-                        action: 'Actualizar Ticket',
-                        resource: 'ticket',
-                        details: `Ticket actualizado: ${updatedTicket.title} (ID: ${updatedTicket.id}). Cambios: ${JSON.stringify(payload)}`,
-                        status: 'success',
-                        ip: req.ip
+                        // Registrar auditoría
+                        logEvent({
+                            user: 'system', // Idealmente req.user.email si hubiera auth middleware aquí
+                            action: 'Crear Ticket',
+                            resource: 'ticket',
+                            details: `Ticket creado: ${newTicket.title} (ID: ${newTicket.id})`,
+                            status: 'success',
+                            ip: req.ip,
+                        });
+
+                        res.status(201).json(newTicket);
                     });
-
-                    res.json(updatedTicket);
-                });
-            }
-        );
-    });
+                }
+            );
+        }
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
 });
 
-app.delete('/api/tickets/:id', (req, res) => {
+app.put('/api/tickets/:id', async (req, res) => {
+    const engine = getCurrentDbEngine();
     const ticketId = req.params.id;
-    db.run('DELETE FROM tickets WHERE id = ?', [ticketId], function (err) {
-        if (err) return res.status(500).json({ message: err.message });
-        if (this.changes === 0) return res.status(404).json({ message: 'Ticket not found' });
 
-        db.run(
-            'DELETE FROM calendar_events WHERE source_type = ? AND source_id = ?',
-            ['ticket', ticketId],
-            function (eventErr) {
-                if (eventErr) {
-                    console.error('Error removing calendar event for deleted ticket:', eventErr);
-                } else if (this.changes > 0) {
-                    logEvent({
-                        user: req.user ? req.user.email : 'system',
-                        action: 'delete',
-                        resource: 'calendar_event',
-                        details: `Evento vinculado eliminado para ticket ${ticketId}`,
-                        status: 'success',
-                        ip: req.ip,
-                    }).catch(() => { });
+    try {
+        if (engine === 'mongodb') {
+            const mongoDb = getMongoDb();
+            if (!mongoDb) return res.status(503).json({ message: 'MongoDB no está conectado' });
+
+            const { ObjectId } = require('mongodb');
+            const filter = ObjectId.isValid(ticketId) ? { _id: new ObjectId(ticketId) } : { id: ticketId }; // Try both
+
+            const existing = await mongoDb.collection('tickets').findOne(filter);
+            if (!existing) return res.status(404).json({ message: 'Ticket not found' });
+
+            const updates = { ...req.body, updatedAt: new Date() };
+            delete updates.id;
+            delete updates._id;
+
+            await mongoDb.collection('tickets').updateOne(filter, { $set: updates });
+            const updatedTicketRaw = await mongoDb.collection('tickets').findOne(filter);
+
+            // Client info needed for mapping
+            let clientName = '';
+            let clientEmail = '';
+            let clientNotificationsEnabled = false;
+
+            if (updatedTicketRaw.clientId) {
+                const client = await mongoDb.collection('clients').findOne({
+                    $or: [
+                        { _id: isNaN(Number(updatedTicketRaw.clientId)) ? new ObjectId(updatedTicketRaw.clientId) : Number(updatedTicketRaw.clientId) },
+                        { id: isNaN(Number(updatedTicketRaw.clientId)) ? updatedTicketRaw.clientId : Number(updatedTicketRaw.clientId) }
+                    ]
+                });
+                if (client) {
+                    clientName = client.name;
+                    clientEmail = client.email;
+                    clientNotificationsEnabled = !!client.notifications_enabled;
                 }
             }
-        );
 
-        logEvent({
-            user: req.user ? req.user.email : 'system',
-            action: 'delete',
-            resource: 'ticket',
-            details: `Ticket eliminado manualmente (ID: ${ticketId})`,
-            status: 'success',
-            ip: req.ip,
-        }).catch(() => { });
+            const updatedTicket = {
+                ...updatedTicketRaw,
+                id: String(updatedTicketRaw._id),
+                clientName,
+                clientEmail,
+                clientNotificationsEnabled
+            };
 
-        res.json({ message: 'Ticket deleted successfully.' });
-    });
+            if (updatedTicket.status === 'Facturar') {
+                // ensurePendingPaymentForTicket Mongo version logic would go here
+            }
+
+            // Sync Calendar
+            let calStart = updatedTicket.createdAt || new Date();
+            let calEnd = calStart;
+            if (updatedTicket.visitData) {
+                const vd = updatedTicket.visitData;
+                if (vd.visitDate) {
+                    calStart = vd.visitStart ? `${vd.visitDate}T${vd.visitStart}` : `${vd.visitDate}T08:00:00`;
+                    calEnd = vd.visitEnd ? `${vd.visitDate}T${vd.visitEnd}` : calStart;
+                }
+            }
+
+            // Simplified calendar update for mongo (assuming upsert works similar)
+            try {
+                await upsertCalendarEvent({
+                    title: `Ticket #${updatedTicket.id}: ${updatedTicket.title}`,
+                    start: typeof calStart === 'string' ? calStart : calStart.toISOString(),
+                    end: typeof calEnd === 'string' ? calEnd : calEnd.toISOString(),
+                    location: updatedTicket.clientName ? `Cliente: ${updatedTicket.clientName}` : null,
+                    sourceType: 'ticket',
+                    sourceId: updatedTicket.id,
+                    locked: false,
+                });
+            } catch (e) { }
+
+            // Notification logic (similar to SQLite)
+            const notifyClient = req.body.notifyClient === true;
+            if (existing.status !== updates.status || notifyClient) {
+                const eventId = updates.status === 'Cerrado' ? 'ticket_closed' : 'ticket_updated';
+                const recipients = [];
+                if ((updatedTicket.clientNotificationsEnabled || notifyClient) && updatedTicket.clientEmail) {
+                    recipients.push(updatedTicket.clientEmail);
+                }
+                sendAutoNotification(eventId, `Ticket actualizado`, updatedTicket, recipients).catch(() => { });
+            }
+
+            return res.json(updatedTicket);
+
+        } else {
+            // SQLite Logic
+            db.get('SELECT * FROM tickets WHERE id = ?', [req.params.id], (err, existing) => {
+                if (err) return res.status(500).json({ message: err.message });
+                if (!existing) return res.status(404).json({ message: 'Ticket not found' });
+                const payload = {
+                    title: req.body.title ?? existing.title,
+                    status: req.body.status ?? existing.status,
+                    priority: req.body.priority ?? existing.priority,
+                    amount: req.body.amount ?? existing.amount,
+                    visit: req.body.visit !== undefined ? (req.body.visit ? 1 : 0) : existing.visit,
+                    annotations: JSON.stringify(
+                        Array.isArray(req.body.annotations)
+                            ? req.body.annotations
+                            : parseJsonColumn(existing.annotations, [])
+                    ),
+                    description: req.body.description ?? existing.description,
+                    attachments: JSON.stringify(
+                        Array.isArray(req.body.attachments)
+                            ? req.body.attachments
+                            : parseJsonColumn(existing.attachments, [])
+                    ),
+                    audioNotes: JSON.stringify(
+                        Array.isArray(req.body.audioNotes)
+                            ? req.body.audioNotes
+                            : parseJsonColumn(existing.audioNotes, [])
+                    ),
+                    visit_data: req.body.visitData ? JSON.stringify(req.body.visitData) : existing.visit_data,
+                    assignedTo: req.body.assignedTo !== undefined ? req.body.assignedTo : existing.assigned_to,
+                    assignedGroupId:
+                        req.body.assignedGroupId !== undefined
+                            ? req.body.assignedGroupId
+                            : existing.assigned_group,
+                };
+                db.run(
+                    `UPDATE tickets
+            SET title = ?, status = ?, priority = ?, amount = ?, visit = ?, annotations = ?, description = ?, attachments = ?, audioNotes = ?, visit_data = ?, assigned_to = ?, assigned_group = ?, updatedAt = CURRENT_TIMESTAMP
+            WHERE id = ?`,
+                    [
+                        payload.title,
+                        payload.status,
+                        payload.priority,
+                        payload.amount,
+                        payload.visit,
+                        payload.annotations,
+                        payload.description,
+                        payload.attachments,
+                        payload.audioNotes,
+                        payload.visit_data,
+                        payload.assignedTo,
+                        payload.assignedGroupId,
+                        req.params.id,
+                    ],
+                    function (updateErr) {
+                        if (updateErr) return res.status(500).json({ message: updateErr.message });
+                        db.get(`${TICKET_SELECT_BASE} WHERE t.id = ?`, [req.params.id], async (selectErr, row) => {
+                            if (selectErr) return res.status(500).json({ message: selectErr.message });
+                            const updatedTicket = mapTicketRow(row);
+
+                            if (row?.status === 'Facturar') {
+                                ensurePendingPaymentForTicket(row);
+                            }
+
+                            // Sincronizar con calendario
+                            let calStart = updatedTicket.createdAt || new Date().toISOString();
+                            let calEnd = calStart;
+                            if (updatedTicket.visitData) {
+                                const vd = updatedTicket.visitData;
+                                if (vd.visitDate) {
+                                    if (vd.visitStart) calStart = `${vd.visitDate}T${vd.visitStart}`;
+                                    else calStart = `${vd.visitDate}T08:00:00`;
+                                    if (vd.visitEnd) calEnd = `${vd.visitDate}T${vd.visitEnd}`;
+                                    else calEnd = calStart;
+                                }
+                            }
+
+                            try {
+                                await upsertCalendarEvent({
+                                    title: `Ticket #${updatedTicket.id}: ${updatedTicket.title}`,
+                                    start: calStart,
+                                    end: calEnd,
+                                    location: updatedTicket.clientName ? `Cliente: ${updatedTicket.clientName}` : null,
+                                    sourceType: 'ticket',
+                                    sourceId: updatedTicket.id,
+                                    locked: false,
+                                });
+                            } catch (err) {
+                                console.error('Error actualizando calendario desde ticket:', err);
+                            }
+
+                            // Enviar notificación si cambió el estado o si se solicitó explícitamente
+                            const notifyClient = req.body.notifyClient === true;
+                            if (existing.status !== payload.status || notifyClient) {
+                                const eventId = payload.status === 'Cerrado' ? 'ticket_closed' : 'ticket_updated';
+
+                                const recipients = [];
+                                // Notificar si el cliente tiene notificaciones activadas O si se solicitó explícitamente
+                                // (Asumiendo que el checkbox 'notifyClient' fuerza el envío incluso si el cliente lo tiene desactivado globalmente, 
+                                // o podríamos requerir ambos. Por ahora, asumiremos que el checkbox es una acción intencional del usuario).
+                                if ((updatedTicket.clientNotificationsEnabled || notifyClient) && updatedTicket.clientEmail) {
+                                    recipients.push(updatedTicket.clientEmail);
+                                }
+
+                                sendAutoNotification(
+                                    eventId,
+                                    `Ticket actualizado: ${updatedTicket.title} - Estado: ${payload.status} - Cliente: ${updatedTicket.clientName}`,
+                                    updatedTicket,
+                                    recipients
+                                ).catch(err => console.error('Error en notificación:', err));
+                            }
+
+                            // Registrar auditoría
+                            logEvent({
+                                user: 'system',
+                                action: 'Actualizar Ticket',
+                                resource: 'ticket',
+                                details: `Ticket actualizado: ${updatedTicket.title} (ID: ${updatedTicket.id}). Cambios: ${JSON.stringify(payload)}`,
+                                status: 'success',
+                                ip: req.ip
+                            });
+
+                            res.json(updatedTicket);
+                        });
+                    }
+                );
+            });
+        }
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
 });
 
-app.get('/api/clients/:id/tickets', (req, res) => {
-    db.all(`${TICKET_SELECT_BASE} WHERE t.client_id = ? ORDER BY t.createdAt DESC`, [req.params.id], (err, rows) => {
-        if (err) return res.status(500).json({ message: err.message });
-        res.json(rows.map(mapTicketRow));
-    });
+app.delete('/api/tickets/:id', async (req, res) => {
+    const engine = getCurrentDbEngine();
+    const ticketId = req.params.id;
+
+    if (engine === 'mongodb') {
+        const mongoDb = getMongoDb();
+        if (!mongoDb) return res.status(503).json({ message: 'MongoDB no está conectado' });
+
+        const { ObjectId } = require('mongodb');
+        const filter = ObjectId.isValid(ticketId) ? { _id: new ObjectId(ticketId) } : { id: ticketId };
+
+        try {
+            await mongoDb.collection('tickets').deleteOne(filter);
+            // TODO: Remove calendar event in mongo
+            await mongoDb.collection('calendar_events').deleteOne({ sourceType: 'ticket', sourceId: ticketId });
+
+            res.json({ message: 'Ticket deleted successfully.' });
+        } catch (e) {
+            res.status(500).json({ message: e.message });
+        }
+
+    } else {
+        db.run('DELETE FROM tickets WHERE id = ?', [ticketId], function (err) {
+            if (err) return res.status(500).json({ message: err.message });
+            if (this.changes === 0) return res.status(404).json({ message: 'Ticket not found' });
+
+            db.run(
+                'DELETE FROM calendar_events WHERE source_type = ? AND source_id = ?',
+                ['ticket', ticketId],
+                function (eventErr) {
+                    if (eventErr) {
+                        console.error('Error removing calendar event for deleted ticket:', eventErr);
+                    } else if (this.changes > 0) {
+                        logEvent({
+                            user: req.user ? req.user.email : 'system',
+                            action: 'delete',
+                            resource: 'calendar_event',
+                            details: `Evento vinculado eliminado para ticket ${ticketId}`,
+                            status: 'success',
+                            ip: req.ip,
+                        }).catch(() => { });
+                    }
+                }
+            );
+
+            logEvent({
+                user: req.user ? req.user.email : 'system',
+                action: 'delete',
+                resource: 'ticket',
+                details: `Ticket eliminado manualmente (ID: ${ticketId})`,
+                status: 'success',
+                ip: req.ip,
+            }).catch(() => { });
+
+            res.json({ message: 'Ticket deleted successfully.' });
+        });
+    }
+});
+
+app.get('/api/clients/:id/tickets', async (req, res) => {
+    const engine = getCurrentDbEngine();
+    try {
+        if (engine === 'mongodb') {
+            const mongoDb = getMongoDb();
+            if (!mongoDb) return res.status(503).json({ message: 'MongoDB no está conectado' });
+
+            const tickets = await mongoDb.collection('tickets')
+                .find({ clientId: req.params.id })
+                .sort({ createdAt: -1 })
+                .toArray();
+
+            // Map to match SQLite structure manually if needed, or rely on frontend adapter
+            // Adding client info is tricky here efficiently without aggregation, but usually client page knows the client.
+            const mappedTickets = tickets.map(t => ({
+                ...t,
+                id: String(t._id),
+                clientName: '', // Populated by frontend context usually
+                visitData: t.visitData || null,
+                ticket_id: String(t._id) // some legacy formats
+            }));
+
+            return res.json(mappedTickets);
+
+        } else {
+            db.all(`${TICKET_SELECT_BASE} WHERE t.client_id = ? ORDER BY t.createdAt DESC`, [req.params.id], (err, rows) => {
+                if (err) return res.status(500).json({ message: err.message });
+                res.json(rows.map(mapTicketRow));
+            });
+        }
+    } catch (e) {
+        res.status(500).json({ message: e.message });
+    }
 });
 
 app.get('/api/calendar-events', (req, res) => {
