@@ -4223,8 +4223,12 @@ app.get('/api/tickets', async (req, res) => {
                 .sort({ createdAt: -1 })
                 .toArray();
 
+            // Support both camelCase and snake_case for clientId
+            const getClientId = (t) => t.clientId || t.client_id;
+            const ticketsWithClientId = tickets.map(t => ({ ...t, resolvedClientId: getClientId(t) }));
+
             // Optimización: traer solo los clientes necesarios
-            const clientIds = [...new Set(tickets.map(t => t.clientId))];
+            const clientIds = [...new Set(ticketsWithClientId.map(t => t.resolvedClientId).filter(Boolean))];
             const { ObjectId } = require('mongodb');
 
             const clients = await mongoDb.collection('clients').find({
@@ -4242,10 +4246,12 @@ app.get('/api/tickets', async (req, res) => {
             });
 
             const mapped = tickets.map(t => {
-                const client = clientMap[String(t.clientId)] || {};
+                const cId = getClientId(t);
+                const client = clientMap[String(cId)] || {};
                 return {
                     ...t,
-                    id: String(t._id),
+                    id: t.id ? String(t.id) : String(t._id),
+                    clientId: cId,
                     clientName: client.name || '',
                     hasActiveContract: client.contract ? 1 : 0 // Adaptar a lo que espera el frontend
                 };
@@ -4278,17 +4284,18 @@ app.get('/api/tickets/:id', async (req, res) => {
             const ticket = await mongoDb.collection('tickets').findOne(filter);
             if (!ticket) return res.status(404).json({ message: 'Ticket not found' });
 
+            const clientId = ticket.clientId || ticket.client_id;
             let client = {};
-            if (ticket.clientId) {
-                if (ObjectId.isValid(ticket.clientId)) {
-                    client = await mongoDb.collection('clients').findOne({ _id: new ObjectId(ticket.clientId) }) || {};
+            if (clientId) {
+                if (ObjectId.isValid(clientId)) {
+                    client = await mongoDb.collection('clients').findOne({ _id: new ObjectId(clientId) }) || {};
                 }
                 if (!client.name) {
-                    const numId = Number(ticket.clientId);
+                    const numId = Number(clientId);
                     client = await mongoDb.collection('clients').findOne({
                         $or: [
-                            { id: !isNaN(numId) ? numId : ticket.clientId },
-                            { id: String(ticket.clientId) }
+                            { id: !isNaN(numId) ? numId : clientId },
+                            { id: String(clientId) }
                         ]
                     }) || {};
                 }
@@ -4296,7 +4303,8 @@ app.get('/api/tickets/:id', async (req, res) => {
 
             return res.json({
                 ...ticket,
-                id: String(ticket._id),
+                id: ticket.id ? String(ticket.id) : String(ticket._id),
+                clientId: clientId,
                 clientName: client.name || '',
                 clientEmail: client.email || '',
                 clientPhone: client.phone || '',
