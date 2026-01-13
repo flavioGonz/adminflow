@@ -3419,21 +3419,41 @@ app.delete('/api/budgets/:id', async (req, res) => {
     }
 });
 
-app.post('/api/budgets/:id/cover', budgetShareUpload.single('cover'), (req, res) => {
+app.post('/api/budgets/:id/cover', budgetShareUpload.single('cover'), async (req, res) => {
     if (!req.file) {
         return res.status(400).json({ message: 'Cover file is required.' });
     }
     const relativePath = `/uploads/budgets/${path.basename(req.file.path)}`;
-    db.run(
-        'UPDATE budgets SET file_path = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?',
-        [relativePath, req.params.id],
-        function (err) {
-            if (err) {
-                return res.status(500).json({ message: err.message });
-            }
+
+    const engine = getCurrentDbEngine();
+    if (engine === 'mongodb') {
+        const mongoDb = getMongoDb();
+        if (!mongoDb) return res.status(503).json({ message: 'MongoDB disconnected' });
+
+        const { ObjectId } = require('mongodb');
+        const id = req.params.id;
+        const filter = ObjectId.isValid(id) ? { _id: new ObjectId(id) } : { id };
+
+        try {
+            await mongoDb.collection('budgets').updateOne(filter, {
+                $set: { file_path: relativePath, updatedAt: new Date() }
+            });
             res.json({ url: relativePath });
+        } catch (e) {
+            res.status(500).json({ message: e.message });
         }
-    );
+    } else {
+        db.run(
+            'UPDATE budgets SET file_path = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?',
+            [relativePath, req.params.id],
+            function (err) {
+                if (err) {
+                    return res.status(500).json({ message: err.message });
+                }
+                res.json({ url: relativePath });
+            }
+        );
+    }
 });
 
 app.post('/api/budgets/:id/share', budgetShareUpload.single('file'), (req, res) => {
