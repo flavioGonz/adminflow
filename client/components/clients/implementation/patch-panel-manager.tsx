@@ -825,15 +825,7 @@ export const PatchPanelManager = forwardRef<PatchPanelManagerHandle, PatchPanelM
                                 </div>
                                 Galería de Fotos
                             </CardTitle>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-8 gap-1.5"
-                                onClick={openGalleryInput}
-                            >
-                                <Plus className="h-3.5 w-3.5" />
-                                Añadir
-                            </Button>
+
                         </CardHeader>
                         <CardContent className="flex-1">
                             <div
