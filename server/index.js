@@ -1608,27 +1608,51 @@ app.get('/api/notifications/config', async (req, res) => {
 // Client routes
 app.get('/api/clients', async (req, res) => {
     try {
-        // Optimize SQLite: Get clients and latest contract title in ONE query using subquery
-        const clients = await new Promise((resolve, reject) => {
-            const query = `
+        const engine = getCurrentDbEngine();
+        let mappedClients = [];
+
+        if (engine === 'mongodb') {
+            const mongoDb = getMongoDb();
+            if (!mongoDb) return res.status(503).json({ message: 'MongoDB no está conectado' });
+
+            const clients = await mongoDb.collection('clients').find({}).toArray();
+
+            // Fetch latest contract title for each client (could be optimized with aggregate)
+            mappedClients = await Promise.all(clients.map(async (client) => {
+                const latestContract = await mongoDb.collection('contracts')
+                    .find({ client_id: String(client._id) }) // Assuming client_id stores client._id string
+                    .sort({ createdAt: -1 })
+                    .limit(1)
+                    .toArray();
+
+                return {
+                    ...client,
+                    id: String(client._id),
+                    contract: latestContract[0]?.title || null
+                };
+            }));
+        } else {
+            // Optimize SQLite: Get clients and latest contract title in ONE query using subquery
+            const clients = await new Promise((resolve, reject) => {
+                const query = `
                 SELECT c.*,
                 (SELECT title FROM contracts WHERE client_id = c.id ORDER BY createdAt DESC LIMIT 1) as contractTitle
                 FROM clients c
             `;
-            db.all(query, [], (err, rows) => {
-                if (err) reject(err);
-                else resolve(rows);
+                db.all(query, [], (err, rows) => {
+                    if (err) reject(err);
+                    else resolve(rows);
+                });
             });
-        });
 
-        // Map contractTitle to the 'contract' property to match previous behavior (Client type expects logic)
-        // Note: The schema has 'contract' as int (boolean), but this endpoint overrides it with the title string.
-        const mappedClients = clients.map(client => ({
-            ...client,
-            contract: client.contractTitle || null
-        }));
+            // Map contractTitle to the 'contract' property
+            mappedClients = clients.map(client => ({
+                ...client,
+                contract: client.contractTitle || null
+            }));
+        }
 
-        // Optimize MongoDB: Bulk fetch indicators
+        // Optimize MongoDB: Bulk fetch indicators (Common for both engines if Mongo is available)
         const mongoDb = getMongoDb();
         if (mongoDb) {
             try {
@@ -1643,7 +1667,6 @@ app.get('/api/clients', async (req, res) => {
                 ]);
 
                 // Create Sets for O(1) lookup
-                // Convert values to string to ensure matching (ids are strings in Mongo)
                 const diagramSet = new Set(diagrams.map(String));
                 const accessSet = new Set(accesses.map(String));
                 const fileSet = new Set(files.map(String));
@@ -1667,7 +1690,7 @@ app.get('/api/clients', async (req, res) => {
             }
         }
 
-        // No MongoDB, return clients with contracts only
+        // No MongoDB connected/available, return clients
         res.json(mappedClients);
     } catch (err) {
         console.error('Error fetching clients:', err);
@@ -1677,19 +1700,51 @@ app.get('/api/clients', async (req, res) => {
 
 
 // GET /api/clients/:id/payments - Get payments for a specific client
-app.get('/api/clients/:id/payments', (req, res) => {
-    db.all('SELECT * FROM payments WHERE client_id = ? ORDER BY createdAt DESC', [req.params.id], (err, rows) => {
-        if (err) return res.status(500).json({ message: err.message });
-        res.json(rows || []);
-    });
+app.get('/api/clients/:id/payments', async (req, res) => {
+    const engine = getCurrentDbEngine();
+    try {
+        if (engine === 'mongodb') {
+            const mongoDb = getMongoDb();
+            if (!mongoDb) return res.status(503).json({ message: 'MongoDB no está conectado' });
+            // Search by client_id (string)
+            const payments = await mongoDb.collection('payments')
+                .find({ client_id: req.params.id })
+                .sort({ createdAt: -1 })
+                .toArray();
+            return res.json(payments);
+        } else {
+            db.all('SELECT * FROM payments WHERE client_id = ? ORDER BY createdAt DESC', [req.params.id], (err, rows) => {
+                if (err) return res.status(500).json({ message: err.message });
+                res.json(rows || []);
+            });
+        }
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
 });
 
 // GET /api/clients/:id/contracts - Get contracts for a specific client
-app.get('/api/clients/:id/contracts', (req, res) => {
-    db.all('SELECT * FROM contracts WHERE client_id = ? ORDER BY createdAt DESC', [req.params.id], (err, rows) => {
-        if (err) return res.status(500).json({ message: err.message });
-        res.json(rows || []);
-    });
+app.get('/api/clients/:id/contracts', async (req, res) => {
+    const engine = getCurrentDbEngine();
+    try {
+        if (engine === 'mongodb') {
+            const mongoDb = getMongoDb();
+            if (!mongoDb) return res.status(503).json({ message: 'MongoDB no está conectado' });
+
+            const contracts = await mongoDb.collection('contracts')
+                .find({ client_id: req.params.id })
+                .sort({ createdAt: -1 })
+                .toArray();
+            return res.json(contracts);
+        } else {
+            db.all('SELECT * FROM contracts WHERE client_id = ? ORDER BY createdAt DESC', [req.params.id], (err, rows) => {
+                if (err) return res.status(500).json({ message: err.message });
+                res.json(rows || []);
+            });
+        }
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
 });
 
 app.post('/api/clients', (req, res) => {
