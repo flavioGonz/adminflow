@@ -2695,11 +2695,50 @@ app.delete('/api/contracts/:id', async (req, res) => {
     }
 });
 
-app.post('/api/contracts/import', (req, res) => {
+app.post('/api/contracts/import', async (req, res) => {
     const payload = Array.isArray(req.body) ? req.body : req.body?.contracts;
     if (!Array.isArray(payload)) {
         return res.status(400).json({ message: 'Payload must be an array of contracts.' });
     }
+
+    const engine = getCurrentDbEngine();
+
+    if (engine === 'mongodb') {
+        const mongoDb = getMongoDb();
+        if (!mongoDb) return res.status(503).json({ message: 'MongoDB disconnected' });
+
+        let imported = 0;
+        let failed = 0;
+        const errors = [];
+
+        for (const contract of payload) {
+            try {
+                const doc = {
+                    clientId: String(contract.clientId || contract.client_id),
+                    title: contract.title,
+                    contract_name: contract.title,
+                    description: contract.description || null,
+                    startDate: contract.startDate || null,
+                    endDate: contract.endDate || null,
+                    status: contract.status || null,
+                    sla: contract.sla || null,
+                    contractType: contract.contractType || null,
+                    amount: contract.amount ? Number(contract.amount) : null,
+                    currency: contract.currency || 'ARS',
+                    file_path: '',
+                    createdAt: new Date(),
+                    updatedAt: new Date()
+                };
+                await mongoDb.collection('contracts').insertOne(doc);
+                imported++;
+            } catch (e) {
+                failed++;
+                errors.push({ title: contract.title, message: e.message });
+            }
+        }
+        return res.json({ message: 'Contract import completed', stats: { total: payload.length, imported, failed, errors } });
+    }
+
     let imported = 0;
     let failed = 0;
     const errors = [];
@@ -2741,23 +2780,60 @@ app.post('/api/contracts/import', (req, res) => {
     });
 });
 
-app.post('/api/contracts/:id/upload', upload.single('contractFile'), (req, res) => {
+app.post('/api/contracts/:id/upload', upload.single('contractFile'), async (req, res) => {
     if (!req.file) {
         return res.status(400).json({ message: 'File is required.' });
     }
     const relativePath = `/uploads/contracts/${path.basename(req.file.path)}`;
-    db.run(
-        'UPDATE contracts SET file_path = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?',
-        [relativePath, req.params.id],
-        function (err) {
-            if (err) return res.status(500).json({ message: err.message });
-            if (this.changes === 0) return res.status(404).json({ message: 'Contract not found' });
-            db.get(`${CONTRACT_SELECT_BASE} WHERE contracts.id = ?`, [req.params.id], (selectErr, row) => {
-                if (selectErr) return res.status(500).json({ message: selectErr.message });
-                res.json(mapContractRow(row));
+
+    const engine = getCurrentDbEngine();
+
+    if (engine === 'mongodb') {
+        const mongoDb = getMongoDb();
+        if (!mongoDb) return res.status(503).json({ message: 'MongoDB disconnected' });
+
+        const { ObjectId } = require('mongodb');
+        const id = req.params.id;
+        const filter = ObjectId.isValid(id) ? { _id: new ObjectId(id) } : { id };
+
+        try {
+            await mongoDb.collection('contracts').updateOne(filter, {
+                $set: { file_path: relativePath, updatedAt: new Date() }
             });
+            const updated = await mongoDb.collection('contracts').findOne(filter);
+            if (!updated) return res.status(404).json({ message: 'Contract not found' });
+
+            // Try fetching client name
+            let clientName = '';
+            if (updated.clientId) {
+                const client = await mongoDb.collection('clients').findOne({
+                    $or: [{ id: Number(updated.clientId) }, { _id: ObjectId.isValid(updated.clientId) ? new ObjectId(updated.clientId) : null }]
+                });
+                if (client) clientName = client.name;
+            }
+
+            return res.json({
+                ...updated,
+                id: String(updated._id),
+                clientName
+            });
+        } catch (e) {
+            return res.status(500).json({ message: e.message });
         }
-    );
+    } else {
+        db.run(
+            'UPDATE contracts SET file_path = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?',
+            [relativePath, req.params.id],
+            function (err) {
+                if (err) return res.status(500).json({ message: err.message });
+                if (this.changes === 0) return res.status(404).json({ message: 'Contract not found' });
+                db.get(`${CONTRACT_SELECT_BASE} WHERE contracts.id = ?`, [req.params.id], (selectErr, row) => {
+                    if (selectErr) return res.status(500).json({ message: selectErr.message });
+                    res.json(mapContractRow(row));
+                });
+            }
+        );
+    }
 });
 
 const mapBudgetRow = (row) => ({
