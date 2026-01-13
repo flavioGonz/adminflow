@@ -5470,6 +5470,109 @@ app.post('/api/v2/auth/login', async (req, res) => {
     }
 });
 
+
+// --- SYSTEM ROUTES ---
+
+app.post('/api/system/fix-ids', async (req, res) => {
+    const engine = getCurrentDbEngine();
+    if (engine !== 'mongodb') {
+        return res.status(400).json({ message: 'This operation is only for MongoDB.' });
+    }
+    const mongoDb = getMongoDb();
+    if (!mongoDb) return res.status(503).json({ message: 'MongoDB disconnected' });
+
+    try {
+        const stats = { clientsFixed: 0, ticketsFixed: 0 };
+
+        // --- Fix Clients ---
+        const clients = await mongoDb.collection('clients').find({}).toArray();
+        let maxClientId = 0;
+
+        // Find current max numeric ID
+        for (const c of clients) {
+            const num = Number(c.id);
+            if (!isNaN(num) && num > maxClientId) {
+                maxClientId = num;
+            }
+        }
+
+        // Identify clients needing fix (id is missing, or looks like ObjectId string)
+        const clientsToFix = clients.filter(c => {
+            if (!c.id) return true;
+            // If ID is same as _id string, it's likely a "long ID" we want to replace
+            if (String(c.id) === String(c._id)) return true;
+            // If it's not a number
+            if (isNaN(Number(c.id))) return true;
+            return false;
+        });
+
+        // Sort by creation time to preserve order if possible
+        clientsToFix.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+
+        for (const client of clientsToFix) {
+            maxClientId++;
+            await mongoDb.collection('clients').updateOne(
+                { _id: client._id },
+                { $set: { id: String(maxClientId) } } // Store as string for consistency w/ legacy
+            );
+            stats.clientsFixed++;
+        }
+
+        // Update counter
+        await mongoDb.collection('counters').updateOne(
+            { _id: 'clientId' },
+            { $set: { seq: maxClientId } },
+            { upsert: true }
+        );
+
+
+        // --- Fix Tickets ---
+        const tickets = await mongoDb.collection('tickets').find({}).toArray();
+        let maxTicketId = 0;
+
+        // Find current max numeric ID
+        for (const t of tickets) {
+            const num = Number(t.id);
+            if (!isNaN(num) && num > maxTicketId) {
+                maxTicketId = num;
+            }
+        }
+
+        const ticketsToFix = tickets.filter(t => {
+            if (!t.id) return true;
+            if (String(t.id) === String(t._id)) return true;
+            if (isNaN(Number(t.id))) return true;
+            return false;
+        });
+
+        ticketsToFix.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+
+        for (const ticket of ticketsToFix) {
+            maxTicketId++;
+            await mongoDb.collection('tickets').updateOne(
+                { _id: ticket._id },
+                { $set: { id: String(maxTicketId) } }
+            );
+            stats.ticketsFixed++;
+        }
+
+        // Update counter
+        await mongoDb.collection('counters').updateOne(
+            { _id: 'ticketId' },
+            { $set: { seq: maxTicketId } },
+            { upsert: true }
+        );
+
+        res.json({
+            message: 'ID normalization complete',
+            stats
+        });
+
+    } catch (e) {
+        res.status(500).json({ message: e.message });
+    }
+});
+
 const { startServer } = require('./lib/serverStart');
 
 startServer(app, PORT).catch((error) => {
