@@ -2333,8 +2333,10 @@ app.get('/api/contracts', async (req, res) => {
             }).toArray();
 
             const clientMap = {};
-            clients.forEach(c => clientMap[String(c._id)] = c);
-            clients.forEach(c => clientMap[String(c.id)] = c);
+            clients.forEach(c => {
+                if (c._id) clientMap[String(c._id)] = c;
+                if (c.id) clientMap[String(c.id)] = c;
+            });
 
             const mapped = contracts.map(c => {
                 const client = clientMap[String(c.clientId)] || {};
@@ -4278,9 +4280,18 @@ app.get('/api/tickets/:id', async (req, res) => {
 
             let client = {};
             if (ticket.clientId) {
-                client = await mongoDb.collection('clients').findOne({
-                    $or: [{ id: Number(ticket.clientId) }, { _id: ObjectId.isValid(ticket.clientId) ? new ObjectId(ticket.clientId) : null }]
-                }) || {};
+                if (ObjectId.isValid(ticket.clientId)) {
+                    client = await mongoDb.collection('clients').findOne({ _id: new ObjectId(ticket.clientId) }) || {};
+                }
+                if (!client.name) {
+                    const numId = Number(ticket.clientId);
+                    client = await mongoDb.collection('clients').findOne({
+                        $or: [
+                            { id: !isNaN(numId) ? numId : ticket.clientId },
+                            { id: String(ticket.clientId) }
+                        ]
+                    }) || {};
+                }
             }
 
             return res.json({
@@ -4616,12 +4627,19 @@ app.put('/api/tickets/:id', async (req, res) => {
             let clientNotificationsEnabled = false;
 
             if (updatedTicketRaw.clientId) {
-                const client = await mongoDb.collection('clients').findOne({
-                    $or: [
-                        { _id: isNaN(Number(updatedTicketRaw.clientId)) ? new ObjectId(updatedTicketRaw.clientId) : Number(updatedTicketRaw.clientId) },
-                        { id: isNaN(Number(updatedTicketRaw.clientId)) ? updatedTicketRaw.clientId : Number(updatedTicketRaw.clientId) }
-                    ]
-                });
+                if (ObjectId.isValid(updatedTicketRaw.clientId)) {
+                    client = await mongoDb.collection('clients').findOne({ _id: new ObjectId(updatedTicketRaw.clientId) });
+                }
+                if (!client) {
+                    const numId = Number(updatedTicketRaw.clientId);
+                    client = await mongoDb.collection('clients').findOne({
+                        $or: [
+                            { id: !isNaN(numId) ? numId : updatedTicketRaw.clientId },
+                            { id: String(updatedTicketRaw.clientId) }
+                        ]
+                    });
+                }
+
                 if (client) {
                     clientName = client.name;
                     clientEmail = client.email;
