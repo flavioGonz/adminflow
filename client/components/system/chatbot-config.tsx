@@ -1,23 +1,22 @@
 import { useEffect, useState } from "react";
 import {
-    Loader2, Save, MessageCircle, Link2, Copy, Zap,
-    Activity, Settings, BookOpen, Layers, Cpu, Radio,
-    ShieldCheck, CheckCircle2, XCircle, Terminal,
-    Globe, Database, CreditCard, Calendar, Ticket, Key, Users,
-    ChevronRight, ArrowUpRight, Signal
+    Loader2, Save, MessageCircle, Globe, Shield, CreditCard,
+    Calendar, Ticket, Key, Users, Activity, CheckCircle2,
+    XCircle, RefreshCw, Terminal, Plus, Trash2, Smartphone,
+    Server, Zap
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { API_URL } from "@/lib/http";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { motion, AnimatePresence } from "framer-motion";
+import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface ChatbotConfigData {
     enabled: boolean;
@@ -42,12 +41,12 @@ interface ChatbotConfigProps {
 }
 
 const MODULES_INFO = [
-    { id: 'clients', label: 'Clientes', icon: Globe, color: 'text-blue-400', bg: 'bg-blue-500/10', desc: 'Sincronización de base de clientes' },
-    { id: 'payments', label: 'Pagos', icon: CreditCard, color: 'text-emerald-400', bg: 'bg-emerald-500/10', desc: 'Gestión de cobros y facturas' },
-    { id: 'scheduling', label: 'Agenda', icon: Calendar, color: 'text-purple-400', bg: 'bg-purple-500/10', desc: 'Visitas y turnos preventivos' },
-    { id: 'tickets', label: 'Tickets', icon: Ticket, color: 'text-amber-400', bg: 'bg-amber-500/10', desc: 'Soporte técnico y reclamos' },
-    { id: 'passwords', label: 'Security', icon: Key, color: 'text-rose-400', bg: 'bg-rose-500/10', desc: 'Acceso a credenciales seguras' },
-    { id: 'users', label: 'Staff', icon: Users, color: 'text-cyan-400', bg: 'bg-cyan-500/10', desc: 'Gestión de técnicos y roles' }
+    { id: 'clients', label: 'Clientes', icon: Globe, desc: 'Consultas de saldo y datos' },
+    { id: 'payments', label: 'Pagos', icon: CreditCard, desc: 'Registro y confirmación' },
+    { id: 'scheduling', label: 'Agenda', icon: Calendar, desc: 'Gestión de visitas' },
+    { id: 'tickets', label: 'Tickets', icon: Ticket, desc: 'Creación y seguimiento' },
+    { id: 'passwords', label: 'Security', icon: Key, desc: 'Gestión de claves' },
+    { id: 'users', label: 'Staff', icon: Users, desc: 'Herramientas internas' }
 ];
 
 export function ChatbotConfig({ onSave }: ChatbotConfigProps) {
@@ -114,11 +113,13 @@ export function ChatbotConfig({ onSave }: ChatbotConfigProps) {
                 body: JSON.stringify(config),
             });
             if (res.ok) {
-                toast.success("Sistema actualizado correctamente");
+                toast.success("Configuración guardada", {
+                    description: "El chatbot se ha actualizado correctamente."
+                });
                 onSave?.(config);
             }
         } catch (error) {
-            toast.error("Error al sincronizar configuración");
+            toast.error("Error al guardar");
         } finally {
             setSaving(false);
         }
@@ -135,13 +136,14 @@ export function ChatbotConfig({ onSave }: ChatbotConfigProps) {
             const data = await res.json();
             if (data.success) {
                 setConnectionStatus('connected');
-                toast.success("Conexión con WAHA establecida");
+                toast.success("Conexión exitosa", { description: "WAHA responde correctamente." });
             } else {
                 setConnectionStatus('disconnected');
-                toast.error("Fallo de enlace con WAHA");
+                toast.error("Error de conexión", { description: "No se pudo conectar con WAHA." });
             }
         } catch (error) {
             setConnectionStatus('disconnected');
+            toast.error("Error de conexión");
         } finally {
             setSaving(false);
         }
@@ -168,298 +170,260 @@ export function ChatbotConfig({ onSave }: ChatbotConfigProps) {
 
     if (loading) return (
         <div className="h-96 flex items-center justify-center">
-            <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+            <Loader2 className="h-6 w-6 animate-spin text-zinc-500" />
         </div>
     );
 
     return (
-        <div className="min-h-screen p-0 lg:p-4 space-y-6 animate-in fade-in duration-700">
-            {/* TOP COMMAND BAR */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-8 border-b border-slate-100">
-                <div className="flex items-center gap-6">
-                    <div className={cn(
-                        "p-3.5 rounded-xl transition-all duration-500 shadow-sm",
-                        config.enabled ? "bg-emerald-500 shadow-emerald-200/50" : "bg-slate-200 shadow-slate-100"
-                    )}>
-                        <Cpu className={cn("h-8 w-8 text-white", config.enabled && "animate-pulse")} />
-                    </div>
-                    <div>
-                        <h1 className="text-3xl font-black text-slate-900 tracking-tight flex items-center gap-3">
-                            Neural Core <Badge variant="secondary" className="bg-slate-100 text-slate-500 border-none font-mono">v2.4.0</Badge>
-                        </h1>
-                        <p className="text-slate-500 font-medium flex items-center gap-2">
-                            <Activity className="h-4 w-4 text-blue-500" />
-                            {config.enabled ? "Sistemas operativos y en escucha activa" : "Núcleo en modo hibernación"}
-                        </p>
-                    </div>
+        <div className="max-w-6xl mx-auto space-y-6 animate-in fade-in duration-500">
+            {/* Header / Hero Section */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 py-2">
+                <div className="space-y-1">
+                    <h2 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50 flex items-center gap-2">
+                        <MessageCircle className="h-6 w-6 text-zinc-500" />
+                        Chatbot Config
+                    </h2>
+                    <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                        Gestiona la integración con WhatsApp y los módulos automáticos.
+                    </p>
                 </div>
-
-                <div className="flex items-center gap-4">
-                    <div className="flex flex-col items-end mr-4 hidden lg:flex">
-                        <span className="text-[10px] uppercase font-black tracking-widest text-slate-400">Estado de Enlace</span>
-                        <div className="flex items-center gap-2">
-                            <div className={cn("h-2 w-2 rounded-full", connectionStatus === 'connected' ? "bg-emerald-500" : "bg-rose-500")} />
-                            <span className="font-bold text-sm text-slate-700 uppercase">{connectionStatus === 'connected' ? 'En línea' : 'Desconectado'}</span>
-                        </div>
+                <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-zinc-100 dark:bg-zinc-800 rounded-full border border-zinc-200 dark:border-zinc-700">
+                        <div className={cn("h-2 w-2 rounded-full", config.enabled ? "bg-emerald-500" : "bg-zinc-400")} />
+                        <span className="text-xs font-medium text-zinc-600 dark:text-zinc-300">
+                            {config.enabled ? "Activo" : "Inactivo"}
+                        </span>
+                        <Switch
+                            checked={config.enabled}
+                            onCheckedChange={(c) => setConfig({ ...config, enabled: c })}
+                            className="ml-2 scale-75"
+                        />
                     </div>
                     <Button
-                        variant="outline"
-                        size="lg"
-                        onClick={testConnection}
-                        className="rounded-xl border-slate-200 hover:bg-slate-50 font-bold gap-2 h-12 text-sm"
-                    >
-                        <Signal className="h-4 w-4 text-blue-500" /> Test
-                    </Button>
-                    <Button
-                        size="lg"
                         onClick={handleSave}
                         disabled={saving}
-                        className="rounded-xl bg-slate-900 hover:bg-black text-white px-6 font-bold gap-2 h-12 text-sm shadow-lg shadow-slate-900/10"
+                        className="rounded-full bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900"
                     >
-                        {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : <Save className="h-5 w-5" />}
-                        Sincronizar
+                        {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        Guardar Cambios
                     </Button>
                 </div>
             </div>
 
-            {/* MAIN DASHBOARD GRID */}
-            <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-                {/* COLUMN 1: CONFIG & SECURITY (4 Units) */}
-                <div className="xl:col-span-4 space-y-6">
-                    {/* HUB SETTINGS */}
-                    <Card className="rounded-2xl border-slate-200 shadow-sm bg-white overflow-hidden group">
-                        <div className="h-1 bg-gradient-to-r from-blue-500 to-indigo-600" />
-                        <CardContent className="p-6 space-y-6">
-                            <div className="flex items-center justify-between">
-                                <div className="space-y-1">
-                                    <h2 className="text-xl font-black text-slate-800 tracking-tight">Connectivity Hub</h2>
-                                    <p className="text-xs text-slate-500 font-bold uppercase tracking-wider opacity-60">Parámetros WAHA API</p>
+                {/* Left Column: Settings */}
+                <div className="lg:col-span-2 space-y-6">
+
+                    {/* Connection Settings */}
+                    <Card className="border-zinc-200 dark:border-zinc-800 shadow-sm rounded-2xl bg-white dark:bg-zinc-900">
+                        <CardHeader className="pb-4">
+                            <CardTitle className="text-lg font-medium flex items-center gap-2">
+                                <Server className="h-5 w-5 text-zinc-500" />
+                                Conexión WAHA
+                            </CardTitle>
+                            <CardDescription>Parámetros de conexión con la instancia de WhatsApp API.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label className="text-xs font-medium text-zinc-500 uppercase">Host URL</Label>
+                                    <Input
+                                        value={config.waha_url}
+                                        onChange={(e) => setConfig({ ...config, waha_url: e.target.value })}
+                                        className="rounded-xl border-zinc-200 bg-zinc-50/50 focus:bg-white transition-all"
+                                        placeholder="http://localhost:3000"
+                                    />
                                 </div>
-                                <Switch
-                                    checked={config.enabled}
-                                    onCheckedChange={(c) => setConfig({ ...config, enabled: c })}
-                                    className="data-[state=checked]:bg-emerald-500"
-                                />
+                                <div className="space-y-2">
+                                    <Label className="text-xs font-medium text-zinc-500 uppercase">Sesión ID</Label>
+                                    <Input
+                                        value={config.waha_session}
+                                        onChange={(e) => setConfig({ ...config, waha_session: e.target.value })}
+                                        className="rounded-xl border-zinc-200 bg-zinc-50/50 focus:bg-white transition-all"
+                                    />
+                                </div>
                             </div>
 
-                            <div className="space-y-6">
-                                <div className="space-y-3">
-                                    <Label className="text-xs font-black text-slate-500 uppercase ml-1">Instancia Host</Label>
-                                    <div className="relative">
-                                        <Input
-                                            value={config.waha_url}
-                                            onChange={(e) => setConfig({ ...config, waha_url: e.target.value })}
-                                            className="h-12 bg-slate-50 border-slate-200 rounded-xl focus:ring-blue-500 font-bold transition-all pl-12"
-                                            placeholder="http://server-ip:3000"
-                                        />
-                                        <Globe className="h-5 w-5 absolute left-4 top-3.5 text-slate-400" />
-                                    </div>
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="space-y-3">
-                                        <Label className="text-xs font-black text-slate-500 uppercase ml-1">Sesión</Label>
-                                        <Input
-                                            value={config.waha_session}
-                                            onChange={(e) => setConfig({ ...config, waha_session: e.target.value })}
-                                            className="h-12 bg-slate-50 border-slate-200 rounded-xl focus:ring-blue-500 font-bold transition-all"
-                                        />
-                                    </div>
-                                    <div className="space-y-3">
-                                        <Label className="text-xs font-black text-slate-500 uppercase ml-1">Latencia (ms)</Label>
-                                        <Input
-                                            type="number"
-                                            value={config.reply_delay}
-                                            onChange={(e) => setConfig({ ...config, reply_delay: parseInt(e.target.value) })}
-                                            className="h-12 bg-slate-50 border-slate-200 rounded-xl focus:ring-blue-500 font-bold transition-all"
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className="space-y-3">
-                                    <Label className="text-xs font-black text-slate-500 uppercase ml-1">API Key de Seguridad</Label>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label className="text-xs font-medium text-zinc-500 uppercase">API Key (Opcional)</Label>
                                     <div className="relative">
                                         <Input
                                             type="password"
                                             value={config.waha_api_key}
                                             onChange={(e) => setConfig({ ...config, waha_api_key: e.target.value })}
-                                            className="h-12 bg-slate-50 border-slate-200 rounded-xl focus:ring-blue-500 font-bold transition-all pl-12"
+                                            className="rounded-xl border-zinc-200 bg-zinc-50/50 focus:bg-white transition-all pl-9"
                                         />
-                                        <ShieldCheck className="h-5 w-5 absolute left-4 top-3.5 text-slate-400" />
+                                        <Key className="h-4 w-4 absolute left-3 top-3 text-zinc-400" />
                                     </div>
                                 </div>
+                                <div className="space-y-2">
+                                    <Label className="text-xs font-medium text-zinc-500 uppercase">Latencia (ms)</Label>
+                                    <Input
+                                        type="number"
+                                        value={config.reply_delay}
+                                        onChange={(e) => setConfig({ ...config, reply_delay: parseInt(e.target.value) })}
+                                        className="rounded-xl border-zinc-200 bg-zinc-50/50 focus:bg-white transition-all"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="pt-2 flex justify-end">
+                                <Button
+                                    variant="outline"
+                                    onClick={testConnection}
+                                    className="rounded-xl border-zinc-200 hover:bg-zinc-50 text-zinc-700"
+                                >
+                                    <Zap className={cn("mr-2 h-4 w-4", connectionStatus === 'connected' ? "text-emerald-500" : "text-zinc-400")} />
+                                    {connectionStatus === 'connected' ? 'Conectado' : 'Probar Conexión'}
+                                </Button>
                             </div>
                         </CardContent>
                     </Card>
 
-                    {/* WHITE LIST */}
-                    <Card className="rounded-2xl border-slate-200 shadow-sm bg-white overflow-hidden relative">
-                        <div className="absolute top-0 right-0 p-6 opacity-5">
-                            <ShieldCheck className="h-20 w-20" />
-                        </div>
-                        <CardContent className="p-6 space-y-6">
-                            <div className="space-y-1">
-                                <h2 className="text-xl font-black text-slate-800 tracking-tight">Guardian Protocol</h2>
-                                <p className="text-xs text-rose-500 font-black uppercase tracking-wider">Lista Blanca de Acceso</p>
+                    {/* Modules Grid */}
+                    <Card className="border-zinc-200 dark:border-zinc-800 shadow-sm rounded-2xl bg-white dark:bg-zinc-900">
+                        <CardHeader className="pb-4">
+                            <CardTitle className="text-lg font-medium flex items-center gap-2">
+                                <Activity className="h-5 w-5 text-zinc-500" />
+                                Módulos Activos
+                            </CardTitle>
+                            <CardDescription>Habilita o deshabilita funciones específicas del bot.</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {MODULES_INFO.map(module => {
+                                    const isEnabled = config.modules[module.id as keyof typeof config.modules];
+                                    const Icon = module.icon;
+                                    return (
+                                        <div
+                                            key={module.id}
+                                            onClick={() => toggleModule(module.id)}
+                                            className={cn(
+                                                "flex items-start gap-4 p-4 rounded-xl border transition-all cursor-pointer",
+                                                isEnabled
+                                                    ? "bg-zinc-50 border-zinc-200 shadow-sm"
+                                                    : "bg-transparent border-transparent hover:bg-zinc-50"
+                                            )}
+                                        >
+                                            <div className={cn("mt-1 p-2 rounded-lg", isEnabled ? "bg-white shadow-sm text-zinc-900" : "bg-zinc-100 text-zinc-400")}>
+                                                <Icon className="h-5 w-5" />
+                                            </div>
+                                            <div className="flex-1 space-y-1">
+                                                <div className="flex items-center justify-between">
+                                                    <p className={cn("font-medium text-sm", isEnabled ? "text-zinc-900" : "text-zinc-500")}>{module.label}</p>
+                                                    <Switch checked={isEnabled} className="scale-75" />
+                                                </div>
+                                                <p className="text-xs text-zinc-500">{module.desc}</p>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
                             </div>
+                        </CardContent>
+                    </Card>
+                </div>
 
+                {/* Right Column: Whitelist & Logs */}
+                <div className="space-y-6">
+
+                    {/* Whitelist */}
+                    <Card className="border-zinc-200 dark:border-zinc-800 shadow-sm rounded-2xl bg-white dark:bg-zinc-900">
+                        <CardHeader className="pb-4">
+                            <CardTitle className="text-lg font-medium flex items-center gap-2">
+                                <Shield className="h-5 w-5 text-zinc-500" />
+                                Lista Blanca
+                            </CardTitle>
+                            <CardDescription>Números autorizados (+Código...)</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
                             <div className="flex gap-2">
                                 <Input
-                                    placeholder="598..."
                                     value={newNumber}
                                     onChange={(e) => setNewNumber(e.target.value)}
-                                    className="h-12 bg-slate-50 border-slate-200 rounded-xl font-bold"
+                                    placeholder="59899123456"
+                                    className="rounded-xl bg-zinc-50 border-zinc-200"
                                 />
-                                <Button onClick={addNumber} className="h-12 rounded-xl bg-blue-600 px-6 font-bold">Add</Button>
+                                <Button onClick={addNumber} size="icon" className="rounded-xl aspect-square shrink-0">
+                                    <Plus className="h-5 w-5" />
+                                </Button>
                             </div>
-
-                            <div className="space-y-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
-                                {config.allowed_numbers?.map(num => (
-                                    <div key={num} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100 group">
-                                        <span className="font-mono font-bold text-slate-600">+{num}</span>
-                                        <button
-                                            onClick={() => setConfig(prev => ({ ...prev, allowed_numbers: prev.allowed_numbers?.filter(n => n !== num) }))}
-                                            className="text-slate-300 hover:text-rose-500 transition-colors"
-                                        >
-                                            <XCircle className="h-5 w-5" />
-                                        </button>
-                                    </div>
-                                ))}
-                            </div>
-                        </CardContent>
-                    </Card>
-                </div>
-
-                {/* COLUMN 2: MODULES (5 Units) */}
-                <div className="xl:col-span-5 space-y-6">
-                    <div className="grid grid-cols-2 gap-4">
-                        {MODULES_INFO.map(module => {
-                            const isEnabled = config.modules[module.id as keyof typeof config.modules];
-                            return (
-                                <motion.div
-                                    key={module.id}
-                                    whileHover={{ scale: 0.98 }}
-                                    onClick={() => toggleModule(module.id)}
-                                    className={cn(
-                                        "p-5 rounded-2xl cursor-pointer transition-all duration-300 border select-none h-full flex flex-col justify-between",
-                                        isEnabled
-                                            ? "bg-white border-blue-500 shadow-md shadow-blue-100/50"
-                                            : "bg-slate-50/50 border-slate-200 opacity-60 grayscale"
+                            <ScrollArea className="h-32 pr-4">
+                                <div className="flex flex-wrap gap-2">
+                                    {config.allowed_numbers?.length === 0 && (
+                                        <p className="text-xs text-zinc-400 w-full text-center py-4">Sin números registrados</p>
                                     )}
-                                >
-                                    <div className="space-y-3">
-                                        <div className={cn("p-3 rounded-xl w-fit", module.bg)}>
-                                            <module.icon className={cn("h-5 w-5", module.color)} />
+                                    {config.allowed_numbers?.map(num => (
+                                        <div key={num} className="flex items-center gap-2 px-3 py-1.5 bg-zinc-100 rounded-full border border-zinc-200">
+                                            <Smartphone className="h-3 w-3 text-zinc-400" />
+                                            <span className="text-xs font-medium text-zinc-700">{num}</span>
+                                            <button
+                                                onClick={() => setConfig(prev => ({ ...prev, allowed_numbers: prev.allowed_numbers?.filter(n => n !== num) }))}
+                                                className="ml-1 text-zinc-400 hover:text-rose-500 transition-colors"
+                                            >
+                                                <XCircle className="h-3 w-3" />
+                                            </button>
                                         </div>
-                                        <div>
-                                            <h3 className="text-base font-black text-slate-800 tracking-tight">{module.label}</h3>
-                                            <p className="text-[10px] text-slate-500 font-bold uppercase leading-tight mt-1">{module.desc}</p>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center justify-between mt-4">
-                                        <Badge variant={isEnabled ? "default" : "secondary"} className={cn("rounded-md text-[10px]", isEnabled && "bg-blue-500")}>
-                                            {isEnabled ? "ACTIVO" : "OFF"}
-                                        </Badge>
-                                        <div className={cn("h-1.5 w-1.5 rounded-full", isEnabled ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" : "bg-slate-300")} />
-                                    </div>
-                                </motion.div>
-                            );
-                        })}
-                    </div>
-
-                    {/* QUICK MANUAL / HELP (Tabs inside Column) */}
-                    <Card className="rounded-2xl border-none shadow-xl bg-slate-900 overflow-hidden text-white">
-                        <CardContent className="p-0">
-                            <Tabs defaultValue="base" className="w-full">
-                                <TabsList className="w-full h-14 bg-white/5 p-3 gap-3 border-b border-white/5 rounded-none">
-                                    <TabsTrigger value="base" className="flex-1 rounded-lg data-[state=active]:bg-white/10 text-[10px] font-black tracking-widest uppercase">Consultas</TabsTrigger>
-                                    <TabsTrigger value="actions" className="flex-1 rounded-lg data-[state=active]:bg-white/10 text-[10px] font-black tracking-widest uppercase">Acciones</TabsTrigger>
-                                </TabsList>
-                                <div className="p-6">
-                                    <TabsContent value="base" className="mt-0 space-y-3">
-                                        {[
-                                            { cmd: 'resumen', desc: 'Vista global técnica' },
-                                            { cmd: 'tickets [clie]', desc: 'Historial de cliente' },
-                                            { cmd: 'pass [clie]', desc: 'Accesos remotos' }
-                                        ].map(item => (
-                                            <div key={item.cmd} className="flex items-center justify-between p-3.5 bg-white/5 rounded-xl border border-white/5 group hover:bg-white/10 transition-colors">
-                                                <code className="text-blue-400 font-mono text-xs font-bold">{item.cmd}</code>
-                                                <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">{item.desc}</span>
-                                            </div>
-                                        ))}
-                                    </TabsContent>
-                                    <TabsContent value="actions" className="mt-0 space-y-3">
-                                        {[
-                                            { cmd: 'ticket nuevo', desc: 'Asistente apertura' },
-                                            { cmd: 'pago nuevo', desc: 'Registro financiero' },
-                                            { cmd: 'pago conf', desc: 'Validación de cobros' }
-                                        ].map(item => (
-                                            <div key={item.cmd} className="flex items-center justify-between p-3.5 bg-white/5 rounded-xl border border-white/5 group hover:bg-white/10 transition-colors">
-                                                <code className="text-emerald-400 font-mono text-xs font-bold">{item.cmd}</code>
-                                                <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">{item.desc}</span>
-                                            </div>
-                                        ))}
-                                    </TabsContent>
-                                </div>
-                            </Tabs>
-                        </CardContent>
-                    </Card>
-                </div>
-
-                {/* COLUMN 3: LIVE TERMINAL (3 Units) */}
-                <div className="xl:col-span-3">
-                    <Card className="rounded-2xl border-none shadow-xl bg-slate-950 overflow-hidden h-full flex flex-col">
-                        <div className="p-5 bg-slate-900/50 border-b border-white/5 flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                                <Terminal className="h-4 w-4 text-emerald-400" />
-                                <span className="text-[10px] font-black text-white uppercase tracking-[0.2em]">Live Stream</span>
-                            </div>
-                            <div className="flex gap-1.5 leading-none">
-                                <div className="h-1 w-1 rounded-full bg-emerald-500 animate-pulse" />
-                            </div>
-                        </div>
-                        <CardContent className="p-0 flex-1 overflow-hidden">
-                            <ScrollArea className="h-[600px] xl:h-[750px] w-full">
-                                <div className="p-5 space-y-5">
-                                    {logs.length === 0 ? (
-                                        <div className="py-20 text-center space-y-4 opacity-20">
-                                            <Radio className="h-12 w-12 mx-auto animate-ping" />
-                                            <p className="text-[10px] uppercase font-black tracking-widest">Awaiting Events...</p>
-                                        </div>
-                                    ) : (
-                                        logs.slice(0, 40).map((log, i) => (
-                                            <div key={log.id || i} className="space-y-2 group">
-                                                <div className="flex items-center justify-between">
-                                                    <Badge className={cn(
-                                                        "text-[8px] font-black h-4 px-1.5 border-none",
-                                                        log.type === 'inbound' ? "bg-blue-500/20 text-blue-400" :
-                                                            log.type === 'outbound' ? "bg-emerald-500/20 text-emerald-400" :
-                                                                "bg-rose-500/20 text-rose-400"
-                                                    )}>
-                                                        {log.type?.toUpperCase()}
-                                                    </Badge>
-                                                    <span className="text-[9px] font-mono text-slate-600 font-bold">
-                                                        {new Date(log.timestamp).toLocaleTimeString([], { hour12: false })}
-                                                    </span>
-                                                </div>
-                                                <div className="pl-2 border-l border-white/5 py-1">
-                                                    <p className="text-[11px] leading-relaxed text-slate-400 font-medium group-hover:text-slate-200 transition-colors">
-                                                        {log.details || log.message}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        ))
-                                    )}
+                                    ))}
                                 </div>
                             </ScrollArea>
                         </CardContent>
-                        <div className="p-4 bg-slate-900/30 text-[9px] font-black uppercase text-slate-700 tracking-widest text-center border-t border-white/5">
-                            AdminFlow Intelligence Relay
-                        </div>
                     </Card>
-                </div>
 
+                    {/* Live Logs */}
+                    <Card className="border-zinc-200 dark:border-zinc-800 shadow-sm rounded-2xl bg-white dark:bg-zinc-900 flex flex-col h-[500px]">
+                        <CardHeader className="pb-4 border-b border-zinc-100 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900">
+                            <CardTitle className="text-base font-medium flex items-center justify-between">
+                                <span className="flex items-center gap-2">
+                                    <Terminal className="h-4 w-4 text-zinc-500" />
+                                    Actividad Reciente
+                                </span>
+                                {logs.length > 0 && (
+                                    <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                                )}
+                            </CardTitle>
+                        </CardHeader>
+                        <ScrollArea className="flex-1 p-4">
+                            <div className="space-y-4">
+                                {logs.length === 0 ? (
+                                    <div className="flex flex-col items-center justify-center py-12 text-zinc-400 space-y-2">
+                                        <RefreshCw className="h-8 w-8 opacity-20" />
+                                        <p className="text-xs">Esperando eventos...</p>
+                                    </div>
+                                ) : (
+                                    logs.map((log, i) => (
+                                        <div key={i} className="flex gap-3 text-sm group">
+                                            <div className="mt-0.5 shrink-0">
+                                                {log.type === 'inbound' ? (
+                                                    <div className="h-2 w-2 rounded-full bg-blue-500 ring-4 ring-blue-50" />
+                                                ) : log.type === 'outbound' ? (
+                                                    <div className="h-2 w-2 rounded-full bg-emerald-500 ring-4 ring-emerald-50" />
+                                                ) : (
+                                                    <div className="h-2 w-2 rounded-full bg-rose-500 ring-4 ring-rose-50" />
+                                                )}
+                                            </div>
+                                            <div className="grid gap-1">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-xs font-semibold text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">
+                                                        {log.type}
+                                                    </span>
+                                                    <span className="text-[10px] text-zinc-400">
+                                                        {new Date(log.timestamp).toLocaleTimeString()}
+                                                    </span>
+                                                </div>
+                                                <p className="text-zinc-600 dark:text-zinc-400 text-xs leading-relaxed">
+                                                    {log.details || log.message}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </ScrollArea>
+                    </Card>
+
+                </div>
             </div>
         </div>
     );
