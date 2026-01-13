@@ -2129,7 +2129,7 @@ app.get('/api/payments', async (req, res) => {
     }
 });
 
-app.post('/api/payments', (req, res) => {
+app.post('/api/payments', async (req, res) => {
     const {
         invoice,
         client,
@@ -2145,6 +2145,7 @@ app.post('/api/payments', (req, res) => {
         createdAt = new Date().toISOString(),
         invoiceEnabled = false,
     } = req.body;
+
     const numericAmount = Number(amount);
     if (!client || Number.isNaN(numericAmount)) {
         return res.status(400).json({ message: 'client and amount are required' });
@@ -2156,153 +2157,283 @@ app.post('/api/payments', (req, res) => {
     if (!(numericAmount > 0)) {
         return res.status(400).json({ message: 'amount must be greater than zero' });
     }
+
+    const engine = getCurrentDbEngine();
     const id = `PAY-${uuid().slice(0, 6).toUpperCase()}`;
-    db.run(
-        `INSERT INTO payments (id, invoice, ticket_id, ticket_title, client, client_id, amount, status, method, note, concept, currency, createdAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-            id,
-            invoice,
-            ticketId || null,
-            ticketTitle || null,
-            client,
-            clientId || null,
-            numericAmount,
-            status,
-            method || 'Transferencia',
-            note || null,
-            concept || null,
-            currency,
-            createdAt,
-        ],
-        (err) => {
-            if (err) return res.status(500).json({ message: err.message });
-            db.get('SELECT * FROM payments WHERE id = ?', [id], async (selectErr, row) => {
-                if (selectErr) return res.status(500).json({ message: selectErr.message });
-                const savedPayment = mapPaymentRow(row);
-
-                await upsertCalendarEvent({
-                    title: `Pago ${savedPayment.invoice} - ${savedPayment.client}`.trim(),
-                    start: savedPayment.createdAt || new Date().toISOString(),
-                    end: savedPayment.createdAt || null,
-                    location: savedPayment.ticketTitle ? `Ticket: ${savedPayment.ticketTitle}` : null,
-                    sourceType: 'payment',
-                    sourceId: savedPayment.id,
-                    locked: true,
-                }).catch((calendarErr) => {
-                    console.error('No se pudo crear el evento de calendario para el pago:', calendarErr?.message || calendarErr);
-                });
+    const paymentData = {
+        id,
+        invoice,
+        ticket_id: ticketId || null,
+        ticket_title: ticketTitle || null,
+        client,
+        client_id: clientId || null,
+        clientId: clientId || null, // Ensure both for compatibility
+        amount: numericAmount,
+        status,
+        method: method || 'Transferencia',
+        note: note || null,
+        concept: concept || null,
+        currency,
+        createdAt,
+        updatedAt: new Date()
+    };
 
 
-                // Enviar notificación automática
-                sendAutoNotification(
-                    'payment_received',
-                    `Nuevo pago ${savedPayment.invoice} de ${savedPayment.client} por ${savedPayment.amount} ${savedPayment.currency}`,
-                    savedPayment,
-                    []
-                ).catch(err => console.error('Error en notificación:', err));
+    if (engine === 'mongodb') {
+        try {
+            const mongoDb = getMongoDb();
+            if (!mongoDb) return res.status(503).json({ message: 'MongoDB disconnected' });
 
-                syncPaymentToMongo(savedPayment);
+            const result = await mongoDb.collection('payments').insertOne(paymentData);
+            const savedPayment = { ...paymentData, _id: result.insertedId };
 
-                await logEvent({
-                    user: req.user ? req.user.email : 'system',
-                    action: 'create',
-                    resource: 'payment',
-                    details: { paymentId: savedPayment.id, invoice: savedPayment.invoice, amount: savedPayment.amount },
-                    ip: req.ip
-                });
+            await upsertCalendarEvent({
+                title: `Pago ${savedPayment.invoice} - ${savedPayment.client}`.trim(),
+                start: savedPayment.createdAt || new Date().toISOString(),
+                end: savedPayment.createdAt || null,
+                location: savedPayment.ticket_title ? `Ticket: ${savedPayment.ticket_title}` : null,
+                sourceType: 'payment',
+                sourceId: savedPayment.id,
+                locked: true,
+            }).catch(e => console.error('Calendar error:', e));
 
-                res.status(201).json(savedPayment);
-            });
+            sendAutoNotification(
+                'payment_received',
+                `Nuevo pago ${savedPayment.invoice} de ${savedPayment.client} por ${savedPayment.amount} ${savedPayment.currency}`,
+                savedPayment,
+                []
+            ).catch(err => console.error('Error notif:', err));
+
+            logEvent({
+                user: req.user ? req.user.email : 'system',
+                action: 'create',
+                resource: 'payment',
+                details: { paymentId: savedPayment.id, invoice: savedPayment.invoice, amount: savedPayment.amount },
+                ip: req.ip
+            }).catch(() => { });
+
+            return res.status(201).json(savedPayment);
+
+        } catch (e) {
+            return res.status(500).json({ message: e.message });
         }
-    );
-});
-
-app.put('/api/payments/:id', (req, res) => {
-    db.get('SELECT * FROM payments WHERE id = ?', [req.params.id], (err, existing) => {
-        if (err) return res.status(500).json({ message: err.message });
-        if (!existing) return res.status(404).json({ message: 'Payment not found' });
-        const payload = {
-            invoice: req.body.invoice ?? existing.invoice,
-            ticket_id: req.body.ticketId ?? req.body.ticket_id ?? existing.ticket_id,
-            ticket_title: req.body.ticketTitle ?? req.body.ticket_title ?? existing.ticket_title,
-            client: req.body.client ?? existing.client,
-            client_id: req.body.clientId ?? req.body.client_id ?? existing.client_id,
-            amount: req.body.amount ?? existing.amount,
-            status: req.body.status ?? existing.status,
-            method: req.body.method ?? existing.method,
-            note: req.body.note ?? existing.note,
-            concept: req.body.concept ?? existing.concept,
-            currency: req.body.currency ?? existing.currency ?? 'UYU',
-            createdAt: req.body.createdAt ?? existing.createdAt,
-        };
-        if (!(payload.amount > 0)) {
-            return res.status(400).json({ message: 'amount must be greater than zero' });
-        }
-        const newTicketStatus =
-            payload.status === 'Pagado'
-                ? 'Pagado'
-                : payload.status === 'Facturar'
-                    ? 'Facturar'
-                    : undefined;
+    } else {
         db.run(
-            `UPDATE payments
-           SET invoice = ?, ticket_id = ?, ticket_title = ?, client = ?, client_id = ?, amount = ?, status = ?, method = ?, note = ?, concept = ?, currency = ?, createdAt = ?
-           WHERE id = ?`,
+            `INSERT INTO payments (id, invoice, ticket_id, ticket_title, client, client_id, amount, status, method, note, concept, currency, createdAt)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
-                payload.invoice,
-                payload.ticket_id,
-                payload.ticket_title,
-                payload.client,
-                payload.client_id,
-                payload.amount,
-                payload.status,
-                payload.method,
-                payload.note,
-                payload.concept,
-                payload.currency,
-                payload.createdAt,
-                req.params.id,
+                id,
+                invoice,
+                ticketId || null,
+                ticketTitle || null,
+                client,
+                clientId || null,
+                numericAmount,
+                status,
+                method || 'Transferencia',
+                note || null,
+                concept || null,
+                currency,
+                createdAt,
             ],
-            function (updateErr) {
-                if (updateErr) return res.status(500).json({ message: updateErr.message });
-                if (newTicketStatus && payload.ticket_id) {
-                    updateTicketStatus(payload.ticket_id, newTicketStatus);
-                }
-                db.get('SELECT * FROM payments WHERE id = ?', [req.params.id], async (selectErr, row) => {
+            (err) => {
+                if (err) return res.status(500).json({ message: err.message });
+                db.get('SELECT * FROM payments WHERE id = ?', [id], async (selectErr, row) => {
                     if (selectErr) return res.status(500).json({ message: selectErr.message });
-                    const updatedPayment = mapPaymentRow(row);
+                    const savedPayment = mapPaymentRow(row);
+
+                    await upsertCalendarEvent({
+                        title: `Pago ${savedPayment.invoice} - ${savedPayment.client}`.trim(),
+                        start: savedPayment.createdAt || new Date().toISOString(),
+                        end: savedPayment.createdAt || null,
+                        location: savedPayment.ticketTitle ? `Ticket: ${savedPayment.ticketTitle}` : null,
+                        sourceType: 'payment',
+                        sourceId: savedPayment.id,
+                        locked: true,
+                    }).catch((calendarErr) => {
+                        console.error('No se pudo crear el evento de calendario para el pago:', calendarErr?.message || calendarErr);
+                    });
+
+
+                    // Enviar notificación automática
+                    sendAutoNotification(
+                        'payment_received',
+                        `Nuevo pago ${savedPayment.invoice} de ${savedPayment.client} por ${savedPayment.amount} ${savedPayment.currency}`,
+                        savedPayment,
+                        []
+                    ).catch(err => console.error('Error en notificación:', err));
+
+                    syncPaymentToMongo(savedPayment);
 
                     await logEvent({
                         user: req.user ? req.user.email : 'system',
-                        action: 'update',
+                        action: 'create',
                         resource: 'payment',
-                        details: { paymentId: updatedPayment.id, invoice: updatedPayment.invoice, status: updatedPayment.status },
+                        details: { paymentId: savedPayment.id, invoice: savedPayment.invoice, amount: savedPayment.amount },
                         ip: req.ip
                     });
 
-                    res.json(updatedPayment);
+                    res.status(201).json(savedPayment);
                 });
             }
         );
-    });
+    }
 });
 
-app.delete('/api/payments/:id', (req, res) => {
-    db.run('DELETE FROM payments WHERE id = ?', [req.params.id], async function (err) {
-        if (err) return res.status(500).json({ message: err.message });
-        if (this.changes === 0) return res.status(404).json({ message: 'Payment not found' });
+app.put('/api/payments/:id', async (req, res) => {
+    const engine = getCurrentDbEngine();
+    const id = req.params.id;
 
-        await logEvent({
-            user: req.user ? req.user.email : 'system',
-            action: 'delete',
-            resource: 'payment',
-            details: { paymentId: req.params.id },
-            ip: req.ip
+    if (engine === 'mongodb') {
+        const mongoDb = getMongoDb();
+        if (!mongoDb) return res.status(503).json({ message: 'MongoDB disconnected' });
+
+        const updates = {
+            invoice: req.body.invoice,
+            ticket_id: req.body.ticketId ?? req.body.ticket_id,
+            ticket_title: req.body.ticketTitle ?? req.body.ticket_title,
+            client: req.body.client,
+            client_id: req.body.clientId ?? req.body.client_id,
+            clientId: req.body.clientId ?? req.body.client_id,
+            amount: req.body.amount,
+            status: req.body.status,
+            method: req.body.method,
+            note: req.body.note,
+            concept: req.body.concept,
+            currency: req.body.currency,
+            createdAt: req.body.createdAt,
+            updatedAt: new Date()
+        };
+
+        // Remove undefined keys
+        Object.keys(updates).forEach(key => updates[key] === undefined && delete updates[key]);
+
+        try {
+            const { ObjectId } = require('mongodb');
+            const filter = ObjectId.isValid(id) && !id.startsWith('PAY-') ? { _id: new ObjectId(id) } : { id };
+
+            await mongoDb.collection('payments').updateOne(filter, { $set: updates });
+            const updated = await mongoDb.collection('payments').findOne(filter);
+
+            if (!updated) return res.status(404).json({ message: 'Payment not found' });
+
+            res.json({ ...updated, id: updated.id || String(updated._id) });
+        } catch (e) {
+            res.status(500).json({ message: e.message });
+        }
+
+    } else {
+        db.get('SELECT * FROM payments WHERE id = ?', [req.params.id], (err, existing) => {
+            if (err) return res.status(500).json({ message: err.message });
+            if (!existing) return res.status(404).json({ message: 'Payment not found' });
+            const payload = {
+                invoice: req.body.invoice ?? existing.invoice,
+                ticket_id: req.body.ticketId ?? req.body.ticket_id ?? existing.ticket_id,
+                ticket_title: req.body.ticketTitle ?? req.body.ticket_title ?? existing.ticket_title,
+                client: req.body.client ?? existing.client,
+                client_id: req.body.clientId ?? req.body.client_id ?? existing.client_id,
+                amount: req.body.amount ?? existing.amount,
+                status: req.body.status ?? existing.status,
+                method: req.body.method ?? existing.method,
+                note: req.body.note ?? existing.note,
+                concept: req.body.concept ?? existing.concept,
+                currency: req.body.currency ?? existing.currency ?? 'UYU',
+                createdAt: req.body.createdAt ?? existing.createdAt,
+            };
+            if (payload.amount !== undefined && !(payload.amount > 0)) {
+                return res.status(400).json({ message: 'amount must be greater than zero' });
+            }
+            const newTicketStatus =
+                payload.status === 'Pagado'
+                    ? 'Pagado'
+                    : payload.status === 'Facturar'
+                        ? 'Facturar'
+                        : undefined;
+            db.run(
+                `UPDATE payments
+               SET invoice = ?, ticket_id = ?, ticket_title = ?, client = ?, client_id = ?, amount = ?, status = ?, method = ?, note = ?, concept = ?, currency = ?, createdAt = ?
+               WHERE id = ?`,
+                [
+                    payload.invoice,
+                    payload.ticket_id,
+                    payload.ticket_title,
+                    payload.client,
+                    payload.client_id,
+                    payload.amount,
+                    payload.status,
+                    payload.method,
+                    payload.note,
+                    payload.concept,
+                    payload.currency,
+                    payload.createdAt,
+                    req.params.id,
+                ],
+                function (updateErr) {
+                    if (updateErr) return res.status(500).json({ message: updateErr.message });
+                    if (newTicketStatus && payload.ticket_id) {
+                        updateTicketStatus(payload.ticket_id, newTicketStatus);
+                    }
+                    db.get('SELECT * FROM payments WHERE id = ?', [req.params.id], async (selectErr, row) => {
+                        if (selectErr) return res.status(500).json({ message: selectErr.message });
+                        const updatedPayment = mapPaymentRow(row);
+
+                        await logEvent({
+                            user: req.user ? req.user.email : 'system',
+                            action: 'update',
+                            resource: 'payment',
+                            details: { paymentId: updatedPayment.id, invoice: updatedPayment.invoice, status: updatedPayment.status },
+                            ip: req.ip
+                        });
+
+                        res.json(updatedPayment);
+                    });
+                }
+            );
         });
+    }
+});
 
-        res.json({ message: 'Payment deleted' });
-    });
+app.delete('/api/payments/:id', async (req, res) => {
+    const engine = getCurrentDbEngine();
+    if (engine === 'mongodb') {
+        const mongoDb = getMongoDb();
+        if (!mongoDb) return res.status(503).json({ message: 'MongoDB disconnected' });
+        const id = req.params.id;
+        try {
+            const { ObjectId } = require('mongodb');
+            const filter = ObjectId.isValid(id) && !id.startsWith('PAY-') ? { _id: new ObjectId(id) } : { id };
+
+            const result = await mongoDb.collection('payments').deleteOne(filter);
+            if (result.deletedCount === 0) return res.status(404).json({ message: 'Payment not found' });
+
+            logEvent({
+                user: 'system',
+                action: 'delete',
+                resource: 'payment',
+                details: { paymentId: id },
+                ip: req.ip
+            }).catch(() => { });
+
+            res.json({ message: 'Payment deleted' });
+        } catch (e) {
+            res.status(500).json({ message: e.message });
+        }
+    } else {
+        db.run('DELETE FROM payments WHERE id = ?', [req.params.id], async function (err) {
+            if (err) return res.status(500).json({ message: err.message });
+            if (this.changes === 0) return res.status(404).json({ message: 'Payment not found' });
+
+            await logEvent({
+                user: req.user ? req.user.email : 'system',
+                action: 'delete',
+                resource: 'payment',
+                details: { paymentId: req.params.id },
+                ip: req.ip
+            });
+
+            res.json({ message: 'Payment deleted' });
+        });
+    }
 });
 
 app.get('/api/contracts', async (req, res) => {
