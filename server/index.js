@@ -1747,13 +1747,75 @@ app.get('/api/clients/:id/contracts', async (req, res) => {
     }
 });
 
-app.post('/api/clients', (req, res) => {
+app.post('/api/clients', async (req, res) => {
     const { name, alias, rut, email, phone, address, contract, notificationsEnabled } = req.body;
     const latitude = req.body.latitude ?? null;
     const longitude = req.body.longitude ?? null;
     if (!name) {
         return res.status(400).json({ message: 'Name is required.' });
     }
+
+    const engine = getCurrentDbEngine();
+
+    if (engine === 'mongodb') {
+        const mongoDb = getMongoDb();
+        if (!mongoDb) return res.status(503).json({ message: 'MongoDB disconnected' });
+
+        // Check for duplicate email if provided
+        if (email) {
+            const existing = await mongoDb.collection('clients').findOne({ email });
+            if (existing) {
+                return res.status(409).json({ message: `Client with email '${email}' already exists.` });
+            }
+        }
+
+        // Generate sequential numeric ID
+        const counter = await mongoDb.collection('counters').findOneAndUpdate(
+            { _id: 'clientId' },
+            { $inc: { seq: 1 } },
+            { upsert: true, returnDocument: 'after' }
+        );
+        const seqId = counter ? counter.seq : 1;
+        // If counter was just created (seq returned might be 1 if upsert worked a certain way, or we initialize)
+        // Actually findOneAndUpdate with upsert creates if not exists.
+        // If it didn't exist, we start at MAX(existing id) + 1 to be safe? 
+        // Safer approach if importing data: initially set counter to max ID.
+        // For now, assuming seqId is usable.
+
+        const newClient = {
+            id: seqId, // Store as number for sorting/querying
+            name,
+            alias: alias || null,
+            rut: rut || null,
+            email: email || null,
+            phone: phone || null,
+            address: address || null,
+            latitude: latitude,
+            longitude: longitude,
+            contract: contract === true ? 1 : 0,
+            notifications_enabled: notificationsEnabled === true ? 1 : 0,
+            createdAt: new Date(),
+            updatedAt: new Date()
+        };
+
+        try {
+            const result = await mongoDb.collection('clients').insertOne(newClient);
+            const clientWithId = { ...newClient, _id: result.insertedId, id: String(seqId) };
+
+            logEvent({
+                user: req.user ? req.user.email : 'system',
+                action: 'create',
+                resource: 'client',
+                details: { clientId: clientWithId.id, name: clientWithId.name },
+                ip: req.ip
+            }).catch(() => { });
+
+            return res.status(201).json(clientWithId);
+        } catch (e) {
+            return res.status(500).json({ message: e.message });
+        }
+    }
+
     const contractValue = contract === true ? 1 : 0;
     const notificationsValue = notificationsEnabled === true ? 1 : 0; // Default false
     db.run(
@@ -1864,10 +1926,87 @@ app.post('/api/clients/:id/avatar', avatarUpload.single('avatar'), (req, res) =>
     });
 });
 
-app.put('/api/clients/:id', (req, res) => {
+app.put('/api/clients/:id', async (req, res) => {
     const { name, alias, rut, email, phone, address, contract, notificationsEnabled } = req.body;
     const latitude = req.body.latitude;
     const longitude = req.body.longitude;
+
+    const engine = getCurrentDbEngine();
+
+    if (engine === 'mongodb') {
+        const mongoDb = getMongoDb();
+        if (!mongoDb) return res.status(503).json({ message: 'MongoDB disconnected' });
+        const id = req.params.id;
+
+        const { ObjectId } = require('mongodb');
+        // Try finding by _id or numeric id
+        const numId = Number(id);
+        const filter = {
+            $or: [
+                { id: !isNaN(numId) ? numId : id },
+                { _id: ObjectId.isValid(id) ? new ObjectId(id) : null },
+                { id: String(id) }
+            ]
+        };
+
+        try {
+            // Check email dupe if changing
+            if (email) {
+                const dupe = await mongoDb.collection('clients').findOne({ email, id: { $ne: !isNaN(numId) ? numId : id }, _id: { $ne: ObjectId.isValid(id) ? new ObjectId(id) : null } });
+                // Note: excluding current doc is tricky with mixed types, but let's try strict email check first
+                if (dupe) {
+                    // Double check if it's the SAME document
+                    const isSame = (dupe.id == id) || (String(dupe._id) === String(id));
+                    if (!isSame) return res.status(409).json({ message: `Client with email '${email}' already exists.` });
+                }
+            }
+
+            const updateFields = {};
+            if (name !== undefined) updateFields.name = name;
+            if (alias !== undefined) updateFields.alias = alias;
+            if (rut !== undefined) updateFields.rut = rut;
+            if (email !== undefined) updateFields.email = email;
+            if (phone !== undefined) updateFields.phone = phone;
+            if (address !== undefined) updateFields.address = address;
+            if (latitude !== undefined) updateFields.latitude = latitude;
+            if (longitude !== undefined) updateFields.longitude = longitude;
+            if (contract !== undefined) updateFields.contract = contract === true ? 1 : 0;
+            if (notificationsEnabled !== undefined) updateFields.notifications_enabled = notificationsEnabled === true ? 1 : 0;
+            updateFields.updatedAt = new Date();
+
+            const result = await mongoDb.collection('clients').findOneAndUpdate(
+                filter,
+                { $set: updateFields },
+                { returnDocument: 'after' }
+            );
+
+            if (!result) return res.status(404).json({ message: 'Client not found' });
+
+            // result.value might be the doc (depending on driver version), or result itself is doc if returnDocument used? 
+            // In newer driver findOneAndUpdate returns result object, result.value is the doc.
+            // Wait, result is the doc if using returnDocument in some versions or result.value. 
+            // Let's assume standard behavior or safely re-fetch if unsure, but result is usually returned directly or in value.
+            // Actually standard `findOneAndUpdate` returns an object `{ lastErrorObject, value, ok }`.
+
+            const updatedDoc = result || await mongoDb.collection('clients').findOne(filter);
+
+            logEvent({
+                user: req.user ? req.user.email : 'system',
+                action: 'update',
+                resource: 'client',
+                details: { clientId: updatedDoc.id || String(updatedDoc._id), name: updatedDoc.name },
+                ip: req.ip
+            }).catch(() => { });
+
+            return res.json({
+                ...updatedDoc,
+                id: updatedDoc.id ? String(updatedDoc.id) : String(updatedDoc._id)
+            });
+
+        } catch (e) {
+            return res.status(500).json({ message: e.message });
+        }
+    }
 
     db.get('SELECT * FROM clients WHERE id = ?', [req.params.id], (getErr, existing) => {
         if (getErr) return res.status(500).json({ message: getErr.message });
@@ -1930,7 +2069,41 @@ app.put('/api/clients/:id', (req, res) => {
     });
 });
 
-app.delete('/api/clients/:id', (req, res) => {
+app.delete('/api/clients/:id', async (req, res) => {
+    const engine = getCurrentDbEngine();
+    if (engine === 'mongodb') {
+        const mongoDb = getMongoDb();
+        if (!mongoDb) return res.status(503).json({ message: 'MongoDB disconnected' });
+        const id = req.params.id;
+
+        const { ObjectId } = require('mongodb');
+        const numId = Number(id);
+        const filter = {
+            $or: [
+                { id: !isNaN(numId) ? numId : id },
+                { _id: ObjectId.isValid(id) ? new ObjectId(id) : null },
+                { id: String(id) }
+            ]
+        };
+
+        try {
+            const result = await mongoDb.collection('clients').deleteOne(filter);
+            if (result.deletedCount === 0) return res.status(404).json({ message: 'Client not found' });
+
+            logEvent({
+                user: 'system',
+                action: 'delete',
+                resource: 'client',
+                details: { clientId: id },
+                ip: req.ip
+            }).catch(() => { });
+
+            return res.json({ message: 'Client deleted' });
+        } catch (e) {
+            return res.status(500).json({ message: e.message });
+        }
+    }
+
     db.run('DELETE FROM clients WHERE id = ?', [req.params.id], async function (err) {
         if (err) return res.status(500).json({ message: err.message });
         if (this.changes === 0) return res.status(404).json({ message: 'Client not found.' });
