@@ -2834,7 +2834,7 @@ app.get('/api/contracts', async (req, res) => {
                 const client = clientMap[String(c.clientId)] || {};
                 return {
                     ...c,
-                    id: String(c._id),
+                    id: String(c.id || c._id),
                     clientName: client.name || ''
                 };
             });
@@ -2877,7 +2877,16 @@ app.post('/api/contracts', async (req, res) => {
             const mongoDb = getMongoDb();
             if (!mongoDb) return res.status(503).json({ message: 'MongoDB disconnected' });
 
+            // Generate sequential numeric ID
+            const counter = await mongoDb.collection('counters').findOneAndUpdate(
+                { _id: 'contractId' },
+                { $inc: { seq: 1 } },
+                { upsert: true, returnDocument: 'after' }
+            );
+            const seqId = counter ? counter.seq : 1;
+
             const newContract = {
+                id: seqId,
                 clientId: String(clientId),
                 title,
                 contract_name: title, // maintain both
@@ -2906,7 +2915,7 @@ app.post('/api/contracts', async (req, res) => {
 
             const fullContract = {
                 ...newContract,
-                id: String(result.insertedId),
+                id: String(newContract.id || result.insertedId),
                 _id: result.insertedId,
                 clientName: client?.name || '',
                 clientPhone: client?.phone || '',
@@ -5895,6 +5904,88 @@ app.post('/api/system/fix-repository', async (req, res) => {
             updated: updatedCount,
             errors: errorCount,
             errorDetails: errors.slice(0, 10)
+        });
+
+    } catch (e) {
+        res.status(500).json({ message: e.message });
+    }
+});
+
+app.post('/api/system/fix-contracts', async (req, res) => {
+    const engine = getCurrentDbEngine();
+    if (engine !== 'mongodb') {
+        return res.status(400).json({ message: 'Only available for MongoDB' });
+    }
+
+    try {
+        const mongoDb = getMongoDb();
+        if (!mongoDb) return res.status(503).json({ message: 'MongoDB disconnected' });
+
+        const { ObjectId } = require('mongodb');
+
+        const contracts = await mongoDb.collection('contracts').find({}).sort({ createdAt: 1 }).toArray();
+        let updatedCount = 0;
+        let clientsFixed = 0;
+
+        // Find max existing numeric ID
+        let maxId = 0;
+        contracts.forEach(c => {
+            if (typeof c.id === 'number' && c.id > maxId) maxId = c.id;
+        });
+
+        await mongoDb.collection('counters').updateOne(
+            { _id: 'contractId' },
+            { $set: { seq: maxId } },
+            { upsert: true }
+        );
+
+        let currentSeq = maxId;
+
+        for (const contract of contracts) {
+            const updates = {};
+            let needsUpdate = false;
+
+            // Fix ID if it's not numeric
+            if (typeof contract.id !== 'number') {
+                currentSeq++;
+                updates.id = currentSeq;
+                needsUpdate = true;
+                updatedCount++;
+            }
+
+            // Fix clientId if it's an ObjectId
+            if (contract.clientId && ObjectId.isValid(contract.clientId)) {
+                const client = await mongoDb.collection('clients').findOne({
+                    _id: new ObjectId(contract.clientId)
+                });
+
+                if (client && client.id) {
+                    updates.clientId = String(client.id);
+                    needsUpdate = true;
+                    clientsFixed++;
+                }
+            }
+
+            if (needsUpdate) {
+                await mongoDb.collection('contracts').updateOne(
+                    { _id: contract._id },
+                    { $set: updates }
+                );
+            }
+        }
+
+        // Sync counter
+        await mongoDb.collection('counters').updateOne(
+            { _id: 'contractId' },
+            { $set: { seq: currentSeq } },
+            { upsert: true }
+        );
+
+        res.json({
+            message: 'Contract IDs and clients fixed',
+            idsFixed: updatedCount,
+            clientsFixed,
+            lastId: currentSeq
         });
 
     } catch (e) {
