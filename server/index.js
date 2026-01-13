@@ -18,6 +18,11 @@ const {
     getDbConfigFromFile,
     updateDbConfig,
 } = require('./lib/dbChoice');
+
+// Initialize DB engine immediately
+determineDbEngine().then((engine) => {
+    console.log(`🗄️  Motor de BD seleccionado al inicio: ${engine}`);
+});
 const {
     initMongo,
     getMongoDb,
