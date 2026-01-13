@@ -4058,19 +4058,102 @@ const TICKET_LIST_SELECT_BASE = `
 `;
 
 // Ticket routes
-app.get('/api/tickets', (req, res) => {
-    db.all(`${TICKET_LIST_SELECT_BASE} ORDER BY t.createdAt DESC`, [], (err, rows) => {
-        if (err) return res.status(500).json({ message: err.message });
-        res.json(rows.map(mapTicketRow));
-    });
+app.get('/api/tickets', async (req, res) => {
+    const engine = getCurrentDbEngine();
+    if (engine === 'mongodb') {
+        try {
+            const mongoDb = getMongoDb();
+            if (!mongoDb) return res.status(503).json({ message: 'MongoDB disconnected' });
+
+            const tickets = await mongoDb.collection('tickets')
+                .find({})
+                .sort({ createdAt: -1 })
+                .toArray();
+
+            // Optimización: traer solo los clientes necesarios
+            const clientIds = [...new Set(tickets.map(t => t.clientId))];
+            const { ObjectId } = require('mongodb');
+
+            const clients = await mongoDb.collection('clients').find({
+                $or: [
+                    { id: { $in: clientIds.map(Number).filter(n => !isNaN(n)) } },
+                    { _id: { $in: clientIds.map(id => ObjectId.isValid(id) ? new ObjectId(id) : null).filter(Boolean) } },
+                    { id: { $in: clientIds.map(String) } }
+                ]
+            }).toArray();
+
+            const clientMap = {};
+            clients.forEach(c => clientMap[String(c._id)] = c);
+            clients.forEach(c => clientMap[String(c.id)] = c);
+
+            const mapped = tickets.map(t => {
+                const client = clientMap[String(t.clientId)] || {};
+                return {
+                    ...t,
+                    id: String(t._id),
+                    clientName: client.name || '',
+                    hasActiveContract: client.contract ? 1 : 0 // Adaptar a lo que espera el frontend
+                };
+            });
+
+            return res.json(mapped);
+        } catch (e) {
+            res.status(500).json({ message: e.message });
+        }
+    } else {
+        db.all(`${TICKET_LIST_SELECT_BASE} ORDER BY t.createdAt DESC`, [], (err, rows) => {
+            if (err) return res.status(500).json({ message: err.message });
+            res.json(rows.map(mapTicketRow));
+        });
+    }
 });
 
-app.get('/api/tickets/:id', (req, res) => {
-    db.get(`${TICKET_SELECT_BASE} WHERE t.id = ?`, [req.params.id], (err, row) => {
-        if (err) return res.status(500).json({ message: err.message });
-        if (!row) return res.status(404).json({ message: 'Ticket not found' });
-        res.json(mapTicketRow(row));
-    });
+app.get('/api/tickets/:id', async (req, res) => {
+    const engine = getCurrentDbEngine();
+    const id = req.params.id;
+
+    if (engine === 'mongodb') {
+        try {
+            const mongoDb = getMongoDb();
+            if (!mongoDb) return res.status(503).json({ message: 'MongoDB disconnected' });
+
+            const { ObjectId } = require('mongodb');
+            const filter = ObjectId.isValid(id) ? { _id: new ObjectId(id) } : { id };
+
+            const ticket = await mongoDb.collection('tickets').findOne(filter);
+            if (!ticket) return res.status(404).json({ message: 'Ticket not found' });
+
+            let client = {};
+            if (ticket.clientId) {
+                client = await mongoDb.collection('clients').findOne({
+                    $or: [{ id: Number(ticket.clientId) }, { _id: ObjectId.isValid(ticket.clientId) ? new ObjectId(ticket.clientId) : null }]
+                }) || {};
+            }
+
+            return res.json({
+                ...ticket,
+                id: String(ticket._id),
+                clientName: client.name || '',
+                clientEmail: client.email || '',
+                clientPhone: client.phone || '',
+                clientAddress: client.address || '',
+                // Ensure array fields are arrays
+                annotations: ticket.annotations || [],
+                attachments: ticket.attachments || [],
+                audioNotes: ticket.audioNotes || [],
+                visitData: ticket.visitData || null,
+            });
+
+        } catch (e) {
+            res.status(500).json({ message: e.message });
+        }
+    } else {
+        db.get(`${TICKET_SELECT_BASE} WHERE t.id = ?`, [req.params.id], (err, row) => {
+            if (err) return res.status(500).json({ message: err.message });
+            if (!row) return res.status(404).json({ message: 'Ticket not found' });
+            res.json(mapTicketRow(row));
+        });
+    }
 });
 
 app.get('/api/groups', async (req, res) => {
