@@ -1627,7 +1627,7 @@ app.get('/api/clients', async (req, res) => {
 
                 return {
                     ...client,
-                    id: String(client._id),
+                    id: client.id ? String(client.id) : String(client._id), // Prefer legacy numeric ID if available
                     contract: latestContract[0]?.title || null
                 };
             }));
@@ -4234,8 +4234,10 @@ app.get('/api/tickets', async (req, res) => {
             }).toArray();
 
             const clientMap = {};
-            clients.forEach(c => clientMap[String(c._id)] = c);
-            clients.forEach(c => clientMap[String(c.id)] = c);
+            clients.forEach(c => {
+                if (c._id) clientMap[String(c._id)] = c;
+                if (c.id) clientMap[String(c.id)] = c;
+            });
 
             const mapped = tickets.map(t => {
                 const client = clientMap[String(t.clientId)] || {};
@@ -4421,12 +4423,21 @@ app.post('/api/tickets', async (req, res) => {
             const ticketWithId = { ...newTicket, id: String(result.insertedId), _id: result.insertedId };
 
             // Fetch client data for notifications and response
-            const client = await mongoDb.collection('clients').findOne({
-                $or: [
-                    { _id: isNaN(Number(clientId)) ? new ObjectId(clientId) : Number(clientId) },
-                    { id: isNaN(Number(clientId)) ? clientId : Number(clientId) }
-                ]
-            });
+            // Fetch client data for notifications and response
+            let client = null;
+            if (ObjectId.isValid(clientId)) {
+                client = await mongoDb.collection('clients').findOne({ _id: new ObjectId(clientId) });
+            }
+            if (!client) {
+                // Try numeric or string ID search
+                const numId = Number(clientId);
+                client = await mongoDb.collection('clients').findOne({
+                    $or: [
+                        { id: !isNaN(numId) ? numId : clientId },
+                        { id: String(clientId) }
+                    ]
+                });
+            }
 
             const fullTicket = {
                 ...ticketWithId,
