@@ -8,7 +8,7 @@ import {
   flexRender,
   getCoreRowModel,
   getFilteredRowModel,
-
+  getPaginationRowModel,
   getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table";
@@ -122,7 +122,15 @@ export function AccessTable({ data, onUpdate, onCreateNew, onExport }: AccessTab
         );
       },
     },
-
+    {
+      accessorKey: "tipo_equipo",
+      header: "Tipo",
+      cell: ({ row }) => (
+        <span className="text-muted-foreground">
+          {getAccessLabel(row.getValue("tipo_equipo"))}
+        </span>
+      ),
+    },
     {
       accessorKey: "ip",
       header: "IP / URL",
@@ -199,6 +207,7 @@ export function AccessTable({ data, onUpdate, onCreateNew, onExport }: AccessTab
     data,
     columns,
     getCoreRowModel: getCoreRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     onSortingChange: setSorting,
@@ -226,7 +235,33 @@ export function AccessTable({ data, onUpdate, onCreateNew, onExport }: AccessTab
               className="pl-9"
             />
           </div>
-
+          <div className="relative">
+            <Filter className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none z-10" />
+            <Select
+              value={(table.getColumn("tipo_equipo")?.getFilterValue() as string) ?? "all"}
+              onValueChange={(value) =>
+                table.getColumn("tipo_equipo")?.setFilterValue(value === "all" ? "" : value)
+              }
+            >
+              <SelectTrigger className="w-[200px] pl-9">
+                <SelectValue placeholder="Filtrar por tipo" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos los tipos</SelectItem>
+                {ACCESS_TYPES.map((type) => {
+                  const Icon = type.icon;
+                  return (
+                    <SelectItem key={type.value} value={type.value}>
+                      <div className="flex items-center gap-2">
+                        <Icon className="h-4 w-4" />
+                        {type.label}
+                      </div>
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
         {(onCreateNew || onExport) && (
           <TooltipProvider>
@@ -307,9 +342,6 @@ export function AccessTable({ data, onUpdate, onCreateNew, onExport }: AccessTab
             )}
           </TableBody>
         </Table>
-      </div>
-      <div className="text-sm text-muted-foreground w-full text-right">
-        {table.getFilteredRowModel().rows.length} accesos encontrados
       </div>
     </div>
   );

@@ -44,7 +44,7 @@ import { HealthIndicator } from "@/components/health-check";
 
 const SidebarContext = createContext<{ collapsed: boolean; toggle: () => void }>({
   collapsed: false,
-  toggle: () => { },
+  toggle: () => {},
 });
 
 export function SidebarProvider({ children }: { children: React.ReactNode }) {
@@ -132,9 +132,7 @@ type SidebarProfile = {
 const getAvatarUrl = (avatarPath?: string | null) => {
   if (!avatarPath) return undefined;
   if (avatarPath.startsWith("http")) return avatarPath;
-
-  // Como los rewrites a veces fallan en redes mixtas, usamos URL absoluta al backend
-  const base = "http://192.168.99.183:5000";
+  const base = API_URL.replace(/\/api\/?$/, "");
   const normalized = avatarPath.startsWith("/") ? avatarPath : `/${avatarPath}`;
   return `${base}${normalized}`;
 };
@@ -267,8 +265,9 @@ export function SidebarContent() {
 
   return (
     <aside
-      className={`flex h-full flex-col ${collapsed ? "w-20" : "w-56"} ${isMapRoute ? "border-none bg-transparent" : "border-r border-slate-200 bg-white"
-        }`}
+      className={`flex h-full flex-col ${collapsed ? "w-20" : "w-56"} ${
+        isMapRoute ? "border-none bg-transparent" : "border-r border-slate-200 bg-white"
+      }`}
     >
       <div className="flex items-center justify-between px-4 py-3">
         {!collapsed && (
@@ -404,22 +403,22 @@ export function SidebarContent() {
                   <AvatarFallback>{avatarInitials}</AvatarFallback>
                 )}
               </Avatar>
-              {bottomActions.map((item) => (
-                <Tooltip key={item.href}>
-                  <TooltipTrigger asChild>
-                    <Link
-                      href={item.href}
-                      className="rounded-full bg-transparent p-1 text-slate-500 hover:text-slate-900"
-                    >
-                      <item.icon className="h-4 w-4" aria-hidden />
-                      <span className="sr-only">{item.name}</span>
-                    </Link>
-                  </TooltipTrigger>
-                  <TooltipContent side="top" align="center">
-                    Base primaria: {primaryDbName || "No definida"}
-                  </TooltipContent>
-                </Tooltip>
-              ))}
+                  {bottomActions.map((item) => (
+                    <Tooltip key={item.href}>
+                      <TooltipTrigger asChild>
+                        <Link
+                          href={item.href}
+                          className="rounded-full bg-transparent p-1 text-slate-500 hover:text-slate-900"
+                        >
+                          <item.icon className="h-4 w-4" aria-hidden />
+                          <span className="sr-only">{item.name}</span>
+                        </Link>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" align="center">
+                        Base primaria: {primaryDbName || "No definida"}
+                      </TooltipContent>
+                    </Tooltip>
+                  ))}
               <Link href="/notifications" className="text-slate-500 hover:text-slate-900">
                 <Bell className="h-4 w-4" />
               </Link>

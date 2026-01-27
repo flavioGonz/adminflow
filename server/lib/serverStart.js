@@ -61,57 +61,52 @@ async function startServer(app, PORT) {
         console.warn('   Verifica la configuración y reinicia el servidor\n');
     }
 
-    // Determinar motor de BD (hacerlo ANTES de los esquemas)
-    const engine = await determineDbEngine();
-    console.log(`🗄️  Motor de BD: ${engine}\n`);
-
     try {
-        // Inicializar DB (Ahora initDB maneja su propia logica interna segun flags o simplemente la conexion mongo)
+        // Inicializar DB (ahora solo verifica admin en MongoDB)
         await initDB();
         console.log('✅ Base de datos inicializada');
     } catch (dbError) {
         console.error('❌ Error inicializando base de datos:', dbError);
     }
 
-    // Solo ejecutar mantenimiento de esquema SQLite si NO estamos usando Mongo
-    if (engine !== 'mongodb') {
-        try {
-            await ensureTicketSchema();
-            console.log('╨Yo. Esquema de tickets asegurado (SQLite)');
-        } catch (schemaError) {
-            console.error('╨?O Error asegurando la columna assigned_group en tickets:', schemaError);
-        }
-
-        try {
-            await ensureBudgetSchema();
-            console.log('╨Yo. Esquema de presupuestos asegurado (SQLite)');
-        } catch (schemaError) {
-            console.error('╨?O Error asegurando el esquema de presupuestos:', schemaError);
-        }
-
-        try {
-            await ensureProductSchema();
-            console.log('Esquema de productos asegurado (SQLite)');
-        } catch (schemaError) {
-            console.error('Error asegurando el esquema de productos:', schemaError);
-        }
-
-        try {
-            await ensureSupplierSchema();
-            console.log('Esquema de proveedores asegurado (SQLite)');
-        } catch (schemaError) {
-            console.error('Error asegurando el esquema de proveedores:', schemaError);
-        }
-
-        try {
-            await ensureDefaultGroups();
-            console.log('╨Yo. Grupos predeterminados verificados (SQLite)');
-        } catch (groupError) {
-            console.error('╨?O Error asegurando los grupos predeterminados:', groupError);
-        }
-    } else {
-        console.log('ℹ️  Omitiendo esquemas SQLite (Motor MongoDB activo)');
+    try {
+        await ensureTicketSchema();
+        console.log('╨Yo. Esquema de tickets asegurado');
+    } catch (schemaError) {
+        console.error('╨?O Error asegurando la columna assigned_group en tickets:', schemaError);
     }
+
+    try {
+        await ensureBudgetSchema();
+        console.log('╨Yo. Esquema de presupuestos asegurado');
+    } catch (schemaError) {
+        console.error('╨?O Error asegurando el esquema de presupuestos:', schemaError);
+    }
+
+    try {
+        await ensureProductSchema();
+        console.log('Esquema de productos asegurado');
+    } catch (schemaError) {
+        console.error('Error asegurando el esquema de productos:', schemaError);
+    }
+
+    try {
+        await ensureSupplierSchema();
+        console.log('Esquema de proveedores asegurado');
+    } catch (schemaError) {
+        console.error('Error asegurando el esquema de proveedores:', schemaError);
+    }
+
+    try {
+        await ensureDefaultGroups();
+        console.log('╨Yo. Grupos predeterminados verificados');
+    } catch (groupError) {
+        console.error('╨?O Error asegurando los grupos predeterminados:', groupError);
+    }
+
+    // Determinar motor de BD
+    const engine = await determineDbEngine();
+    console.log(`🗄️  Motor de BD: ${engine}\n`);
 
     // Iniciar servidor HTTP
     app.listen(PORT, '0.0.0.0', () => {

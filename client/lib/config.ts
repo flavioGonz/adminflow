@@ -17,12 +17,8 @@ const resolveBrowserApiBase = () => {
 };
 
 const explicitApiUrl = process.env.NEXT_PUBLIC_API_URL;
+export const API_BASE_URL =
+    explicitApiUrl?.replace(/\/api\/?$/, "") ||
+    (typeof window !== "undefined" ? resolveBrowserApiBase() : "http://localhost:5000");
 
-// Force relative path in browser to use Next.js proxy (avoids CORS and mixed content issues)
-// On server side, use the explicit URL or default to localhost
-export const API_URL =
-    typeof window !== "undefined"
-        ? "/api"
-        : explicitApiUrl || "http://localhost:5000/api";
-
-export const API_BASE_URL = API_URL.replace(/\/api\/?$/, "");
+export const API_URL = explicitApiUrl || `${API_BASE_URL}/api`;

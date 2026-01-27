@@ -21,7 +21,7 @@ const initMongo = async ({ uri, dbName } = {}) => {
   }
 
   if (clientInstance) {
-    await clientInstance.close().catch(() => {});
+    await clientInstance.close().catch(() => { });
   }
 
   clientInstance = new MongoClient(connectionUri, {
@@ -30,10 +30,10 @@ const initMongo = async ({ uri, dbName } = {}) => {
   await clientInstance.connect();
   cachedDb = clientInstance.db(databaseName);
   currentParams = { uri: connectionUri, dbName: databaseName };
-  await cachedDb.createCollection("configurations").catch(() => {});
-  await cachedDb.createCollection("notifications").catch(() => {});
-  await cachedDb.createCollection("users").catch(() => {});
-  await cachedDb.createCollection("groups").catch(() => {});
+  await cachedDb.createCollection("configurations").catch(() => { });
+  await cachedDb.createCollection("notifications").catch(() => { });
+  await cachedDb.createCollection("users").catch(() => { });
+  await cachedDb.createCollection("groups").catch(() => { });
   console.log(`✅ [MongoDB] Conectado a ${databaseName}`);
   console.log(`   URI: ${connectionUri}`);
   return cachedDb;
@@ -66,11 +66,58 @@ const connectToMongoDirect = async (uri, dbName) => {
 
 const closeMongoConnection = async () => {
   if (clientInstance) {
-    await clientInstance.close().catch(() => {});
+    await clientInstance.close().catch(() => { });
     clientInstance = null;
     cachedDb = null;
     currentParams = null;
   }
+};
+
+/**
+ * Get next auto-increment ID for a collection
+ * Uses a 'counters' collection to track the last ID for each collection
+ * @param {string} collectionName - Name of the collection
+ * @returns {Promise<number>} - Next ID number
+ */
+const getNextId = async (collectionName) => {
+  const db = getMongoDb();
+  if (!db) {
+    throw new Error('MongoDB not connected');
+  }
+
+  // Check if counter exists
+  const counter = await db.collection('counters').findOne({ _id: collectionName });
+
+  if (!counter) {
+    // If no counter, find max ID in the target collection
+    const maxItem = await db.collection(collectionName)
+      .find({ id: { $type: 'number' } })
+      .sort({ id: -1 })
+      .limit(1)
+      .toArray();
+
+    let startVal = 0;
+    if (maxItem.length > 0) {
+      startVal = maxItem[0].id;
+    }
+
+    // Initialize counter
+    await db.collection('counters').updateOne(
+      { _id: collectionName },
+      { $set: { sequence: startVal + 1 } },
+      { upsert: true }
+    );
+
+    return startVal + 1;
+  }
+
+  const result = await db.collection('counters').findOneAndUpdate(
+    { _id: collectionName },
+    { $inc: { sequence: 1 } },
+    { upsert: true, returnDocument: 'after' }
+  );
+
+  return result.value.sequence;
 };
 
 module.exports = {
@@ -79,4 +126,5 @@ module.exports = {
   getMongoClient,
   connectToMongoDirect,
   closeMongoConnection,
+  getNextId,
 };

@@ -3,6 +3,12 @@ const router = express.Router();
 const { ObjectId } = require('mongodb');
 const { getMongoDb } = require('../lib/mongoClient');
 const { logEvent } = require('../lib/auditService');
+const { getMongoFilter, buildClientReferenceFilter } = require('../lib/clientFilters');
+
+const buildAccessFilter = async (db, clientId) => {
+  const clientDoc = await db.collection('clients').findOne(getMongoFilter(clientId));
+  return buildClientReferenceFilter(clientId, clientDoc);
+};
 
 // Middleware para validar ObjectId
 const validateObjectId = (req, res, next) => {
@@ -21,8 +27,9 @@ router.get('/clients/:id/access', async (req, res) => {
             return res.json([]);
         }
 
+        const filter = await buildAccessFilter(db, req.params.id);
         const accesses = await db.collection('client_accesses')
-            .find({ clientId: req.params.id })
+            .find(filter)
             .sort({ createdAt: -1 })
             .toArray();
 
@@ -148,6 +155,40 @@ router.delete('/access/:accessId', async (req, res) => {
     } catch (error) {
         console.error('Error deleting access:', error);
         res.status(500).json({ message: 'Error al eliminar acceso' });
+    }
+});
+
+// DEPRECATED COMPATIBILITY ROUTE
+// GET /api/clients/:id/repository - Obtener accesos con formato legacy para el timeline
+router.get('/clients/:id/repository', async (req, res) => {
+    try {
+        const db = getMongoDb();
+        if (!db) {
+            return res.json([]);
+        }
+
+        const filter = await buildAccessFilter(db, req.params.id);
+        const accesses = await db.collection('client_accesses')
+            .find(filter)
+            .sort({ createdAt: -1 })
+            .toArray();
+
+        // Map to RepositoryItem interface expected by frontend
+        const repositoryItems = accesses.map(item => ({
+            id: item._id,
+            equipo: item.equipo,
+            usuario: item.user,
+            password: item.pass,
+            mac_serie: item.serieMac,
+            comentarios: item.comentarios,
+            createdAt: item.createdAt,
+            updatedAt: item.updatedAt
+        }));
+
+        res.json(repositoryItems);
+    } catch (error) {
+        console.error('Error getting repository items:', error);
+        res.status(500).json({ message: 'Error al obtener items de repositorio' });
     }
 });
 

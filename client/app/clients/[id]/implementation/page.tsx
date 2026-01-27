@@ -7,7 +7,7 @@ import { PatchPanelManager, type PatchPanelManagerHandle } from "@/components/cl
 import { PageHeader } from "@/components/layout/page-header";
 import { ShinyText } from "@/components/ui/shiny-text";
 import { Button } from "@/components/ui/button";
-import { FileText, FileSpreadsheet, Rocket, User, Users, ImageIcon } from "lucide-react";
+import { FileText, FileSpreadsheet, Rocket, User, Users } from "lucide-react";
 import { API_URL } from "@/lib/http";
 
 export default function ImplementationPage() {
@@ -100,7 +100,6 @@ export default function ImplementationPage() {
                 />
 
                 <PatchPanelManager ref={managerRef} clientId={clientId} />
-
             </div>
         </PageTransition>
     );

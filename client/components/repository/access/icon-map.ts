@@ -18,16 +18,6 @@ import {
     LucideIcon,
     Laptop,
     TerminalSquare,
-    Mail,
-    MonitorDot,
-    Terminal,
-    Layers,
-    ServerCog,
-    Radio,
-    Settings2,
-    LockKeyhole,
-    BatteryCharging,
-    Globe
 } from "lucide-react";
 
 export const ACCESS_TYPES = [
@@ -48,16 +38,6 @@ export const ACCESS_TYPES = [
     { value: "celular", label: "Celular", icon: Smartphone },
     { value: "virtual-linux", label: "Virtual Linux", icon: TerminalSquare },
     { value: "virtual-windows", label: "Virtual Windows", icon: Laptop },
-    { value: "email", label: "Email", icon: Mail },
-    { value: "pc-windows", label: "PC Windows", icon: MonitorDot },
-    { value: "pc-linux", label: "PC Linux", icon: Terminal },
-    { value: "proxmox", label: "Hypervisor Proxmox", icon: Layers },
-    { value: "esxi", label: "Hypervisor Esxi", icon: ServerCog },
-    { value: "ap", label: "Access Point", icon: Radio },
-    { value: "controller", label: "Controladora", icon: Settings2 },
-    { value: "access-control", label: "Control de Acceso", icon: LockKeyhole },
-    { value: "ups", label: "UPS", icon: BatteryCharging },
-    { value: "web", label: "Acceso Web", icon: Globe },
 ] as const;
 
 export const getAccessIcon = (type: string): LucideIcon => {

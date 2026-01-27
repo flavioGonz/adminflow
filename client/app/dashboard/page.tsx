@@ -50,16 +50,8 @@ import {
   Eye,
   EyeOff,
   GripVertical,
-  LayoutDashboard,
-  Timer,
-  RefreshCw,
-  MoreHorizontal,
-  ArrowUp,
-  ArrowDown
+  LayoutDashboard
 } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
-import { format } from "date-fns";
-import { es } from "date-fns/locale";
 import { Client } from "@/types/client";
 import {
   DndContext,
@@ -96,7 +88,6 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { ShinyText } from "@/components/ui/shiny-text";
-import { cn } from "@/lib/utils";
 
 const ClientMap = dynamic(() => import("@/components/dashboard/client-map"), {
   ssr: false,
@@ -105,11 +96,6 @@ const ClientMap = dynamic(() => import("@/components/dashboard/client-map"), {
       <p className="text-sm text-muted-foreground">Cargando mapa...</p>
     </div>
   ),
-});
-
-const SystemTopology = dynamic(() => import("@/components/dashboard/system-topology"), {
-  ssr: false,
-  loading: () => <div className="h-full flex items-center justify-center"><p className="text-sm text-muted-foreground">Cargando topología...</p></div>
 });
 
 ChartJS.register(
@@ -143,8 +129,8 @@ type WidgetConfig = {
   cols: 1 | 2 | 3 | 4;
 };
 
-// Componente de contador animado mejorado con framer-motion
-function AnimatedCounter({ value, duration = 1.5 }: { value: number; duration?: number }) {
+// Componente de contador animado
+function AnimatedCounter({ value, duration = 2000 }: { value: number; duration?: number }) {
   const [count, setCount] = useState(0);
 
   useEffect(() => {
@@ -153,15 +139,13 @@ function AnimatedCounter({ value, duration = 1.5 }: { value: number; duration?: 
 
     const animate = (currentTime: number) => {
       if (!startTime) startTime = currentTime;
-      const progress = Math.min((currentTime - startTime) / (duration * 1000), 1);
+      const progress = Math.min((currentTime - startTime) / duration, 1);
 
       const easeOutQuart = 1 - Math.pow(1 - progress, 4);
       setCount(Math.floor(easeOutQuart * value));
 
       if (progress < 1) {
         animationFrame = requestAnimationFrame(animate);
-      } else {
-        setCount(value);
       }
     };
 
@@ -169,41 +153,7 @@ function AnimatedCounter({ value, duration = 1.5 }: { value: number; duration?: 
     return () => cancelAnimationFrame(animationFrame);
   }, [value, duration]);
 
-  return <motion.span
-    initial={{ opacity: 0, y: 10 }}
-    animate={{ opacity: 1, y: 0 }}
-    transition={{ duration: 0.5 }}
-  >
-    {count.toLocaleString()}
-  </motion.span>;
-}
-
-// Sparkline simplificado
-function Sparkline({ data, color }: { data: number[], color: string }) {
-  const max = Math.max(...data);
-  const min = Math.min(...data);
-  const range = max - min || 1;
-  const width = 100;
-  const height = 30;
-
-  const points = data.map((d, i) => {
-    const x = (i / (data.length - 1)) * width;
-    const y = height - ((d - min) / range) * height;
-    return `${x},${y}`;
-  }).join(' ');
-
-  return (
-    <svg width={width} height={height} className="overflow-visible">
-      <polyline
-        fill="none"
-        stroke={color}
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        points={points}
-      />
-    </svg>
-  );
+  return <span>{count}</span>;
 }
 
 // Componente sortable para widgets
@@ -266,7 +216,6 @@ export default function DashboardPage() {
     { id: 'map', name: 'Ubicación de Clientes', enabled: true, order: 4, cols: 2 },
     { id: 'activities', name: 'Actividad Reciente', enabled: true, order: 5, cols: 2 },
     { id: 'online-users', name: 'Usuarios del Sistema', enabled: true, order: 6, cols: 2 },
-    { id: 'system-health', name: 'Estado del Stack', enabled: true, order: 7, cols: 2 },
   ]);
 
   const sensors = useSensors(
@@ -275,14 +224,6 @@ export default function DashboardPage() {
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
-
-  const [isMounted, setIsMounted] = useState(false);
-
-  useEffect(() => {
-    setIsMounted(true);
-  }, []);
-
-  // ... (existing effects)
 
   useEffect(() => {
     const fetchCounts = async () => {
@@ -621,40 +562,22 @@ export default function DashboardPage() {
 
   const renderWidget = (widgetId: string) => {
     switch (widgetId) {
-      case 'system-health':
-        return (
-          <Card className="h-full border border-slate-200 dark:border-slate-800 shadow-sm rounded-xl bg-white dark:bg-slate-900 overflow-hidden group">
-            <CardHeader className="p-5 pb-0">
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="text-sm font-bold tracking-tight">Estado del Sistema en Vivo</CardTitle>
-                </div>
-                <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-600">
-                  <Activity className="h-4 w-4" />
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="p-0 h-[300px]">
-              <SystemTopology />
-            </CardContent>
-          </Card>
-        );
-
       case 'line-chart':
         return (
-          <Card className="h-full border border-slate-200 dark:border-slate-800 shadow-sm rounded-xl bg-white dark:bg-slate-900 overflow-hidden group">
-            <CardHeader className="p-5 pb-0">
+          <Card className="h-full border-0 shadow-lg overflow-hidden">
+            <CardHeader className="relative">
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle className="text-sm font-bold tracking-tight">Actividad de Tickets</CardTitle>
+                  <CardTitle className="text-lg font-semibold">Actividad de Tickets</CardTitle>
+                  <CardDescription className="mt-1">
+                    Comparación semanal de tickets abiertos vs cerrados
+                  </CardDescription>
                 </div>
-                <div className="p-2 rounded-lg bg-blue-500/10 text-blue-600">
-                  <Activity className="h-4 w-4" />
-                </div>
+                <Activity className="h-5 w-5 text-blue-600" />
               </div>
             </CardHeader>
-            <CardContent className="p-5">
-              <div className="h-[250px]">
+            <CardContent className="relative">
+              <div className="h-[300px]">
                 <Line data={chartData} options={chartOptions} />
               </div>
             </CardContent>
@@ -663,19 +586,20 @@ export default function DashboardPage() {
 
       case 'doughnut-chart':
         return (
-          <Card className="h-full border border-slate-200 dark:border-slate-800 shadow-sm rounded-xl bg-white dark:bg-slate-900 overflow-hidden group">
-            <CardHeader className="p-5 pb-0">
+          <Card className="h-full border-0 shadow-lg overflow-hidden">
+            <CardHeader className="relative">
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle className="text-sm font-bold tracking-tight">Distribución de Estados</CardTitle>
+                  <CardTitle className="text-lg font-semibold">Estado de Tickets</CardTitle>
+                  <CardDescription className="mt-1">
+                    Distribución actual
+                  </CardDescription>
                 </div>
-                <div className="p-2 rounded-lg bg-amber-500/10 text-amber-500">
-                  <TrendingUp className="h-4 w-4" />
-                </div>
+                <TrendingUp className="h-5 w-5 text-amber-500" />
               </div>
             </CardHeader>
-            <CardContent className="p-5">
-              <div className="h-[250px]">
+            <CardContent className="relative">
+              <div className="h-[300px]">
                 <Doughnut data={doughnutChartData} options={doughnutChartOptions} />
               </div>
             </CardContent>
@@ -684,19 +608,20 @@ export default function DashboardPage() {
 
       case 'bar-chart':
         return (
-          <Card className="h-full border border-slate-200 dark:border-slate-800 shadow-sm rounded-xl bg-white dark:bg-slate-900 overflow-hidden group">
-            <CardHeader className="p-5 pb-0">
+          <Card className="h-full border-0 shadow-lg overflow-hidden">
+            <CardHeader className="relative">
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle className="text-sm font-bold tracking-tight">Estado de Presupuestos</CardTitle>
+                  <CardTitle className="text-lg font-semibold">Presupuestos Mensuales</CardTitle>
+                  <CardDescription className="mt-1">
+                    Aprobados vs Pendientes
+                  </CardDescription>
                 </div>
-                <div className="p-2 rounded-lg bg-violet-500/10 text-violet-600">
-                  <FileText className="h-4 w-4" />
-                </div>
+                <FileText className="h-5 w-5 text-violet-600" />
               </div>
             </CardHeader>
-            <CardContent className="p-5">
-              <div className="h-[250px]">
+            <CardContent className="relative">
+              <div className="h-[300px]">
                 <Bar data={barChartData} options={chartOptions} />
               </div>
             </CardContent>
@@ -727,19 +652,20 @@ export default function DashboardPage() {
 
       case 'map':
         return (
-          <Card className="h-full border border-slate-200 dark:border-slate-800 shadow-sm rounded-xl bg-white dark:bg-slate-900 overflow-hidden group">
-            <CardHeader className="p-5">
+          <Card className="h-full border-0 shadow-lg overflow-hidden">
+            <CardHeader className="relative pb-0">
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle className="text-sm font-bold tracking-tight">Geo-Localización</CardTitle>
+                  <CardTitle className="text-lg font-semibold">Ubicación de Clientes</CardTitle>
+                  <CardDescription className="mt-1">
+                    Mapa interactivo con {clientDots.length} clientes
+                  </CardDescription>
                 </div>
-                <div className="p-2 rounded-lg bg-blue-500/10 text-blue-600">
-                  <Map className="h-4 w-4" />
-                </div>
+                <Map className="h-5 w-5 text-blue-600" />
               </div>
             </CardHeader>
-            <CardContent className="p-0">
-              <div className="h-[350px] w-full grayscale-[0.2] hover:grayscale-0 transition-all duration-500">
+            <CardContent className="relative p-0 mt-4">
+              <div className="h-[400px] w-full">
                 <ClientMap clientDots={clientDots} />
               </div>
             </CardContent>
@@ -748,41 +674,43 @@ export default function DashboardPage() {
 
       case 'activities':
         return (
-          <Card className="h-full border border-slate-200 dark:border-slate-800 shadow-sm rounded-xl bg-white dark:bg-slate-900 overflow-hidden group">
-            <CardHeader className="p-5">
+          <Card className="h-full border-0 shadow-lg overflow-hidden">
+            <CardHeader className="relative">
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle className="text-sm font-bold tracking-tight">Auditoría del Sistema</CardTitle>
+                  <CardTitle className="text-lg font-semibold">Actividad Reciente</CardTitle>
+                  <CardDescription className="mt-1">
+                    Últimas actualizaciones del sistema
+                  </CardDescription>
                 </div>
-                <div className="p-2 rounded-lg bg-amber-500/10 text-amber-600">
-                  <Clock className="h-4 w-4" />
-                </div>
+                <Clock className="h-5 w-5 text-amber-600" />
               </div>
             </CardHeader>
-            <CardContent className="px-5 pb-5 space-y-3">
+            <CardContent className="relative space-y-3">
               {recentActivities.length > 0 ? (
                 recentActivities.map((activity, index) => (
                   <div
                     key={index}
-                    className="flex items-start gap-3 p-3 rounded-lg bg-slate-50/50 dark:bg-slate-800/30 border border-slate-100 dark:border-slate-800 hover:border-blue-500/30 transition-all duration-200 group/item"
+                    className="flex items-start gap-3 p-3 rounded-lg bg-white/50 dark:bg-black/20 border border-border/50 hover:border-amber-500/50 transition-all duration-200 hover:shadow-md group"
                   >
-                    <div className="mt-0.5 p-1.5 rounded bg-white dark:bg-slate-700 shadow-sm text-blue-500">
-                      <Activity className="h-3 w-3" />
+                    <div className="p-2 rounded-full bg-amber-500/10 group-hover:bg-amber-500/20 transition-colors">
+                      <Activity className="h-4 w-4 text-amber-600" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs font-bold text-slate-700 dark:text-slate-200 line-clamp-1 tracking-tight">
+                      <p className="text-sm font-medium text-foreground line-clamp-2">
                         {activity.action}
                       </p>
-                      <p className="text-[10px] text-blue-500 font-bold mt-1 uppercase">
-                        {new Date(activity.timestamp).toLocaleTimeString()}
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {activity.details} - {new Date(activity.timestamp).toLocaleTimeString()}
                       </p>
                     </div>
+                    <Badge variant="outline" className="text-[10px] shrink-0">
+                      LOG
+                    </Badge>
                   </div>
                 ))
               ) : (
-                <div className="flex flex-col items-center justify-center py-6">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Sin actividad</p>
-                </div>
+                <p className="text-sm text-muted-foreground text-center py-4">No hay actividad reciente.</p>
               )}
             </CardContent>
           </Card>
@@ -790,33 +718,32 @@ export default function DashboardPage() {
 
       case 'online-users':
         return (
-          <Card className="h-full border border-slate-200 dark:border-slate-800 shadow-sm rounded-xl bg-white dark:bg-slate-900 overflow-hidden group">
-            <CardHeader className="p-5">
+          <Card className="h-full border-0 shadow-lg overflow-hidden">
+            <CardHeader className="relative">
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle className="text-sm font-bold tracking-tight">Agentes Online</CardTitle>
+                  <CardTitle className="text-lg font-semibold">Usuarios del Sistema</CardTitle>
+                  <CardDescription className="mt-1">
+                    {onlineUsers.length} usuarios registrados
+                  </CardDescription>
                 </div>
-                <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-600">
-                  <Users className="h-4 w-4" />
-                </div>
+                <Users className="h-5 w-5 text-green-600" />
               </div>
             </CardHeader>
-            <CardContent className="px-5 pb-5">
-              <div className="space-y-2">
+            <CardContent className="relative">
+              <div className="space-y-4">
                 {onlineUsers.map((user, index) => (
-                  <div key={index} className="flex items-center justify-between p-2 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-lg transition-all border border-transparent hover:border-slate-100 dark:hover:border-slate-800">
+                  <div key={index} className="flex items-center justify-between p-2 hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded-lg transition-colors">
                     <div className="flex items-center gap-3">
-                      <div className="relative">
-                        <div className="h-9 w-9 rounded-lg bg-slate-900 text-white flex items-center justify-center text-[10px] font-bold">
-                          {user.email.substring(0, 2).toUpperCase()}
-                        </div>
-                        <div className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-emerald-500 border-2 border-white dark:border-slate-900" />
+                      <div className="h-8 w-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-xs font-bold">
+                        {user.email.substring(0, 2).toUpperCase()}
                       </div>
                       <div>
-                        <p className="text-xs font-bold text-slate-700 dark:text-slate-200 tracking-tight">{user.email}</p>
-                        <p className="text-[9px] font-bold text-slate-400 uppercase">{user.role}</p>
+                        <p className="text-sm font-medium text-foreground">{user.email}</p>
+                        <p className="text-xs text-muted-foreground">{user.role}</p>
                       </div>
                     </div>
+                    <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" title="Activo" />
                   </div>
                 ))}
               </div>
@@ -829,201 +756,120 @@ export default function DashboardPage() {
     }
   };
 
-  if (!isMounted) {
-    return (
-      <DashboardLayout>
-        <div className="flex h-[50vh] w-full items-center justify-center">
-          <div className="flex flex-col items-center gap-2">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-r-transparent" />
-            <p className="text-muted-foreground text-sm animate-pulse">Cargando Dashboard...</p>
-          </div>
-        </div>
-      </DashboardLayout>
-    );
-  }
-
   return (
     <DashboardLayout>
-      <div className="relative min-h-screen bg-transparent p-4 md:p-8 space-y-6 overflow-x-hidden">
-        <header className="relative flex flex-col md:flex-row md:items-end justify-between gap-4">
-          <motion.div
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            className="flex items-center gap-4"
-          >
-            <div className="relative group">
-              <div className="relative p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
-                <LayoutDashboard className="h-6 w-6 text-blue-600 dark:text-blue-400" />
-              </div>
+      <div className="space-y-6 p-4 md:p-8">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600">
+              <LayoutDashboard className="h-6 w-6 text-white" />
             </div>
             <div>
-              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] leading-none mb-1.5">
-                {format(new Date(), "EEEE, d 'de' MMMM", { locale: es })}
-              </p>
-              <h2 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white leading-none">
-                Command <span className="text-blue-600">Center</span>
+              <h2 className="text-3xl font-bold tracking-tight text-foreground">
+                <ShinyText size="3xl" weight="bold">Dashboard</ShinyText>
               </h2>
+              <p className="text-muted-foreground mt-1">
+                Bienvenido de nuevo al panel de control
+              </p>
             </div>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="flex items-center gap-3"
-          >
-            <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-              </span>
-              <span className="text-[9px] font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-widest">SISTEMA ONLINE</span>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <Button variant="ghost" size="icon" className="h-9 w-9 text-slate-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-all">
-                <RefreshCw className="h-4 w-4" />
-              </Button>
-              <Dialog>
-                <DialogTrigger asChild>
-                  <Button variant="outline" className="h-9 px-4 gap-2 border-slate-200 dark:border-slate-800 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-900 shadow-sm transition-all group">
-                    <Settings className="h-4 w-4 group-hover:rotate-90 transition-transform duration-500" />
-                    <span className="text-sm font-semibold">Configurar</span>
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="max-w-xl bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 shadow-2xl rounded-xl">
-                  <DialogHeader>
-                    <DialogTitle className="text-xl font-bold tracking-tight">Preferencias del Panel</DialogTitle>
-                    <DialogDescription className="text-slate-500 text-sm">
-                      Gestiona la visibilidad y disposición de tus módulos.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <div className="grid gap-2 py-4">
-                    {widgets.sort((a, b) => a.order - b.order).map((widget) => (
-                      <div key={widget.id} className="flex items-center justify-between p-3.5 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 transition-all">
-                        <div className="flex items-center gap-4 flex-1">
-                          <div className="flex items-center gap-3 min-w-[200px]">
-                            <div className={cn(
-                              "p-2 rounded-lg transition-all",
-                              widget.enabled ? "bg-blue-500/10 text-blue-600" : "bg-slate-200 dark:bg-slate-800 text-slate-400"
-                            )}>
-                              {widget.enabled ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-                            </div>
-                            <Label htmlFor={`widget-${widget.id}`} className="font-bold cursor-pointer text-slate-700 dark:text-slate-300">
-                              {widget.name}
-                            </Label>
-                          </div>
-
-                          {widget.enabled && (
-                            <div className="flex items-center gap-3">
-                              <Select
-                                value={widget.cols.toString()}
-                                onValueChange={(value) => updateWidgetCols(widget.id, value)}
-                              >
-                                <SelectTrigger className="h-8 w-[110px] rounded-lg font-bold text-xs">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent className="rounded-xl">
-                                  <SelectItem value="1">1 Columna</SelectItem>
-                                  <SelectItem value="2">2 Columnas</SelectItem>
-                                  <SelectItem value="3">3 Columnas</SelectItem>
-                                  <SelectItem value="4">Full View</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                          )}
-                        </div>
-                        <Switch
-                          id={`widget-${widget.id}`}
-                          checked={widget.enabled}
-                          onCheckedChange={() => toggleWidget(widget.id)}
-                          className="data-[state=checked]:bg-blue-600"
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </DialogContent>
-              </Dialog>
-            </div>
-          </motion.div>
-        </header>
-
-        {/* Quick Actions Grid */}
-        <section className="relative z-10">
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-            {[
-              { icon: PlusCircle, label: "Nuevo Ticket", color: "text-blue-600 bg-blue-50 dark:bg-blue-900/10", href: "/tickets/new" },
-              { icon: Users, label: "Clientes", color: "text-emerald-600 bg-emerald-50 dark:bg-emerald-900/10", href: "/clients" },
-              { icon: FileText, label: "Presupuestos", color: "text-violet-600 bg-violet-50 dark:bg-violet-900/10", href: "/budgets" },
-              { icon: DollarSign, label: "Pagos", color: "text-amber-600 bg-amber-50 dark:bg-amber-900/10", href: "/payments" },
-              { icon: ShieldCheck, label: "Auditoría", color: "text-indigo-600 bg-indigo-50 dark:bg-indigo-900/10", href: "/audit" },
-              { icon: SlidersHorizontal, label: "Ajustes", color: "text-slate-600 bg-slate-50 dark:bg-slate-900/10", href: "/system" },
-            ].map((action, i) => (
-              <motion.button
-                key={i}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.1 + (i * 0.05) }}
-                onClick={() => window.location.href = action.href || '#'}
-                className="group flex flex-col items-center justify-center p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm hover:border-blue-500/50 transition-all duration-200"
-              >
-                <div className={cn("mb-2 p-2.5 rounded-lg transition-transform group-hover:scale-110 duration-300", action.color)}>
-                  <action.icon className="h-5 w-5" />
-                </div>
-                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 group-hover:text-slate-900 dark:group-hover:text-white transition-colors">{action.label}</span>
-              </motion.button>
-            ))}
           </div>
-        </section>
+          <div className="flex items-center gap-2">
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-2">
+                  <Settings className="h-4 w-4" />
+                  Configurar Widgets
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-2xl">
+                <DialogHeader>
+                  <DialogTitle>Configuración de Widgets</DialogTitle>
+                  <DialogDescription>
+                    Activa, desactiva y ajusta el tamaño de los widgets.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                  {widgets.sort((a, b) => a.order - b.order).map((widget) => (
+                    <div key={widget.id} className="flex items-center justify-between p-3 rounded-lg border bg-card">
+                      <div className="flex items-center gap-4 flex-1">
+                        <div className="flex items-center gap-3 min-w-[200px]">
+                          {widget.enabled ? (
+                            <Eye className="h-4 w-4 text-blue-500" />
+                          ) : (
+                            <EyeOff className="h-4 w-4 text-muted-foreground" />
+                          )}
+                          <Label htmlFor={`widget-${widget.id}`} className="font-medium cursor-pointer">
+                            {widget.name}
+                          </Label>
+                        </div>
 
-        {/* Metric Cards Grid */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 relative z-10">
-          {highlight.map((item, index) => (
-            <motion.div
-              key={index}
-              initial={{ opacity: 0, y: 15 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2 + (index * 0.1) }}
-            >
-              <Card className="relative border border-slate-200 dark:border-slate-800 shadow-sm rounded-xl bg-white dark:bg-slate-900 overflow-hidden group">
-                <div className="p-5">
-                  <div className="flex items-start justify-between">
-                    <div className={cn("p-2.5 rounded-lg", item.bgColor)}>
-                      <item.icon className={cn("h-5 w-5", item.color)} />
-                    </div>
-                    <div className={cn(
-                      "flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border",
-                      item.trendUp ? "bg-emerald-50 text-emerald-600 border-emerald-100" : "bg-rose-50 text-rose-600 border-rose-100"
-                    )}>
-                      {item.trendUp ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
-                      {item.trend}
-                    </div>
-                  </div>
-
-                  <div className="mt-4">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">{item.title}</p>
-                    <h3 className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight">
-                      <AnimatedCounter value={item.value} />
-                    </h3>
-                  </div>
-
-                  <div className="mt-5 pt-4 border-t border-slate-50 dark:border-slate-800">
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1 max-w-[100px]">
-                        <Sparkline
-                          data={item.trendUp ? [25, 40, 35, 60, 45, 70, 85] : [85, 70, 45, 60, 35, 40, 25]}
-                          color={item.trendUp ? "#10b981" : "#f43f5e"}
-                        />
+                        {widget.enabled && (
+                          <div className="flex items-center gap-2">
+                            <Label className="text-xs text-muted-foreground whitespace-nowrap">Ancho:</Label>
+                            <Select
+                              value={widget.cols.toString()}
+                              onValueChange={(value) => updateWidgetCols(widget.id, value)}
+                            >
+                              <SelectTrigger className="h-8 w-[100px]">
+                                <SelectValue placeholder="Tamaño" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="1">1 Columna</SelectItem>
+                                <SelectItem value="2">2 Columnas</SelectItem>
+                                <SelectItem value="3">3 Columnas</SelectItem>
+                                <SelectItem value="4">4 Columnas</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        )}
                       </div>
-                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Live Sync</span>
+
+                      <Switch
+                        id={`widget-${widget.id}`}
+                        checked={widget.enabled}
+                        onCheckedChange={() => toggleWidget(widget.id)}
+                        className="ml-4"
+                      />
                     </div>
-                  </div>
+                  ))}
                 </div>
-              </Card>
-            </motion.div>
+              </DialogContent>
+            </Dialog>
+          </div>
+        </div>
+
+        {/* Stats Highlights */}
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {highlight.map((item, index) => (
+            <Card key={index} className="border-0 shadow-md hover:shadow-lg transition-all duration-200 overflow-hidden group">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">
+                  {item.title}
+                </CardTitle>
+                <div className={`p-2 rounded-full ${item.bgColor} group-hover:scale-110 transition-transform duration-200`}>
+                  <item.icon className={`h-4 w-4 ${item.color}`} />
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">
+                  <AnimatedCounter value={item.value} />
+                </div>
+                <div className="flex items-center text-xs text-muted-foreground mt-1">
+                  {item.trendUp ? (
+                    <TrendingUp className="mr-1 h-3 w-3 text-emerald-500" />
+                  ) : (
+                    <TrendingDown className="mr-1 h-3 w-3 text-rose-500" />
+                  )}
+                  <span className={item.trendUp ? "text-emerald-600 font-medium" : "text-rose-600 font-medium"}>
+                    {item.trend}
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
           ))}
         </div>
 
-        {/* Dynamic Widgets Grid */}
+        {/* Widgets con drag and drop */}
         <DndContext
           sensors={sensors}
           collisionDetection={closestCenter}
@@ -1033,26 +879,12 @@ export default function DashboardPage() {
             items={enabledWidgets.map((w) => w.id)}
             strategy={rectSortingStrategy}
           >
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pb-12 relative z-10">
-              <AnimatePresence mode="popLayout">
-                {enabledWidgets.map((widget) => (
-                  <SortableWidget key={widget.id} id={widget.id} cols={widget.cols}>
-                    <motion.div
-                      layout
-                      initial={{ opacity: 0, scale: 0.98, y: 10 }}
-                      animate={{ opacity: 1, scale: 1, y: 0 }}
-                      exit={{ opacity: 0, scale: 0.95 }}
-                      transition={{ duration: 0.3 }}
-                      className="h-full"
-                    >
-                      {/* Sobrescribir estilos específicos del widget para quitar redondeo excesivo */}
-                      <div className="[&>div]:rounded-xl [&>div]:border-slate-200 [&>div]:dark:border-slate-800 [&>div]:shadow-sm h-full">
-                        {renderWidget(widget.id)}
-                      </div>
-                    </motion.div>
-                  </SortableWidget>
-                ))}
-              </AnimatePresence>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 auto-rows-fr">
+              {enabledWidgets.map((widget) => (
+                <SortableWidget key={widget.id} id={widget.id} cols={widget.cols}>
+                  {renderWidget(widget.id)}
+                </SortableWidget>
+              ))}
             </div>
           </SortableContext>
         </DndContext>

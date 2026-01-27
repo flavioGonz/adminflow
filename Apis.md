@@ -1,6 +1,8 @@
 ﻿ï»¿# APIs de AdminFlow
 
 Base URL: `http://localhost:5000`
+Documentación interactiva (Swagger): [http://localhost:5000/api-docs](http://localhost:5000/api-docs)
+
 Todas las llamadas devuelven JSON. Si se envÃ­a cuerpo, use `Content-Type: application/json`. Las rutas protegidas (p. ej. `/profile`) esperan `Authorization: Bearer <token>` y la cookie `connect.sid` (la sesiÃ³n se abre en `/login`).
 
 ---

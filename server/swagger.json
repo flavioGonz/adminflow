@@ -1,0 +1,2637 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "AdminFlow API",
+    "version": "2.2.0",
+    "description": "Documentación actualizada con los endpoints activos del backend."
+  },
+  "servers": [
+    {
+      "url": "http://localhost:5000/api",
+      "description": "Back-end API (proxy de producción)"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Clients",
+      "description": "Gestión de clientes, pagos, implementaciones y accesos."
+    },
+    {
+      "name": "Payments",
+      "description": "Pagos, facturación y notificaciones de cobros."
+    },
+    {
+      "name": "Database",
+      "description": "Operaciones administrativas sobre MongoDB/SQLite."
+    },
+    {
+      "name": "Install",
+      "description": "Operaciones del instalador y validación del sistema."
+    },
+    {
+      "name": "Support",
+      "description": "Gestión de artículos de ayuda."
+    },
+    {
+      "name": "Status",
+      "description": "Indicadores del sistema y logs."
+    },
+    {
+      "name": "Mongo Servers",
+      "description": "Administración de servidores MongoDB remotos."
+    },
+    {
+      "name": "Notifications",
+      "description": "Configuración y envío de notificaciones."
+    }
+  ],
+  "paths": {
+    "/clients": {
+      "get": {
+        "tags": [
+          "Clients"
+        ],
+        "summary": "Listar clientes",
+        "responses": {
+          "200": {
+            "description": "Clientes registrados",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Client"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Clients"
+        ],
+        "summary": "Crear un nuevo cliente",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewClient"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Cliente creado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Client"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/clients/{id}": {
+      "get": {
+        "tags": [
+          "Clients"
+        ],
+        "summary": "Obtener cliente",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cliente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Client"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Clients"
+        ],
+        "summary": "Actualizar cliente",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewClient"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Cliente actualizado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Client"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Clients"
+        ],
+        "summary": "Eliminar cliente",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cliente eliminado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericMessage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/clients/{id}/payments": {
+      "get": {
+        "tags": [
+          "Clients"
+        ],
+        "summary": "Pagos de cliente",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pagos ordenados",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Payment"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/clients/{id}/contracts": {
+      "get": {
+        "tags": [
+          "Clients"
+        ],
+        "summary": "Contratos de cliente",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Detalles de contratos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/GenericMessage"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/clients/{id}/repository": {
+      "get": {
+        "tags": [
+          "Clients"
+        ],
+        "summary": "Repositorio de accesos y documentos",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Elementos del repositorio",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RepositoryItem"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Clients"
+        ],
+        "summary": "Guardar un nuevo elemento en el repositorio",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RepositoryItem"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Repositorio actualizado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepositoryItem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/clients/{id}/access": {
+      "get": {
+        "tags": [
+          "Clients"
+        ],
+        "summary": "Accesos guardados del cliente",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Accesos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AccessRecord"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Clients"
+        ],
+        "summary": "Registrar un acceso nuevo",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccessRecord"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Acceso registrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericMessage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/access/{accessId}": {
+      "put": {
+        "tags": [
+          "Clients"
+        ],
+        "summary": "Actualizar acceso",
+        "parameters": [
+          {
+            "name": "accessId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccessRecord"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Acceso actualizado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericMessage"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Clients"
+        ],
+        "summary": "Eliminar acceso",
+        "parameters": [
+          {
+            "name": "accessId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Acceso removido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericMessage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/clients/{id}/diagram": {
+      "get": {
+        "tags": [
+          "Clients"
+        ],
+        "summary": "Obtener diagrama guardado",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Diagrama guardado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiagramData"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Clients"
+        ],
+        "summary": "Guardar diagrama",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiagramData"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Diagrama guardado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericMessage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/clients/{id}/implementation": {
+      "get": {
+        "tags": [
+          "Clients"
+        ],
+        "summary": "Obtener implementación de patch panel",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Implementación actual",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImplementationData"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Clients"
+        ],
+        "summary": "Guardar implementación",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImplementationData"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Implementación guardada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericMessage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/clients/implementation-indicators": {
+      "get": {
+        "tags": [
+          "Clients"
+        ],
+        "summary": "Indicadores de implementación",
+        "responses": {
+          "200": {
+            "description": "IDs de clientes con implementación guardada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/clients/import": {
+      "post": {
+        "tags": [
+          "Clients"
+        ],
+        "summary": "Importar clientes en lote",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/NewClient"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Importación completada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericMessage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tickets": {
+      "get": {
+        "tags": [
+          "Clients"
+        ],
+        "summary": "Flujo de tickets (nodos/edges)",
+        "responses": {
+          "200": {
+            "description": "Workflow guardado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "nodes": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "edges": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Clients"
+        ],
+        "summary": "Guardar workflow de tickets",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "nodes": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "edges": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  }
+                },
+                "required": [
+                  "nodes",
+                  "edges"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Workflow actualizado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericMessage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/repository/{id}": {
+      "put": {
+        "tags": [
+          "Clients"
+        ],
+        "summary": "Actualizar un elemento del repositorio",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RepositoryItem"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Elemento actualizado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepositoryItem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Clients"
+        ],
+        "summary": "Eliminar registro del repositorio",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Elemento eliminado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericMessage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/payments": {
+      "get": {
+        "tags": [
+          "Payments"
+        ],
+        "summary": "Listar pagos",
+        "responses": {
+          "200": {
+            "description": "Pagos recientes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Payment"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Payments"
+        ],
+        "summary": "Registrar pago manual",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Payment"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Pago registrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Payment"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/payments/{id}": {
+      "put": {
+        "tags": [
+          "Payments"
+        ],
+        "summary": "Actualizar pago",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Payment"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Pago actualizado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Payment"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/system/backups": {
+      "get": {
+        "tags": [
+          "Database"
+        ],
+        "summary": "Listar respaldos",
+        "responses": {
+          "200": {
+            "description": "Respaldos encontrados",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BackupSummary"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Database"
+        ],
+        "summary": "Crear respaldo",
+        "responses": {
+          "200": {
+            "description": "Respaldo creado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupSummary"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/system/backups/restore": {
+      "post": {
+        "tags": [
+          "Database"
+        ],
+        "summary": "Restaurar respaldo existente",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "backupName": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "backupName"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Restauración iniciada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericMessage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/system/backups/analyze": {
+      "post": {
+        "tags": [
+          "Database"
+        ],
+        "summary": "Analizar respaldo subido",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "backup": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Archivo analizado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericMessage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/system/backups/{backupName}/download": {
+      "get": {
+        "tags": [
+          "Database"
+        ],
+        "summary": "Descargar respaldo",
+        "parameters": [
+          {
+            "name": "backupName",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Archivo zip en streaming",
+            "content": {}
+          }
+        }
+      }
+    },
+    "/system/backups/{backupName}": {
+      "delete": {
+        "tags": [
+          "Database"
+        ],
+        "summary": "Eliminar respaldo",
+        "parameters": [
+          {
+            "name": "backupName",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Respaldo eliminado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericMessage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/install/status": {
+      "get": {
+        "tags": [
+          "Install"
+        ],
+        "summary": "Estado de instalación",
+        "responses": {
+          "200": {
+            "description": "Indicador",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "installed": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/install/validate": {
+      "get": {
+        "tags": [
+          "Install"
+        ],
+        "summary": "Validar instalación",
+        "responses": {
+          "200": {
+            "description": "Validación completada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericMessage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/install/test-db": {
+      "post": {
+        "tags": [
+          "Install"
+        ],
+        "summary": "Probar conexión a base",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string"
+                  },
+                  "mongoUri": {
+                    "type": "string"
+                  },
+                  "mongoDb": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Conexión probada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericMessage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/install/complete": {
+      "post": {
+        "tags": [
+          "Install"
+        ],
+        "summary": "Completar instalación",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "company": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "email": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "database": {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "required": [
+                  "company",
+                  "database"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Instalación finalizada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericMessage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/database/overview": {
+      "get": {
+        "tags": [
+          "Database"
+        ],
+        "summary": "Resumen de MongoDB",
+        "responses": {
+          "200": {
+            "description": "Estado actual",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatabaseOverview"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/database/verify": {
+      "post": {
+        "tags": [
+          "Database"
+        ],
+        "summary": "Verificar conexión a MongoDB",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "mongoUri": {
+                    "type": "string"
+                  },
+                  "mongoDb": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Verificación completada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericMessage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/database/collections": {
+      "post": {
+        "tags": [
+          "Database"
+        ],
+        "summary": "Listar colecciones",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "uri": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Colecciones enlistadas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericMessage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/database/collections/{collection}": {
+      "delete": {
+        "tags": [
+          "Database"
+        ],
+        "summary": "Eliminar colección",
+        "parameters": [
+          {
+            "name": "collection",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Colección eliminada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericMessage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/database/collections/{collection}/documents": {
+      "get": {
+        "tags": [
+          "Database"
+        ],
+        "summary": "Listar documentos paginados",
+        "parameters": [
+          {
+            "name": "collection",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Documentos listados",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericMessage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/database/switch": {
+      "post": {
+        "tags": [
+          "Database"
+        ],
+        "summary": "Cambiar base primaria",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "uri": {
+                    "type": "string"
+                  },
+                  "mongoDb": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Cambio aplicado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericMessage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/database/deploy-collections": {
+      "post": {
+        "tags": [
+          "Database"
+        ],
+        "summary": "Crear colecciones faltantes",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "collections": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "collections"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Colecciones desplegadas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericMessage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/database/backup/create": {
+      "post": {
+        "tags": [
+          "Database"
+        ],
+        "summary": "Crear backup desde API",
+        "responses": {
+          "200": {
+            "description": "Backup creado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupSummary"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/database/backup/list": {
+      "get": {
+        "tags": [
+          "Database"
+        ],
+        "summary": "Listar backups disponibles",
+        "responses": {
+          "200": {
+            "description": "Lista de backups",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BackupSummary"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/database/backup/download/{backupName}": {
+      "get": {
+        "tags": [
+          "Database"
+        ],
+        "summary": "Descargar backup",
+        "parameters": [
+          {
+            "name": "backupName",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Zip en streaming",
+            "content": {}
+          }
+        }
+      }
+    },
+    "/database/backup/restore": {
+      "post": {
+        "tags": [
+          "Database"
+        ],
+        "summary": "Restaurar backup guardado",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "backupName": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "backupName"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Backup restaurado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericMessage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/database/backup/delete/{backupName}": {
+      "delete": {
+        "tags": [
+          "Database"
+        ],
+        "summary": "Eliminar backup",
+        "parameters": [
+          {
+            "name": "backupName",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Backup eliminado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericMessage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/database/sync": {
+      "post": {
+        "tags": [
+          "Database"
+        ],
+        "summary": "Sincronizar colecciones a servidores secundarios",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "targetIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "sourceId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "targetIds"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Sincronización iniciada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericMessage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/database/sync/schedule": {
+      "get": {
+        "tags": [
+          "Database"
+        ],
+        "summary": "Obtener programación actual",
+        "responses": {
+          "200": {
+            "description": "Programación devuelta",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericMessage"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Database"
+        ],
+        "summary": "Configurar calendario de sincronización",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "intervalMinutes": {
+                    "type": "integer"
+                  },
+                  "targetIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "enabled"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Programación actualizada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericMessage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/status/overview": {
+      "get": {
+        "tags": [
+          "Status"
+        ],
+        "summary": "Estado del sistema y logs recientes",
+        "responses": {
+          "200": {
+            "description": "Estado devuelto",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericMessage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/status/logs": {
+      "get": {
+        "tags": [
+          "Status"
+        ],
+        "summary": "Logs recientes",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 80
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Logs listos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericMessage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/support/articles": {
+      "get": {
+        "tags": [
+          "Support"
+        ],
+        "summary": "Artículos de ayuda",
+        "responses": {
+          "200": {
+            "description": "Artículos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SupportArticle"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Support"
+        ],
+        "summary": "Crear artículo",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupportArticle"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Artículo creado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportArticle"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/support/articles/{id}": {
+      "get": {
+        "tags": [
+          "Support"
+        ],
+        "summary": "Articulo único",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Artículo encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportArticle"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Support"
+        ],
+        "summary": "Actualizar artículo",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupportArticle"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Artículo actualizado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportArticle"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Support"
+        ],
+        "summary": "Eliminar artículo",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Artículo eliminado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericMessage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mongo-servers": {
+      "get": {
+        "tags": [
+          "Mongo Servers"
+        ],
+        "summary": "Listar servidores configurados",
+        "responses": {
+          "200": {
+            "description": "Servidores",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MongoServer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Mongo Servers"
+        ],
+        "summary": "Agregar servidor",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MongoServer"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Servidor creado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MongoServer"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mongo-servers/{id}": {
+      "get": {
+        "tags": [
+          "Mongo Servers"
+        ],
+        "summary": "Detalles del servidor",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Servidor activo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MongoServer"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Mongo Servers"
+        ],
+        "summary": "Actualizar servidor",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MongoServer"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Servidor actualizado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MongoServer"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Mongo Servers"
+        ],
+        "summary": "Eliminar servidor",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Servidor eliminado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericMessage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mongo-servers/{id}/test": {
+      "post": {
+        "tags": [
+          "Mongo Servers"
+        ],
+        "summary": "Probar conexión",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Conexión verificada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericMessage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mongo-servers/{id}/switch": {
+      "post": {
+        "tags": [
+          "Mongo Servers"
+        ],
+        "summary": "Cambiar servidor primario",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "forceCreate": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Servidor activo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericMessage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mongo-servers/{id}/verify": {
+      "post": {
+        "tags": [
+          "Mongo Servers"
+        ],
+        "summary": "Verificar colecciones",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Verificación completada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericMessage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mongo-servers/{id}/create-collections": {
+      "post": {
+        "tags": [
+          "Mongo Servers"
+        ],
+        "summary": "Crear colecciones faltantes",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Colecciones recreadas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericMessage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/notifications/config": {
+      "get": {
+        "tags": [
+          "Notifications"
+        ],
+        "summary": "Obtener configuración de notificaciones",
+        "responses": {
+          "200": {
+            "description": "Configuración",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationConfig"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Notifications"
+        ],
+        "summary": "Guardar configuración de notificaciones",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotificationConfig"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Configuración guardada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericMessage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/notifications/send": {
+      "post": {
+        "tags": [
+          "Notifications"
+        ],
+        "summary": "Enviar notificación",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "event": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "channels": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "event",
+                  "message"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Notificación enviada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericMessage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/notifications/history": {
+      "get": {
+        "tags": [
+          "Notifications"
+        ],
+        "summary": "Historial de notificaciones",
+        "responses": {
+          "200": {
+            "description": "Historial devuelto",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericMessage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/notifications/verify-smtp": {
+      "post": {
+        "tags": [
+          "Notifications"
+        ],
+        "summary": "Verificar credenciales SMTP",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "host": {
+                    "type": "string"
+                  },
+                  "user": {
+                    "type": "string"
+                  },
+                  "pass": {
+                    "type": "string"
+                  },
+                  "port": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "host",
+                  "user",
+                  "pass"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "SMTP verificado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericMessage"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Client": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "alias": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string"
+          },
+          "contract": {
+            "type": "boolean"
+          },
+          "hasAccess": {
+            "type": "boolean"
+          },
+          "hasImplementation": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "NewClient": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "alias": {
+            "type": "string"
+          },
+          "rut": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string"
+          },
+          "address": {
+            "type": "string"
+          },
+          "contract": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "AccessRecord": {
+        "type": "object",
+        "properties": {
+          "equipos": {
+            "type": "string"
+          },
+          "tipo_equipo": {
+            "type": "string"
+          },
+          "ip": {
+            "type": "string"
+          },
+          "user": {
+            "type": "string"
+          },
+          "pass": {
+            "type": "string"
+          },
+          "comentarios": {
+            "type": "string"
+          },
+          "serieMac": {
+            "type": "string"
+          }
+        }
+      },
+      "ImplementationData": {
+        "type": "object",
+        "properties": {
+          "appData": {
+            "type": "object"
+          },
+          "currentPanelName": {
+            "type": "string"
+          },
+          "currentFilter": {
+            "type": "string"
+          }
+        }
+      },
+      "DiagramData": {
+        "type": "object",
+        "properties": {
+          "elements": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "appState": {
+            "type": "object"
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "Payment": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "invoice": {
+            "type": "string"
+          },
+          "client": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "number"
+          },
+          "status": {
+            "type": "string"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "RepositoryItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "BackupSummary": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "size": {
+            "type": "integer"
+          }
+        }
+      },
+      "SupportArticle": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "excerpt": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "published": {
+            "type": "boolean"
+          },
+          "views": {
+            "type": "integer"
+          }
+        }
+      },
+      "MongoServer": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "uri": {
+            "type": "string"
+          },
+          "database": {
+            "type": "string"
+          },
+          "host": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      },
+      "NotificationConfig": {
+        "type": "object",
+        "properties": {
+          "channels": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "boolean"
+            }
+          },
+          "templates": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "DatabaseOverview": {
+        "type": "object",
+        "properties": {
+          "engine": {
+            "type": "string"
+          },
+          "connected": {
+            "type": "boolean"
+          },
+          "collections": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "GenericMessage": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

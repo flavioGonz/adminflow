@@ -45,10 +45,11 @@ router.get('/status', async (req, res) => {
             status: status
         });
     } catch (error) {
-        console.error('Error al obtener estado de servidores:', error);
+        console.error('❌ [SERVER STATUS 500 ERROR]:', error);
         res.status(500).json({
             success: false,
-            error: error.message
+            error: error.message,
+            stack: error.stack
         });
     }
 });
@@ -294,10 +295,10 @@ router.post('/:id/create-collections', async (req, res) => {
         });
 
         await client.connect();
-        
+
         // Verificar qué colecciones faltan
         const verification = await manager.verifyCollections(client, server.database);
-        
+
         if (verification.missing.length === 0) {
             await client.close();
             return res.json({

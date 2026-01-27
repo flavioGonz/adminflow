@@ -16,10 +16,7 @@ export type TicketStatus =
   | "Cerrado"
   | "Resuelto"
   | "Facturar"
-  | "Pagado"
-  | "Re abierto"
-  | "Esperando cliente"
-  | "Evaluación";
+  | "Pagado";
 
 export type TicketPriority = "Alta" | "Media" | "Baja";
 

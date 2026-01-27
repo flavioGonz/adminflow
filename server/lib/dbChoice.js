@@ -46,15 +46,7 @@ const determineDbEngine = async () => {
   return selectedEngine;
 };
 
-const getCurrentDbEngine = () => {
-  if (selectedEngine) return selectedEngine;
-  const persisted = readConfigFile();
-  if (persisted?.engine && SUPPORTED_ENGINES.includes(persisted.engine)) {
-    selectedEngine = persisted.engine;
-    return selectedEngine;
-  }
-  return DB_CONFIG_DEFAULTS.engine;
-};
+const getCurrentDbEngine = () => selectedEngine;
 
 const getDbConfigFromFile = () => readConfigFile();
 

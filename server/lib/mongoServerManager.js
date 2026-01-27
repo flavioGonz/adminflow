@@ -119,13 +119,13 @@ class MongoServerManager {
             if (fs.existsSync(this.configFile)) {
                 const data = fs.readFileSync(this.configFile, 'utf8');
                 const config = JSON.parse(data);
-                
+
                 if (config.servers && Array.isArray(config.servers)) {
                     config.servers.forEach(server => {
                         this.servers.set(server.id, server);
                     });
                 }
-                
+
                 this.currentServer = config.currentServer || null;
                 console.log(`✅ Configuración de servidores cargada: ${this.servers.size} servidor(es)`);
             } else {
@@ -166,7 +166,7 @@ class MongoServerManager {
             }
             fs.writeFileSync(this.configFile, JSON.stringify(defaultConfig, null, 2));
             console.log('✅ Archivo de configuración creado:', this.configFile);
-            
+
             this.servers.set('local', defaultConfig.servers[0]);
             this.currentServer = 'local';
         } catch (error) {
@@ -265,7 +265,7 @@ class MongoServerManager {
 
         this.servers.set(server.id, server);
         this.saveConfig();
-        
+
         return server;
     }
 
@@ -279,7 +279,7 @@ class MongoServerManager {
         }
 
         Object.assign(server, updates);
-        
+
         // Reconstruir URI si cambió host, port, username o password
         if (updates.host || updates.port || updates.username || updates.password) {
             if (server.username && server.password) {
@@ -349,16 +349,16 @@ class MongoServerManager {
             client = new MongoClient(server.uri, {
                 serverSelectionTimeoutMS: 5000,
             });
-            
+
             await client.connect();
             const db = client.db(server.database);
-            
+
             // Verificar que podemos acceder a la base de datos
             await db.admin().ping();
-            
+
             // Obtener información del servidor
             const serverInfo = await db.admin().serverInfo();
-            
+
             return {
                 success: true,
                 message: 'Conexión exitosa',
@@ -387,9 +387,9 @@ class MongoServerManager {
         const db = client.db(database);
         const existingCollections = await db.listCollections().toArray();
         const existingNames = existingCollections.map(c => c.name);
-        
+
         const missing = REQUIRED_COLLECTIONS.filter(col => !existingNames.includes(col));
-        
+
         return {
             existing: existingNames,
             missing: missing,
@@ -412,12 +412,12 @@ class MongoServerManager {
                 // Crear colección
                 await db.createCollection(collectionName);
                 console.log(`  ✅ Colección creada: ${collectionName}`);
-                
+
                 // Crear índices si existen para esta colección
                 if (COLLECTION_INDEXES[collectionName]) {
                     await this.createIndexes(db, collectionName);
                 }
-                
+
                 created.push(collectionName);
             } catch (error) {
                 console.error(`  ❌ Error al crear ${collectionName}:`, error.message);
@@ -464,28 +464,28 @@ class MongoServerManager {
         }
 
         const { autoCreate = true, forceCreate = false } = options;
-        
+
         let client;
         const log = [];
 
         try {
             log.push(`🔄 Conectando a servidor: ${server.name} (${server.host}:${server.port})`);
-            
+
             // Conectar al servidor
             client = new MongoClient(server.uri, {
                 serverSelectionTimeoutMS: 10000,
             });
-            
+
             await client.connect();
             log.push(`✅ Conexión establecida`);
 
             // Verificar colecciones
             log.push(`📋 Verificando colecciones en base de datos: ${server.database}`);
             const verification = await this.verifyCollections(client, server.database);
-            
+
             log.push(`  📊 Total de colecciones: ${verification.total}`);
             log.push(`  ✅ Colecciones requeridas presentes: ${verification.required.length - verification.missing.length}`);
-            
+
             if (verification.missing.length > 0) {
                 log.push(`  ⚠️  Colecciones faltantes: ${verification.missing.length}`);
                 verification.missing.forEach(col => {
@@ -520,7 +520,7 @@ class MongoServerManager {
 
             // Todo correcto, cambiar servidor actual
             this.setPrimary(serverId);
-            
+
             log.push(`✅ Servidor cambiado exitosamente a: ${server.name}`);
 
             // Cerrar conexión de prueba
@@ -535,7 +535,7 @@ class MongoServerManager {
 
         } catch (error) {
             log.push(`❌ Error: ${error.message}`);
-            
+
             if (client) {
                 await client.close();
             }
@@ -554,31 +554,45 @@ class MongoServerManager {
     async getServersStatus() {
         const status = [];
 
-        for (const [id, server] of this.servers) {
+        // Map over servers and process in parallel
+        const promises = Array.from(this.servers.entries()).map(async ([id, server]) => {
             const isCurrent = id === this.currentServer;
-            let connectionStatus = 'unknown';
+            let connectionStatus = 'offline';
             let collections = null;
+            let serverInfo = null;
 
+            let client = null;
             try {
-                const testResult = await this.testConnection(id);
-                if (testResult.success) {
-                    connectionStatus = 'online';
-                    
-                    // Verificar colecciones
-                    const client = new MongoClient(server.uri, {
-                        serverSelectionTimeoutMS: 5000,
-                    });
-                    await client.connect();
-                    collections = await this.verifyCollections(client, server.database);
-                    await client.close();
-                } else {
-                    connectionStatus = 'offline';
-                }
+                client = new MongoClient(server.uri, {
+                    serverSelectionTimeoutMS: 3000, // Shorter timeout for status check
+                    connectTimeoutMS: 3000
+                });
+
+                await client.connect();
+                connectionStatus = 'online';
+
+                const db = client.db(server.database);
+
+                // Get server info
+                const adminDb = db.admin();
+                const info = await adminDb.serverInfo();
+                serverInfo = {
+                    version: info.version,
+                    uptime: info.uptime,
+                };
+
+                // Verify collections
+                collections = await this.verifyCollections(client, server.database);
             } catch (error) {
+                console.error(`[MongoServerManager] Error checking status for ${id}:`, error.message);
                 connectionStatus = 'error';
+            } finally {
+                if (client) {
+                    await client.close().catch(() => { });
+                }
             }
 
-            status.push({
+            return {
                 id: id,
                 name: server.name,
                 host: server.host,
@@ -589,11 +603,12 @@ class MongoServerManager {
                 current: isCurrent,
                 connectionStatus: connectionStatus,
                 collections: collections,
+                serverInfo: serverInfo,
                 description: server.description
-            });
-        }
+            };
+        });
 
-        return status;
+        return await Promise.all(promises);
     }
 }
 

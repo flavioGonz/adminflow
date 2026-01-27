@@ -1,5 +1,6 @@
 export interface Client {
   id: string;
+  numericId?: string;
   name: string;
   alias?: string;
   rut?: string;

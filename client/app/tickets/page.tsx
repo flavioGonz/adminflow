@@ -22,7 +22,7 @@ import { toast } from "sonner";
 import { ShinyText } from "@/components/ui/shiny-text";
 import { PageTransition } from "@/components/ui/page-transition";
 import { TicketsTimeline } from "@/components/tickets/tickets-timeline";
-import { cn, generateId } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import {
   Ticket,
   TicketAttachment,
@@ -58,8 +58,6 @@ const statusDictionary: Record<string, Ticket["status"]> = {
   cerrado: "Cerrado",
   resuelto: "Resuelto",
   facturar: "Facturar",
-  evaluacion: "Evaluación",
-  "evaluación": "Evaluación",
 };
 
 const priorityDictionary: Record<string, Ticket["priority"]> = {
@@ -90,7 +88,7 @@ const normalizeTicket = (raw: ApiTicket): Ticket => {
     typeof raw.priority === "string" ? raw.priority.toLowerCase() : "";
 
   return {
-    id: raw.id ?? generateId(),
+    id: raw.id ?? crypto.randomUUID(),
     title: raw.title ?? raw.subject ?? "Ticket sin título",
     clientName: raw.clientName ?? raw.client?.name ?? "Cliente sin nombre",
     clientId: raw.clientId,
@@ -141,12 +139,13 @@ const fallbackTickets: Ticket[] = [
 const formatTime = (iso: string) =>
   new Date(iso).toLocaleTimeString("es-UY", { hour: "2-digit", minute: "2-digit" });
 
-
+const LOAD_INCREMENT = 20;
 
 export default function TicketsPage() {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-
+  const [visibleCount, setVisibleCount] = useState(20);
+  const tableScrollRef = useRef<HTMLDivElement | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | Ticket["status"]>(
     "all"
@@ -226,6 +225,7 @@ export default function TicketsPage() {
         ? data.map((item) => normalizeTicket(item as ApiTicket))
         : [];
       setTickets(normalized);
+      setVisibleCount(LOAD_INCREMENT);
     } catch (error) {
       console.error("Error fetching tickets:", error);
       const message =
@@ -236,6 +236,7 @@ export default function TicketsPage() {
         `${message} Mostramos datos locales para que sigas trabajando.`
       );
       setTickets((prev) => (prev.length > 0 ? prev : fallbackTickets));
+      setVisibleCount(LOAD_INCREMENT);
     } finally {
       setIsLoading(false);
     }
@@ -372,9 +373,6 @@ export default function TicketsPage() {
       Resuelto: 0,
       Facturar: 1,
       Pagado: 0,
-      "Re abierto": 3,
-      "Esperando cliente": 2,
-      "Evaluación": 2,
     };
 
     const sorted = [...filtered].sort((a, b) => {
@@ -402,6 +400,39 @@ export default function TicketsPage() {
 
     return sorted;
   }, [tickets, searchTerm, statusFilter, showResolved, showMyTickets, showMyGroupTickets, currentUserEmail, currentUserGroupId, priorityFilter, onlyContract, sortKey, sortDir]);
+
+  const visibleTickets = useMemo(
+    () => filteredTickets.slice(0, visibleCount),
+    [filteredTickets, visibleCount]
+  );
+  const hasMoreResults = visibleCount < filteredTickets.length;
+
+  useEffect(() => {
+    setVisibleCount(LOAD_INCREMENT);
+    if (tableScrollRef.current) {
+      tableScrollRef.current.scrollTop = 0;
+    }
+  }, [
+    searchTerm,
+    statusFilter,
+    priorityFilter,
+    onlyContract,
+    showResolved,
+    showMyTickets,
+    showMyGroupTickets,
+    currentUserEmail,
+    currentUserGroupId,
+    sortKey,
+    sortDir,
+  ]);
+
+  const handleScroll = useCallback(() => {
+    const container = tableScrollRef.current;
+    if (!container || isLoading || !hasMoreResults) return;
+    if (container.scrollHeight - container.scrollTop - container.clientHeight < 150) {
+      setVisibleCount((prev) => Math.min(prev + LOAD_INCREMENT, filteredTickets.length));
+    }
+  }, [filteredTickets.length, hasMoreResults, isLoading]);
 
   const exportRows = useMemo(
     () =>
@@ -497,7 +528,7 @@ export default function TicketsPage() {
             />
           </div>
           <div className="flex flex-col gap-2 md:flex-row md:flex-wrap md:items-center md:gap-3">
-            <ToggleGroup type="multiple" className="flex flex-wrap gap-1 items-center">
+              <ToggleGroup type="multiple" className="flex flex-wrap gap-1 items-center">
               {/* Filtros de estado */}
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -716,14 +747,28 @@ export default function TicketsPage() {
             <Loader2 className="h-6 w-6 animate-spin text-slate-500" />
           </div>
         ) : (
-          <TicketTable
-            tickets={filteredTickets}
-            onTicketDeleted={handleTicketDeleted}
-            onReopenTicket={handleReopenTicket}
-            actionLoadingTicketId={actionLoading}
-            groups={groups}
-            disablePagination
-          />
+          <div className="relative">
+            <div
+              ref={tableScrollRef}
+              className="max-h-[65vh] overflow-y-auto"
+              onScroll={handleScroll}
+            >
+              <TicketTable
+                tickets={visibleTickets}
+                onTicketDeleted={handleTicketDeleted}
+                onReopenTicket={handleReopenTicket}
+                actionLoadingTicketId={actionLoading}
+                groups={groups}
+                disablePagination
+              />
+              {hasMoreResults && (
+                <div className="px-4 py-3 text-center text-xs text-slate-500">
+                  Desliza para cargar más tickets
+                </div>
+              )}
+            </div>
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-white to-transparent" />
+          </div>
         )}
       </div>
     </PageTransition>

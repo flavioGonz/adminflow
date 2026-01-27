@@ -28,16 +28,6 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import {
   Command,
   CommandEmpty,
   CommandGroup,
@@ -71,9 +61,6 @@ import {
   Timer,
   Check,
   Clock,
-  RotateCcw,
-  Hourglass,
-  ClipboardList
 } from "lucide-react";
 import { DeleteTicketDialog } from "./delete-ticket-dialog";
 import { EditTicketDatetime } from "@/components/tickets/edit-ticket-datetime";
@@ -84,7 +71,6 @@ import { API_URL } from "@/lib/http";
 import { AnimatedTableBody, AnimatedRow } from "@/hooks/use-table-animation";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { useTicketStatuses } from "@/lib/ticket-utils";
 
 interface TicketTableProps {
   tickets: Ticket[];
@@ -164,9 +150,6 @@ export function TicketTable({
     return map;
   }, [groups]);
   const ticketsPerPage = 8;
-  const { transitions, statusOptions } = useTicketStatuses();
-  const [pendingStatusChange, setPendingStatusChange] = useState<{ ticket: Ticket; status: Ticket["status"] } | null>(null);
-
 
   useEffect(() => {
     const controller = new AbortController();
@@ -279,7 +262,7 @@ export function TicketTable({
     return sortedTickets.slice(indexOfFirstTicket, indexOfLastTicket);
   }, [sortedTickets, currentPage, ticketsPerPage]);
 
-  const renderedTickets = disablePagination ? sortedTickets : currentTickets;
+  const renderedTickets = disablePagination ? tickets : currentTickets;
 
   const totalPages = Math.ceil(sortedTickets.length / ticketsPerPage);
 
@@ -354,8 +337,19 @@ export function TicketTable({
     }
   };
 
-  // const statusOptions removed in favor of dynamic list from hook
-
+  const statusOptions: Ticket["status"][] = [
+    "Nuevo",
+    "Abierto",
+    "En proceso",
+    "Visita",
+    "Visita - Coordinar",
+    "Visita Programada",
+    "Visita Realizada",
+    "Revision Cerrar Visita",
+    "Resuelto",
+    "Facturar",
+    "Pagado",
+  ];
   const statusIcons: Record<Ticket["status"], React.ComponentType<{ className?: string }>> = {
     Nuevo: PlusCircle,
     Abierto: FolderOpen,
@@ -375,59 +369,33 @@ export function TicketTable({
     Resuelto: CheckCircle,
     Facturar: Receipt,
     Pagado: DollarSign,
-    "Re abierto": RotateCcw,
-    "Esperando cliente": Hourglass,
-    "Evaluación": ClipboardList,
   };
   const statusIconClasses: Record<Ticket["status"], string> = {
     Nuevo: "text-sky-500",
     Abierto: "text-blue-500",
     "En proceso": "text-amber-500",
-    "En proceso de soporte": "text-amber-400",
-    Visita: "text-purple-500",
-    "Visita - Coordinar": "text-purple-400",
-    "Visita Programada": "text-purple-300",
-    "Visita Realizada": "text-purple-600",
-    "Revision Cerrar Visita": "text-green-400",
-    "Pendiente de Coordinación": "text-gray-400",
-    "Pendiente de Cliente": "text-gray-500",
-    "Pendiente de Tercero": "text-gray-600",
-    "Pendiente de Facturación": "text-orange-400",
-    "Pendiente de Pago": "text-orange-300",
-    Cerrado: "text-zinc-400",
-    Resuelto: "text-emerald-600",
-    Facturar: "text-orange-500",
-    Pagado: "text-lime-600",
-    "Re abierto": "text-rose-500",
-    "Esperando cliente": "text-amber-500",
-    "Evaluación": "text-indigo-500",
+      "En proceso de soporte": "text-amber-400",
+      Visita: "text-purple-500",
+      "Visita - Coordinar": "text-purple-400",
+      "Visita Programada": "text-purple-300",
+      "Visita Realizada": "text-purple-600",
+      "Revision Cerrar Visita": "text-green-400",
+      "Pendiente de Coordinación": "text-gray-400",
+      "Pendiente de Cliente": "text-gray-500",
+      "Pendiente de Tercero": "text-gray-600",
+      "Pendiente de Facturación": "text-orange-400",
+      "Pendiente de Pago": "text-orange-300",
+      Cerrado: "text-zinc-400",
+      Resuelto: "text-emerald-600",
+      Facturar: "text-orange-500",
+      Pagado: "text-lime-600",
   };
 
   const isRowLocked = (ticket: Ticket) =>
     ticket.status === "Resuelto" && !unlockedTickets.has(ticket.id);
 
-  const handleStatusChange = (ticket: Ticket, value: Ticket["status"]) => {
-    // Validate Flow
-    const allowed = transitions[ticket.status];
-    // If we have transition rules for this status, enforce them. 
-    // If no rules exist (orphaned status or not loaded), we might want to be permissive or restrictive. 
-    // Here we enforce only if rules exist.
-    if (allowed && allowed.length > 0 && !allowed.includes(value)) {
-      toast.error(`El flujo de trabajo no permite la transición directa de "${ticket.status}" a "${value}".`);
-      return;
-    }
-
-    setPendingStatusChange({ ticket: ticket, status: value });
-  };
-
-  const confirmStatusChange = async () => {
-    if (!pendingStatusChange) return;
-    const { ticket, status: value } = pendingStatusChange;
-
-    // Optimistic close
-    setPendingStatusChange(null);
+  const handleStatusChange = async (ticket: Ticket, value: Ticket["status"]) => {
     setUpdatingId(ticket.id);
-
     try {
       const response = await fetch(`${API_URL}/tickets/${ticket.id}`, {
         method: "PUT",
@@ -766,7 +734,7 @@ export function TicketTable({
                               )}
                               {ticket.assignedTo ? (
                                 (() => {
-                                  const assignedUser = users.find(u =>
+                                  const assignedUser = users.find(u =>        
                                     u.id === ticket.assignedTo ||
                                     u.email === ticket.assignedTo
                                   );
@@ -1042,25 +1010,6 @@ export function TicketTable({
           </PaginationContent>
         </Pagination>
       )}
-
-      <AlertDialog open={!!pendingStatusChange} onOpenChange={(open) => !open && setPendingStatusChange(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>¿Cambiar estado del ticket?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Vas a cambiar el estado de <strong>"{pendingStatusChange?.ticket.status}"</strong> a <strong>"{pendingStatusChange?.status}"</strong>.
-              <br />
-              Esta acción puede disparar notificaciones o automatizaciones.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmStatusChange} className="bg-slate-900 text-white hover:bg-slate-800">
-              Confirmar Cambio
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }

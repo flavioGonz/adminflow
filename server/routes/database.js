@@ -5,6 +5,7 @@ const { getMongoServerManager } = require('../lib/mongoServerManager');
 const { MongoClient } = require('mongodb');
 const fs = require('fs');
 const path = require('path');
+const { initMongo, closeMongoConnection } = require('../lib/mongoClient');
 
 const SYNC_CONFIG_PATH = path.join(__dirname, '../.sync-schedule.json');
 
@@ -207,7 +208,7 @@ router.post('/collections', async (req, res) => {
         const { MongoClient } = require('mongodb');
         const mongoUri = uri || process.env.MONGODB_URI || 'mongodb://localhost:27017/adminflow';
         const dbName = 'adminflow';
-        
+
         const client = new MongoClient(mongoUri);
         await client.connect();
         const db = client.db(dbName);
@@ -242,9 +243,9 @@ router.post('/collections', async (req, res) => {
         });
     } catch (error) {
         console.error('Error getting collections:', error);
-        res.status(500).json({ 
-            message: 'Error al obtener colecciones', 
-            error: error.message 
+        res.status(500).json({
+            message: 'Error al obtener colecciones',
+            error: error.message
         });
     }
 });
@@ -260,7 +261,7 @@ router.post('/switch', async (req, res) => {
     try {
         const { MongoClient } = require('mongodb');
         const dbName = 'adminflow';
-        
+
         // Test the connection
         const client = new MongoClient(uri);
         await client.connect();
@@ -269,9 +270,9 @@ router.post('/switch', async (req, res) => {
 
         // Save current URI
         const configPath = path.resolve(__dirname, '../.selected-db.json');
-        fs.writeFileSync(configPath, JSON.stringify({ 
-            mongoUri: uri, 
-            selectedAt: new Date().toISOString() 
+        fs.writeFileSync(configPath, JSON.stringify({
+            mongoUri: uri,
+            selectedAt: new Date().toISOString()
         }, null, 2));
 
         // Get existing collections
@@ -299,10 +300,10 @@ router.post('/switch', async (req, res) => {
         });
     } catch (error) {
         console.error('Error switching database:', error);
-        res.status(500).json({ 
+        res.status(500).json({
             success: false,
-            message: 'Error al cambiar base de datos', 
-            error: error.message 
+            message: 'Error al cambiar base de datos',
+            error: error.message
         });
     }
 });
@@ -341,9 +342,9 @@ router.post('/deploy-collections', async (req, res) => {
         });
     } catch (error) {
         console.error('Error deploying collections:', error);
-        res.status(500).json({ 
-            message: 'Error al desplegar colecciones', 
-            error: error.message 
+        res.status(500).json({
+            message: 'Error al desplegar colecciones',
+            error: error.message
         });
     }
 });
@@ -358,10 +359,10 @@ router.post('/backup/create', async (req, res) => {
         res.json(result);
     } catch (error) {
         console.error('❌ [DB BACKUP] Error:', error.message);
-        res.status(500).json({ 
+        res.status(500).json({
             success: false,
             message: 'Error al crear respaldo',
-            error: error.message 
+            error: error.message
         });
     }
 });
@@ -377,10 +378,10 @@ router.get('/backup/list', async (req, res) => {
         });
     } catch (error) {
         console.error('Error listing backups:', error);
-        res.status(500).json({ 
+        res.status(500).json({
             success: false,
             message: 'Error al listar respaldos',
-            error: error.message 
+            error: error.message
         });
     }
 });
@@ -399,10 +400,10 @@ router.post('/backup/restore', async (req, res) => {
         res.json(result);
     } catch (error) {
         console.error('Error restoring backup:', error);
-        res.status(500).json({ 
+        res.status(500).json({
             success: false,
             message: 'Error al restaurar respaldo',
-            error: error.message 
+            error: error.message
         });
     }
 });
@@ -440,9 +441,9 @@ router.get('/backup/download/:backupName', async (req, res) => {
         archive.finalize();
     } catch (error) {
         console.error('Error downloading backup:', error);
-        res.status(500).json({ 
+        res.status(500).json({
             message: 'Error al descargar respaldo',
-            error: error.message 
+            error: error.message
         });
     }
 });
@@ -468,10 +469,10 @@ router.delete('/backup/delete/:backupName', async (req, res) => {
         });
     } catch (error) {
         console.error('Error deleting backup:', error);
-        res.status(500).json({ 
+        res.status(500).json({
             success: false,
             message: 'Error al eliminar respaldo',
-            error: error.message 
+            error: error.message
         });
     }
 });
@@ -532,7 +533,7 @@ const performSync = async ({ sourceId, targetIds, collections, dropBeforeInsert 
             targetLog.ok = false;
             targetLog.error = err.message;
         } finally {
-            await targetClient.close().catch(() => {});
+            await targetClient.close().catch(() => { });
             report.push(targetLog);
         }
     }
