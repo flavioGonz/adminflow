@@ -112,6 +112,7 @@ const productRoutes = require('./routes/products');
 const categoryRoutes = require('./routes/categories');
 const manufacturerRoutes = require('./routes/manufacturers');
 const supplierCatalogRoutes = require('./routes/suppliers-catalog');
+const usersV2Routes = require('./routes/users-v2');
 const { checkInstallation } = require('./middleware/checkInstallation');
 
 // Installation routes (always accessible)
@@ -138,6 +139,7 @@ app.use('/api/products', productRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/manufacturers', manufacturerRoutes);
 app.use('/api/suppliers-catalog', supplierCatalogRoutes);
+app.use('/api/v2/users', usersV2Routes);
 
 
 const MongoStore = require('connect-mongo');

@@ -2,6 +2,7 @@ export interface Contract {
   id: string;
   clientId: string;
   clientName: string;
+  clientAvatarUrl?: string | null;
   title: string;
   description?: string;
   startDate?: string;
