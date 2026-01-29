@@ -1,11 +1,16 @@
 const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
-const { db } = require('../../db');
+const { getMongoDb } = require('../../lib/mongoClient');
 const { ObjectId } = require('mongodb');
 
 // Reuse JWT secret fallback from main server
 const SECRET_KEY = process.env.JWT_SECRET || 'dev_super_secret';
+
+const getCollection = () => {
+  const db = getMongoDb();
+  return db ? db.collection('support_articles') : null;
+};
 
 // Minimal auth middleware (mirrors server/index.js)
 const authenticateToken = (req, res, next) => {
@@ -25,6 +30,9 @@ const authenticateToken = (req, res, next) => {
  */
 router.get('/articles', async (req, res) => {
   try {
+    const collection = getCollection();
+    if (!collection) return res.status(503).json({ success: false, error: 'Base de datos no disponible' });
+
     const { category, published, search } = req.query;
     
     const filter = {};
@@ -40,7 +48,7 @@ router.get('/articles', async (req, res) => {
       ];
     }
 
-    const articles = await db.collection('support_articles')
+    const articles = await collection
       .find(filter)
       .sort({ createdAt: -1 })
       .toArray();
@@ -67,6 +75,9 @@ router.get('/articles', async (req, res) => {
  */
 router.get('/articles/:id', async (req, res) => {
   try {
+    const collection = getCollection();
+    if (!collection) return res.status(503).json({ success: false, error: 'Base de datos no disponible' });
+
     const { id } = req.params;
 
     if (!ObjectId.isValid(id)) {
@@ -76,8 +87,7 @@ router.get('/articles/:id', async (req, res) => {
       });
     }
 
-    const article = await db.collection('support_articles')
-      .findOne({ _id: new ObjectId(id) });
+    const article = await collection.findOne({ _id: new ObjectId(id) });
 
     if (!article) {
       return res.status(404).json({
@@ -87,7 +97,7 @@ router.get('/articles/:id', async (req, res) => {
     }
 
     // Incrementar vistas
-    await db.collection('support_articles').updateOne(
+    await collection.updateOne(
       { _id: new ObjectId(id) },
       { $inc: { views: 1 } }
     );
@@ -97,7 +107,7 @@ router.get('/articles/:id', async (req, res) => {
       article: {
         ...article,
         id: article._id.toString(),
-        views: article.views + 1
+        views: (article.views || 0) + 1
       }
     });
   } catch (error) {
@@ -115,6 +125,9 @@ router.get('/articles/:id', async (req, res) => {
  */
 router.post('/articles', authenticateToken, async (req, res) => {
   try {
+    const collection = getCollection();
+    if (!collection) return res.status(503).json({ success: false, error: 'Base de datos no disponible' });
+
     const { title, slug, excerpt, category, content, published } = req.body;
 
     if (!title || !excerpt || !content) {
@@ -134,8 +147,7 @@ router.post('/articles', authenticateToken, async (req, res) => {
     }
 
     // Verificar que el slug sea único
-    const existingArticle = await db.collection('support_articles')
-      .findOne({ slug: finalSlug });
+    const existingArticle = await collection.findOne({ slug: finalSlug });
 
     if (existingArticle) {
       return res.status(400).json({
@@ -153,15 +165,14 @@ router.post('/articles', authenticateToken, async (req, res) => {
       published: published || false,
       views: 0,
       author: {
-        id: req.user.id,
-        name: req.user.name,
+        id: req.user.userId,
         email: req.user.email
       },
       createdAt: new Date(),
       updatedAt: new Date()
     };
 
-    const result = await db.collection('support_articles').insertOne(newArticle);
+    const result = await collection.insertOne(newArticle);
 
     res.status(201).json({
       success: true,
@@ -185,6 +196,9 @@ router.post('/articles', authenticateToken, async (req, res) => {
  */
 router.patch('/articles/:id', authenticateToken, async (req, res) => {
   try {
+    const collection = getCollection();
+    if (!collection) return res.status(503).json({ success: false, error: 'Base de datos no disponible' });
+
     const { id } = req.params;
     const { title, slug, excerpt, category, content, published } = req.body;
 
@@ -195,8 +209,7 @@ router.patch('/articles/:id', authenticateToken, async (req, res) => {
       });
     }
 
-    const article = await db.collection('support_articles')
-      .findOne({ _id: new ObjectId(id) });
+    const article = await collection.findOne({ _id: new ObjectId(id) });
 
     if (!article) {
       return res.status(404).json({
@@ -225,8 +238,7 @@ router.patch('/articles/:id', authenticateToken, async (req, res) => {
 
     updateData.updatedAt = new Date();
 
-    const result = await db.collection('support_articles')
-      .findOneAndUpdate(
+    const result = await collection.findOneAndUpdate(
         { _id: new ObjectId(id) },
         { $set: updateData },
         { returnDocument: 'after' }
@@ -261,6 +273,9 @@ router.patch('/articles/:id', authenticateToken, async (req, res) => {
  */
 router.delete('/articles/:id', authenticateToken, async (req, res) => {
   try {
+    const collection = getCollection();
+    if (!collection) return res.status(503).json({ success: false, error: 'Base de datos no disponible' });
+
     const { id } = req.params;
 
     if (!ObjectId.isValid(id)) {
@@ -270,8 +285,7 @@ router.delete('/articles/:id', authenticateToken, async (req, res) => {
       });
     }
 
-    const result = await db.collection('support_articles')
-      .deleteOne({ _id: new ObjectId(id) });
+    const result = await collection.deleteOne({ _id: new ObjectId(id) });
 
     if (result.deletedCount === 0) {
       return res.status(404).json({

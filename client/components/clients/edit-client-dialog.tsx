@@ -14,26 +14,32 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox"; // Import Checkbox
-import { User, Tag, CreditCard, Mail, Phone, Home, FileSignature, Bell, Upload, Image as ImageIcon } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { 
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { 
+  User, 
+  Tag, 
+  CreditCard, 
+  Mail, 
+  Phone, 
+  Home, 
+  FileSignature, 
+  Bell, 
+  Upload, 
+  DollarSign,
+  CalendarClock,
+  Image as ImageIcon 
+} from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { toast } from "sonner";
 import { API_URL } from "@/lib/http";
-
-interface Client {
-  id: string;
-  name: string;
-  alias?: string;
-  rut?: string;
-  email: string;
-  phone?: string;
-  address?: string;
-  contract?: boolean;
-  notificationsEnabled?: boolean;
-  avatarUrl?: string;
-  createdAt?: string;
-  updatedAt?: string;
-}
+import { Client } from "@/types/client";
 
 interface EditClientDialogProps {
   client: Client;
@@ -55,6 +61,11 @@ export function EditClientDialog({ client, onClientUpdated, children }: EditClie
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(client.avatarUrl ?? null);
 
+  // Campos de pago recurrente
+  const [recurringPaymentEnabled, setRecurringPaymentEnabled] = useState(client.recurringPaymentEnabled || false);
+  const [recurringAmount, setRecurringAmount] = useState(client.recurringAmount?.toString() || "");
+  const [recurringCurrency, setRecurringCurrency] = useState(client.recurringCurrency || "UYU");
+
   useEffect(() => {
     setName(client.name ?? "");
     setAlias(client.alias ?? "");
@@ -66,6 +77,10 @@ export function EditClientDialog({ client, onClientUpdated, children }: EditClie
     setNotificationsEnabled(client.notificationsEnabled ?? true);
     setAvatarUrl(client.avatarUrl ?? "");
     setAvatarPreview(client.avatarUrl ?? null);
+    
+    setRecurringPaymentEnabled(client.recurringPaymentEnabled || false);
+    setRecurringAmount(client.recurringAmount?.toString() || "");
+    setRecurringCurrency(client.recurringCurrency || "UYU");
   }, [client]);
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -129,6 +144,9 @@ export function EditClientDialog({ client, onClientUpdated, children }: EditClie
         contract,
         notificationsEnabled,
         avatarUrl: finalAvatarUrl,
+        recurringPaymentEnabled,
+        recurringAmount: recurringAmount ? Number(recurringAmount) : null,
+        recurringCurrency,
       };
 
       const response = await fetch(`${API_URL}/clients/${client.id}`, {
@@ -145,7 +163,7 @@ export function EditClientDialog({ client, onClientUpdated, children }: EditClie
       }
 
       const result = await response.json();
-      onClientUpdated(result); // Pass the updated client from the server
+      onClientUpdated(result);
       toast.success("Cliente actualizado exitosamente.");
       setIsOpen(false);
     } catch (err: any) {
@@ -156,7 +174,7 @@ export function EditClientDialog({ client, onClientUpdated, children }: EditClie
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>{children}</DialogTrigger>
-      <DialogContent className="sm:max-w-3xl">
+      <DialogContent className="sm:max-w-[850px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Editar Cliente</DialogTitle>
           <DialogDescription>
@@ -164,7 +182,7 @@ export function EditClientDialog({ client, onClientUpdated, children }: EditClie
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
-          <div className="grid grid-cols-2 gap-6 py-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 py-4">
             {/* Left Column - Form Fields */}
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
@@ -254,7 +272,7 @@ export function EditClientDialog({ client, onClientUpdated, children }: EditClie
                 </div>
               </div>
 
-              <div className="flex flex-col gap-3 border-t pt-4">
+              <div className="space-y-4 pt-2">
                 <div className="flex items-center space-x-2">
                   <Checkbox
                     id="contract"
@@ -275,16 +293,16 @@ export function EditClientDialog({ client, onClientUpdated, children }: EditClie
                   />
                   <Label htmlFor="notifications" className="cursor-pointer flex items-center gap-2">
                     <Bell className="h-4 w-4 text-muted-foreground" />
-                    Recibir notificaciones automáticas por correo
+                    Notificaciones por correo
                   </Label>
                 </div>
               </div>
             </div>
 
-            {/* Right Column - Avatar Upload */}
-            <div className="flex flex-col items-center justify-center gap-6 border-l pl-6">
-              <div className="flex flex-col items-center gap-4">
-                <Avatar className="h-40 w-40 border-4 border-slate-200">
+            {/* Right Column - Avatar & Recurring Payment */}
+            <div className="space-y-6 md:border-l md:pl-6">
+              <div className="flex flex-col items-center gap-4 py-2">
+                <Avatar className="h-32 w-32 border-4 border-slate-100 shadow-sm">
                   <AvatarImage
                     src={
                       avatarPreview
@@ -295,37 +313,75 @@ export function EditClientDialog({ client, onClientUpdated, children }: EditClie
                     }
                     alt={name}
                   />
-                  <AvatarFallback className="bg-gradient-to-br from-emerald-500 to-green-600 text-white text-4xl font-semibold">
-                    {name ? name.substring(0, 2).toUpperCase() : <User className="h-16 w-16" />}
+                  <AvatarFallback className="bg-gradient-to-br from-emerald-500 to-green-600 text-white text-3xl font-semibold">
+                    {name ? name.substring(0, 2).toUpperCase() : <User className="h-12 w-12" />}
                   </AvatarFallback>
                 </Avatar>
-                <div className="flex flex-col items-center gap-2">
-                  <Label htmlFor="avatar-upload" className="cursor-pointer">
-                    <div className="flex items-center gap-2 px-6 py-3 bg-gradient-to-br from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white rounded-lg transition-all shadow-md hover:shadow-lg">
-                      <Upload className="h-5 w-5" />
-                      <span className="font-medium">Cambiar Logo</span>
-                    </div>
-                    <input
-                      id="avatar-upload"
-                      type="file"
-                      accept="image/*"
-                      onChange={handleAvatarChange}
-                      className="hidden"
-                    />
-                  </Label>
-                  <p className="text-xs text-muted-foreground text-center">PNG, JPG hasta 2MB</p>
-                </div>
+                <Label htmlFor="avatar-upload" className="cursor-pointer">
+                  <div className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md transition-all text-sm font-medium">
+                    <Upload className="h-4 w-4" />
+                    Cambiar Logo
+                  </div>
+                  <input id="avatar-upload" type="file" accept="image/*" onChange={handleAvatarChange} className="hidden" />
+                </Label>
               </div>
-              {avatarFile && (
-                <div className="text-center">
-                  <p className="text-sm font-medium text-emerald-600">✓ Nuevo logo cargado</p>
-                  <p className="text-xs text-muted-foreground mt-1">Se guardará al actualizar el cliente</p>
+
+              <div className="space-y-4 p-4 rounded-xl bg-slate-50 border border-slate-200">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <CalendarClock className="h-5 w-5 text-emerald-600" />
+                    <h3 className="font-semibold text-slate-800">Pago Recurrente</h3>
+                  </div>
+                  <Checkbox
+                    id="recurring"
+                    checked={recurringPaymentEnabled}
+                    onCheckedChange={(checked) => setRecurringPaymentEnabled(checked as boolean)}
+                  />
                 </div>
-              )}
+                
+                {recurringPaymentEnabled && (
+                  <div className="space-y-3 pt-2 animate-in fade-in slide-in-from-top-2 duration-300">
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="col-span-2 space-y-1.5">
+                        <Label htmlFor="amount" className="text-xs">Monto Mensual</Label>
+                        <div className="relative">
+                          <DollarSign className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+                          <Input
+                            id="amount"
+                            type="number"
+                            placeholder="0.00"
+                            value={recurringAmount}
+                            onChange={(e) => setRecurringAmount(e.target.value)}
+                            className="pl-8 h-9 text-sm"
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="currency" className="text-xs">Moneda</Label>
+                        <Select value={recurringCurrency} onValueChange={setRecurringCurrency}>
+                          <SelectTrigger id="currency" className="h-9 text-sm">
+                            <SelectValue placeholder="USD" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="UYU">UYU</SelectItem>
+                            <SelectItem value="USD">USD</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground leading-tight italic">
+                      Se generará un pago pendiente automáticamente el día 1 de cada mes.
+                    </p>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-          <DialogFooter>
-            <Button type="submit">Guardar Cambios</Button>
+          <DialogFooter className="mt-4 border-t pt-4">
+            <Button type="button" variant="outline" onClick={() => setIsOpen(false)}>Cancelar</Button>
+            <Button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white">
+              Guardar Cambios
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>

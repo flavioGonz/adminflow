@@ -1,5 +1,4 @@
 const { getMongoDb } = require('./mongoClient');
-const { recordSyncEvent } = require('./sqliteSync');
 
 const MODULE_DEFAULTS = {
   users: {
@@ -108,7 +107,6 @@ const upsertConfig = async (moduleName, payload) => {
     },
     { upsert: true, returnDocument: 'after' }
   );
-  recordSyncEvent('configurations', result.value).catch(() => {});
   return result.value;
 };
 

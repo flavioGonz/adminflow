@@ -192,7 +192,8 @@ export function BudgetTable({
       const matchesDescription = budget.description?.toLowerCase().includes(term);
       const matchesStatus = budget.status?.toLowerCase().includes(term);
       const matchesClient = budget.clientName?.toLowerCase().includes(term);
-      const matchesId = budget.id?.toLowerCase().includes(term);
+      const idValue = budget.id !== undefined && budget.id !== null ? String(budget.id) : "";
+      const matchesId = idValue.toLowerCase().includes(term);
       const matchesAssignedTo = budget.assignedTo?.toLowerCase().includes(term);
       const matchesAmount =
         budget.amount !== undefined &&

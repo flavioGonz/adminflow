@@ -166,58 +166,7 @@ export default function ContractsPage() {
               </div>
             </div>
 
-            <div className="grid gap-3 md:grid-cols-3">
-              <Card className="border-slate-200 bg-slate-900 text-white shadow-none">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Contratos totales</CardTitle>
-                  <BarChart3 className="h-4 w-4 text-white/70" />
-                </CardHeader>
-                <CardContent>
-                  <p className="text-2xl font-semibold">{contracts.length}</p>
-                  <p className="text-xs text-white/70">Resumen general</p>
-                </CardContent>
-              </Card>
-              <Card className="border-slate-200 bg-white shadow-sm">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="flex items-center gap-2 text-sm font-medium text-slate-800">
-                    <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-slate-100">
-                      <span role="img" aria-label="usa">🇺🇸</span>
-                    </span>
-                    Total USD
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-2xl font-semibold text-slate-900">
-                    {new Intl.NumberFormat("es-UY", {
-                      style: "currency",
-                      currency: "USD",
-                      minimumFractionDigits: 2,
-                    }).format(metrics.usd)}
-                  </p>
-                  <p className="text-xs text-slate-500">Monto mensual en dolares</p>
-                </CardContent>
-              </Card>
-              <Card className="border-slate-200 bg-white shadow-sm">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="flex items-center gap-2 text-sm font-medium text-slate-800">
-                    <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-slate-100">
-                      <span role="img" aria-label="uruguay">🇺🇾</span>
-                    </span>
-                    Total UYU
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-2xl font-semibold text-slate-900">
-                    {new Intl.NumberFormat("es-UY", {
-                      style: "currency",
-                      currency: "UYU",
-                      minimumFractionDigits: 2,
-                    }).format(metrics.uyu)}
-                  </p>
-                  <p className="text-xs text-slate-500">Monto mensual en pesos uruguayos</p>
-                </CardContent>
-              </Card>
-            </div>
+  
           </div>
 
           {error && (

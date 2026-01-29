@@ -34,7 +34,7 @@ const initMongo = async ({ uri, dbName } = {}) => {
   await cachedDb.createCollection("notifications").catch(() => { });
   await cachedDb.createCollection("users").catch(() => { });
   await cachedDb.createCollection("groups").catch(() => { });
-  console.log(`✅ [MongoDB] Conectado a ${databaseName}`);
+  console.log(`??? [MongoDB] Conectado a ${databaseName}`);
   console.log(`   URI: ${connectionUri}`);
   return cachedDb;
 };
@@ -85,7 +85,7 @@ const getNextId = async (collectionName) => {
     throw new Error('MongoDB not connected');
   }
 
-  // Check if counter exists
+  // Check if counter exists (using 'seq' for consistency with migration scripts)
   const counter = await db.collection('counters').findOne({ _id: collectionName });
 
   if (!counter) {
@@ -104,7 +104,7 @@ const getNextId = async (collectionName) => {
     // Initialize counter
     await db.collection('counters').updateOne(
       { _id: collectionName },
-      { $set: { sequence: startVal + 1 } },
+      { $set: { seq: startVal + 1 } },
       { upsert: true }
     );
 
@@ -113,11 +113,13 @@ const getNextId = async (collectionName) => {
 
   const result = await db.collection('counters').findOneAndUpdate(
     { _id: collectionName },
-    { $inc: { sequence: 1 } },
+    { $inc: { seq: 1 } },
     { upsert: true, returnDocument: 'after' }
   );
 
-  return result.value.sequence;
+  // result can be the document itself or { value: doc } depending on driver version
+  const doc = result.value || result;
+  return doc.seq;
 };
 
 module.exports = {

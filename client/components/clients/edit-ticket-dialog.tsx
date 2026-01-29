@@ -1,4 +1,4 @@
-﻿// components/tickets/edit-ticket-dialog.tsx
+// components/tickets/edit-ticket-dialog.tsx
 
 "use client";
 
@@ -52,6 +52,7 @@ import {
   ChevronsUpDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ShinyText } from "@/components/ui/shiny-text";
 import {
   Command,
   CommandEmpty,
@@ -67,9 +68,12 @@ import { Client } from "@/types/client";
 import { API_URL } from "@/lib/http";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { PageHeader } from "@/components/layout/page-header";
+import { UnifiedAssignmentSearch } from "@/components/tickets/unified-assignment-search";
 import dynamic from "next/dynamic";
 import ReactCountryFlag from "react-country-flag";
+import { useSearchParams } from "next/navigation";
 
 const TextEditor = dynamic(
   () => import("@/components/ui/rich-text-editor").then((mod) => mod.RichTextEditor),
@@ -119,10 +123,14 @@ export function EditTicketDialog({
   const [clientsLoaded, setClientsLoaded] = useState(false);
   const [clientTickets, setClientTickets] = useState<Ticket[]>([]);
   const [clientTicketsLoading, setClientTicketsLoading] = useState(false);
-  const [users, setUsers] = useState<{ id: string; name: string; email: string }[]>([]);
+  const [users, setUsers] = useState<{ id: string; name: string; email: string; avatar?: string }[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [assignedTo, setAssignedTo] = useState<string | null>(ticket?.assignedTo ?? null);
   const [assignedGroupId, setAssignedGroupId] = useState<string | null>(ticket?.assignedGroupId ?? null);
+  const [assignmentMenuOpen, setAssignmentMenuOpen] = useState(false);
+
+  const searchParams = useSearchParams();
+  const queryClientId = searchParams?.get("clientId");
 
   useEffect(() => {
     fetch(`${API_URL}/users`)
@@ -130,8 +138,6 @@ export function EditTicketDialog({
       .then((data) => setUsers(data))
       .catch((err) => console.error("Error fetching users:", err));
   }, []);
-
-
 
   const initialState = useMemo(() => {
     const isVisitStatus =
@@ -141,7 +147,6 @@ export function EditTicketDialog({
     return {
       title: ticket?.title ?? "",
       clientName: ticket?.clientName ?? "",
-
       selectedClientId: ticket?.clientId ?? null,
       hasActiveContract: ticket?.hasActiveContract ?? false,
       status: ticket?.status ?? "Nuevo",
@@ -154,7 +159,6 @@ export function EditTicketDialog({
       attachments: Array.isArray(ticket?.attachments)
         ? (ticket.attachments as TicketAttachment[])
         : [],
-
       audioNotes: Array.isArray(ticket?.audioNotes)
         ? (ticket.audioNotes as TicketAudioNote[])
         : [],
@@ -192,6 +196,45 @@ export function EditTicketDialog({
   const attachmentObjectUrls = useRef<string[]>([]);
   const audioObjectUrls = useRef<string[]>([]);
   const clientInputRef = useRef<HTMLInputElement | null>(null);
+  const fileInputId = useId();
+
+  const fetchClients = useCallback(async () => {
+    if (clientsLoaded) return;
+    setClientsLoading(true);
+    try {
+      const response = await fetch(`${API_URL}/clients`);
+      if (!response.ok) throw new Error();
+      const data = (await response.json()) as Client[];
+      setClients(data);
+      setClientsLoaded(true);
+    } catch {
+      toast.error("No se pudieron cargar los clientes.");
+    } finally {
+      setClientsLoading(false);
+    }
+  }, [clientsLoaded]);
+
+  const handleClientSelect = (client: Client) => {
+    setClientName(client.name);
+    setSelectedClientId(client.id);
+    setHasContract(client.contract ?? false);
+    setClientMenuOpen(false);
+  };
+
+  useEffect(() => {
+    if (isOpen && !clientsLoaded) {
+      fetchClients();
+    }
+  }, [isOpen, clientsLoaded, fetchClients]);
+
+  useEffect(() => {
+    if (queryClientId && !isEditMode && clientsLoaded) {
+      const client = clients.find(c => String(c.id) === String(queryClientId));
+      if (client) {
+        handleClientSelect(client);
+      }
+    }
+  }, [queryClientId, isEditMode, clientsLoaded, clients]);
 
   useEffect(() => {
     if (selectedClientId) {
@@ -199,7 +242,7 @@ export function EditTicketDialog({
       fetch(`${API_URL}/tickets`)
         .then((res) => res.json())
         .then((data: any[]) => {
-          const tickets = data
+          const filtered = data
             .map((t) => ({
               ...t,
               createdAt: t.createdAt || new Date().toISOString(),
@@ -207,33 +250,50 @@ export function EditTicketDialog({
             }))
             .filter(
               (t: Ticket) =>
-                t.clientId === selectedClientId ||
-                (t.clientName && clientName && t.clientName.toLowerCase() === clientName.toLowerCase())
+                String(t.clientId) === String(selectedClientId)
             );
-          tickets.sort(
+          filtered.sort(
             (a: Ticket, b: Ticket) =>
               new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
           );
-          setClientTickets(tickets);
+          setClientTickets(filtered);
         })
         .catch((err) => console.error(err))
         .finally(() => setClientTicketsLoading(false));
     } else {
       setClientTickets([]);
     }
-  }, [selectedClientId, clientName]);
+  }, [selectedClientId]);
 
-  const audioPlaybackRef = useRef<HTMLAudioElement | null>(null);
-  const fileInputId = useId();
+  useEffect(() => {
+    const controller = new AbortController();
+    const loadGroups = async () => {
+      try {
+        const response = await fetch(`${API_URL}/groups`, {
+          signal: controller.signal,
+        });
+        if (!response.ok) {
+          setGroups([]);
+          return;
+        }
+        const data = await response.json();
+        setGroups(Array.isArray(data) ? data : []);
+      } catch (err) {
+        if ((err as DOMException)?.name === "AbortError") return;
+        console.error("Error fetching groups:", err);
+      }
+    };
+    loadGroups();
+    return () => controller.abort();
+  }, []);
+
   const handleStartRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       mediaRecorderRef.current = new MediaRecorder(stream);
       audioChunksRef.current = [];
       mediaRecorderRef.current.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-        }
+        if (event.data.size > 0) audioChunksRef.current.push(event.data);
       };
       mediaRecorderRef.current.onstop = () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
@@ -264,27 +324,6 @@ export function EditTicketDialog({
     }
   };
 
-  const handleClientInputChange = (value: string) => {
-    setClientName(value);
-    setSelectedClientId(null);
-    if (!clientsLoaded) {
-      fetchClients();
-    }
-  };
-
-  const handleClientInputPointerDown = (event: React.PointerEvent<HTMLInputElement>) => {
-    event.preventDefault();
-    setClientMenuOpen(true);
-    clientInputRef.current?.focus();
-  };
-
-  const handleClientSelect = (client: Client) => {
-    setClientName(client.name);
-    setSelectedClientId(client.id);
-    setHasContract(client.contract ?? false);
-    setClientMenuOpen(false);
-  };
-
   const handleFileInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (!files) return;
@@ -313,92 +352,6 @@ export function EditTicketDialog({
     if (!open) handleClose();
   };
 
-  const fetchClients = useCallback(async () => {
-    if (clientsLoaded) return;
-    setClientsLoading(true);
-    try {
-      const response = await fetch(`${API_URL}/clients`);
-      if (!response.ok) throw new Error();
-      const data = (await response.json()) as Client[];
-      setClients(data);
-      setClientsLoaded(true);
-    } catch {
-      toast.error("No se pudieron cargar los clientes.");
-    } finally {
-      setClientsLoading(false);
-    }
-  }, [clientsLoaded]);
-
-  useEffect(() => {
-    if (isOpen && !clientsLoaded) {
-      fetchClients();
-    }
-  }, [isOpen, clientsLoaded, fetchClients]);
-
-  useEffect(() => {
-    if (clientMenuOpen && !clientsLoaded) {
-      fetchClients();
-    }
-  }, [clientMenuOpen, clientsLoaded, fetchClients]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-      const loadGroups = async () => {
-        try {
-          const response = await fetch(`${API_URL}/groups`, {
-            signal: controller.signal,
-          });
-          if (!response.ok) {
-            console.warn("No se pudieron cargar los grupos:", response.status);
-            toast.error("No se pudieron cargar los grupos.");
-            setGroups([]);
-            return;
-          }
-          const data = await response.json();
-          setGroups(Array.isArray(data) ? data : []);
-        } catch (err) {
-          if ((err as DOMException)?.name === "AbortError") return;
-          console.error("Error fetching groups:", err);
-        }
-      };
-    loadGroups();
-    return () => controller.abort();
-  }, []);
-
-
-  useEffect(() => {
-    return () => {
-      attachmentObjectUrls.current.forEach((url) => URL.revokeObjectURL(url));
-      audioObjectUrls.current.forEach((url) => URL.revokeObjectURL(url));
-      if (audioPlaybackRef.current) {
-        audioPlaybackRef.current.pause();
-        audioPlaybackRef.current = null;
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    if (isEditMode) {
-      setTitle(initialState.title);
-      setClientName(initialState.clientName);
-      setSelectedClientId(initialState.selectedClientId);
-      setHasContract(initialState.hasActiveContract);
-      setStatus(initialState.status);
-      setPriority(initialState.priority);
-      setAmount(initialState.amount);
-      setAmountCurrency(initialState.amountCurrency ?? "UYU");
-      setVisit(initialState.visit);
-      setAnnotations(initialState.annotations);
-      setDescription(initialState.description);
-      setAttachments(initialState.attachments);
-      setAttachments(initialState.attachments);
-      setAudioNotes(initialState.audioNotes);
-      setAssignedTo(initialState.assignedTo);
-      setAssignedGroupId(initialState.assignedGroupId);
-      setNotes("");
-    }
-  }, [isEditMode, initialState]);
-
   const resetForm = () => {
     setTitle(initialState.title);
     setClientName(initialState.clientName);
@@ -411,7 +364,6 @@ export function EditTicketDialog({
     setVisit(initialState.visit);
     setAnnotations(initialState.annotations);
     setDescription(initialState.description);
-    setAttachments(initialState.attachments);
     setAttachments(initialState.attachments);
     setAudioNotes(initialState.audioNotes);
     setAssignedTo(initialState.assignedTo);
@@ -427,44 +379,18 @@ export function EditTicketDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
     if (!clientName.trim()) {
-      toast.error("Seleccione o escriba un cliente para continuar.");
+      toast.error("Seleccione un cliente.");
       return;
     }
-
     const visitFlag = status === "Visita";
-    const sanitizedNotes = notes.trim();
-    const noteAnnotation = sanitizedNotes
-      ? {
-        text: `<p>${sanitizedNotes}</p>`,
-        createdAt: new Date().toISOString(),
-        user: "Operador",
-      }
+    const noteAnnotation = notes.trim()
+      ? { text: `<p>${notes.trim()}</p>`, createdAt: new Date().toISOString(), user: "Operador" }
       : null;
-
-    const sanitizeAttachments = () =>
-      attachments.map(({ id, name, size, type, url }) => ({
-        id,
-        name,
-        size,
-        type,
-        url,
-      }));
-
-    const sanitizeAudioNotes = () =>
-      audioNotes.map(({ id, name, size, type, url, durationSeconds }) => ({
-        id,
-        name,
-        size,
-        type,
-        url,
-        durationSeconds,
-      }));
 
     const payload = {
       title,
-      clientId: selectedClientId ?? ticket?.clientId,
+      clientId: selectedClientId,
       priority,
       status,
       visit: visitFlag,
@@ -472,66 +398,30 @@ export function EditTicketDialog({
       amountCurrency,
       annotations: noteAnnotation ? [noteAnnotation, ...annotations] : annotations,
       description,
-      attachments: sanitizeAttachments(),
-      audioNotes: sanitizeAudioNotes(),
+      attachments: attachments.map(({ id, name, size, type, url }) => ({ id, name, size, type, url })),
+      audioNotes: audioNotes.map(({ id, name, size, type, url, durationSeconds }) => ({ id, name, size, type, url, durationSeconds })),
       assignedTo,
       assignedGroupId,
     };
 
-    if (isEditMode) {
-      if (!ticket || !onTicketUpdated) {
-        toast.error("No se pudo actualizar el ticket.");
-        return;
-      }
+    try {
+      const method = isEditMode ? "PUT" : "POST";
+      const url = (isEditMode && ticket) ? `${API_URL}/tickets/${ticket.id}` : `${API_URL}/tickets`;
+      const response = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
 
-      try {
-        const response = await fetch(`${API_URL}/tickets/${ticket.id}`, {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(payload),
-        });
-
-        if (!response.ok) {
-          throw new Error("Error al actualizar el ticket");
-        }
-
-        const updatedTicket: Ticket = await response.json();
-
-        onTicketUpdated(updatedTicket);
-        toast.success("Ticket actualizado con éxito");
-        setNotes("");
-        handleClose();
-      } catch (error) {
-        console.error("Error updating ticket:", error);
-        toast.error("No se pudo actualizar el ticket.");
-      }
-    } else {
-      try {
-        const response = await fetch(`${API_URL}/tickets`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(payload),
-        });
-
-        if (!response.ok) {
-          throw new Error("Error al crear el ticket");
-        }
-
-        const createdTicket: Ticket = await response.json();
-
-        if (onTicketCreated) {
-          onTicketCreated(createdTicket);
-        }
-        toast.success("Ticket creado con éxito");
-        resetForm();
-      } catch (error) {
-        console.error("Error creating ticket:", error);
-        toast.error("Error al crear el ticket.");
-      }
+      if (!response.ok) throw new Error();
+      const result: Ticket = await response.json();
+      if (isEditMode && onTicketUpdated) onTicketUpdated(result);
+      else if (onTicketCreated) onTicketCreated(result);
+      toast.success(isEditMode ? "Ticket actualizado" : "Ticket creado");
+      if (!isEditMode) resetForm();
+      handleClose();
+    } catch (error) {
+      toast.error("Error al procesar el ticket");
     }
   };
 
@@ -542,160 +432,62 @@ export function EditTicketDialog({
     return "default";
   };
 
-  const getPriorityBadgeVariant = (value: Ticket["priority"]) => {
-    if (value === "Alta") return "destructive";
-    if (value === "Media") return "outline";
-    return "secondary";
-  };
-
   const statusOptions: Ticket["status"][] = ["Nuevo", "Abierto", "En proceso", "Visita", "Resuelto", "Facturar", "Pagado"];
-
-  const statusIcons: Record<Ticket["status"], React.ComponentType<{ className?: string }>> = {
-    Nuevo: FilePlus,
-    Abierto: FileText,
-    "En proceso": Loader2,
-    "En proceso de soporte": Loader2,
-    Visita: User,
-    "Visita - Coordinar": User,
-    "Visita Programada": User,
-    "Visita Realizada": User,
-    "Revision Cerrar Visita": CheckCircle2,
-    "Pendiente de Coordinación": Clock,
-    "Pendiente de Cliente": Clock,
-    "Pendiente de Tercero": Clock,
-    "Pendiente de Facturación": BadgeDollarSign,
-    "Pendiente de Pago": BadgeDollarSign,
-    Cerrado: CheckCircle2,
-    Resuelto: BadgeDollarSign,
-    Facturar: BadgeDollarSign,
-    Pagado: BadgeDollarSign,
+  const statusIcons: Record<string, any> = {
+    Nuevo: FilePlus, Abierto: FileText, "En proceso": Loader2, Visita: User, Resuelto: CheckCircle2, Facturar: BadgeDollarSign, Pagado: CheckCircle2
   };
-
-  const statusIconClasses: Record<Ticket["status"], string> = {
-    Nuevo: "text-sky-500",
-    Abierto: "text-blue-500",
-    "En proceso": "text-amber-500",
-    "En proceso de soporte": "text-amber-400",
-    Visita: "text-purple-500",
-    "Visita - Coordinar": "text-purple-400",
-    "Visita Programada": "text-purple-300",
-    "Visita Realizada": "text-purple-600",
-    "Revision Cerrar Visita": "text-green-400",
-    "Pendiente de Coordinación": "text-gray-400",
-    "Pendiente de Cliente": "text-gray-500",
-    "Pendiente de Tercero": "text-gray-600",
-    "Pendiente de Facturación": "text-orange-400",
-    "Pendiente de Pago": "text-orange-300",
-    Cerrado: "text-zinc-400",
-    Resuelto: "text-emerald-600",
-    Facturar: "text-orange-500",
-    Pagado: "text-lime-600",
+  const statusIconClasses: Record<string, string> = {
+    Nuevo: "text-sky-500", Abierto: "text-blue-500", "En proceso": "text-amber-500", Visita: "text-purple-500", Resuelto: "text-emerald-600", Facturar: "text-orange-500", Pagado: "text-lime-600"
   };
 
   const priorityOptions: Ticket["priority"][] = ["Alta", "Media", "Baja"];
-
-  const priorityMeta: Record<
-    Ticket["priority"],
-    { Icon: React.ComponentType<{ className?: string }>; color: string }
-  > = {
+  const priorityMeta: Record<string, any> = {
     Alta: { Icon: AlertTriangle, color: "text-rose-500" },
     Media: { Icon: Activity, color: "text-amber-500" },
     Baja: { Icon: CheckCircle2, color: "text-emerald-600" },
   };
 
   const formContent = (
-    <form id="ticket-form" onSubmit={handleSubmit} className="flex flex-1 flex-col overflow-hidden">
+    <div id="ticket-form" className="flex flex-1 flex-col overflow-hidden">
       <div className="grid flex-1 gap-3 overflow-hidden lg:grid-cols-[3fr_1fr]">
         <div className="space-y-2 overflow-y-auto pr-1" style={{ maxHeight: isPageVariant ? "auto" : "calc(90vh - 200px)" }}>
-          <Card className="space-y-2 rounded-2xl border border-border/70 bg-white p-3 shadow-sm">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <FileText className="h-5 w-5 text-primary" />
-                <div>
-                  <p className="text-base font-semibold text-foreground">Ficha del ticket</p>
-                  <p className="text-sm text-muted-foreground">
-                    Gestiona los campos clave antes de registrar la labor.
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                  <Switch
-                    checked={visit}
-                    onCheckedChange={(checked) => setVisit(Boolean(checked))}
-                  />
-                  <span>Visita</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="grid gap-2 lg:grid-cols-2">
-              <div className="space-y-0.5">
-                <Label htmlFor="ticket-title" className="flex items-center gap-2 text-sm font-semibold">
-                  <TicketIcon className="h-4 w-4 text-muted-foreground" />
-                  Título del ticket
-                </Label>
+          <Card className="space-y-4 rounded-3xl border border-border/70 bg-white p-6 shadow-sm">
+            <div className="grid gap-4 lg:grid-cols-2">
+              <div className="space-y-1">
+                <Label className="flex items-center gap-2 text-xs font-black uppercase text-slate-400 tracking-wider">Título del ticket</Label>
                 <Input
-                  id="ticket-title"
-                  placeholder="Ej: Problema con conexión VPN"
+                  className="h-11 rounded-2xl border-slate-200 font-bold"
+                  placeholder="¿Qué está pasando?"
                   value={title}
-                  onChange={(event) => setTitle(event.target.value)}
+                  onChange={(e) => setTitle(e.target.value)}
                   required
                 />
               </div>
-              <div className="space-y-0.5">
-                <Label className="flex items-center gap-2 text-sm font-semibold">
-                  <Users className="h-4 w-4 text-muted-foreground" />
-                  Cliente
-                  {hasContract && (
-                    <Badge variant="outline" className="ml-2 border-green-500 text-green-600 bg-green-50 h-5 px-1.5 text-[10px]">
-                      Con Contrato
-                    </Badge>
-                  )}
-                </Label>
+              <div className="space-y-1">
+                <Label className="flex items-center gap-2 text-xs font-black uppercase text-slate-400 tracking-wider">Cliente</Label>
                 <Popover open={clientMenuOpen} onOpenChange={setClientMenuOpen}>
                   <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      role="combobox"
-                      aria-expanded={clientMenuOpen}
-                      className="w-full justify-between font-normal"
-                    >
-                      {clientName ? clientName : "Seleccionar cliente..."}
-                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    <Button variant="outline" className="w-full h-11 justify-between rounded-2xl border-slate-200 font-bold">
+                      <div className="flex items-center gap-2">
+                        <Users className="h-4 w-4 text-slate-400" />
+                        {clientName || "Seleccionar cliente..."}
+                      </div>
+                      <ChevronsUpDown className="h-4 w-4 opacity-50" />
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-[320px] p-0">
+                  <PopoverContent className="w-[320px] p-0 rounded-3xl overflow-hidden shadow-2xl border-slate-100">
                     <Command>
-                      <CommandInput placeholder="Buscar cliente..." />
+                      <CommandInput placeholder="Buscar cliente..." className="h-11" />
                       <CommandList>
-                        <CommandEmpty>No se encontró el cliente.</CommandEmpty>
+                        <CommandEmpty>No encontrado.</CommandEmpty>
                         <CommandGroup>
-                          {clients.map((client) => (
-                            <CommandItem
-                              key={client.id}
-                              value={client.name}
-                              onSelect={(currentValue) => {
-                                handleClientSelect(client);
-                              }}
-                            >
-                              <Check
-                                className={cn(
-                                  "mr-2 h-4 w-4",
-                                  selectedClientId === client.id ? "opacity-100" : "opacity-0"
-                                )}
-                              />
-                              <div className="flex flex-col text-left">
-                                <div className="flex items-center gap-2">
-                                  <span>{client.name}</span>
-                                  {client.contract && (
-                                    <Badge variant="outline" className="border-green-500 text-green-600 bg-green-50 h-4 px-1 text-[9px]">
-                                      Contrato
-                                    </Badge>
-                                  )}
-                                </div>
-                                <span className="text-xs text-muted-foreground">#{client.id}</span>
+                          {clients.map((c) => (
+                            <CommandItem key={c.id} value={c.name} onSelect={() => handleClientSelect(c)} className="h-12">
+                              <div className="flex flex-col">
+                                <span className="font-bold">{c.name}</span>
+                                <span className="text-[10px] text-slate-400 uppercase tracking-tighter">#{c.id}</span>
                               </div>
+                              {selectedClientId === c.id && <Check className="ml-auto h-4 w-4 text-emerald-500" />}
                             </CommandItem>
                           ))}
                         </CommandGroup>
@@ -705,468 +497,184 @@ export function EditTicketDialog({
                 </Popover>
               </div>
             </div>
-            {status === "Facturar" && (
-              <div className="space-y-0.5">
-                <Label className="flex items-center gap-2 text-sm font-semibold">
-                  <BadgeDollarSign className="h-4 w-4 text-muted-foreground" />
-                  Monto estimado
-                </Label>
-                <div className="flex gap-2">
-                  <Select
-                    value={amountCurrency}
-                    onValueChange={(val) => setAmountCurrency(val as "UYU" | "USD")}
-                  >
-                    <SelectTrigger className="w-[140px] text-left">
-                      <SelectValue>
-                        <div className="flex items-center gap-2">
-                          <ReactCountryFlag
-                            svg
-                            countryCode={amountCurrency === "USD" ? "US" : "UY"}
-                            className="h-4 w-5"
-                            aria-label={amountCurrency}
-                          />
-                          <span className="text-sm font-semibold">{amountCurrency}</span>
-                        </div>
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="UYU">
-                        <div className="flex items-center gap-2">
-                          <ReactCountryFlag svg countryCode="UY" className="h-4 w-5" aria-label="UYU" />
-                          <span>UYU</span>
-                        </div>
-                      </SelectItem>
-                      <SelectItem value="USD">
-                        <div className="flex items-center gap-2">
-                          <ReactCountryFlag svg countryCode="US" className="h-4 w-5" aria-label="USD" />
-                          <span>USD</span>
-                        </div>
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Input
-                    id="ticket-amount"
-                    type="number"
-                    placeholder="0.00"
-                    value={amount}
-                    onChange={(event) => setAmount(Number(event.target.value))}
-                  />
-                </div>
-              </div>
-            )}
-            <div className="grid gap-2 lg:grid-cols-3">
-              <div className="space-y-0.5">
-                <Label className="text-sm font-semibold">Estado</Label>
-                <Select value={status} onValueChange={(value) => setStatus(value as Ticket["status"])}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Estado" />
+
+            <div className="grid gap-4 lg:grid-cols-4">
+              <div className="space-y-1">
+                <Label className="text-xs font-black uppercase text-slate-400 tracking-wider">Estado</Label>
+                <Select value={status} onValueChange={(v) => setStatus(v as any)}>
+                  <SelectTrigger className="h-11 rounded-2xl border-slate-200 font-bold">
+                    <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
-                    {statusOptions.map((option) => {
-                      const Icon = statusIcons[option] ?? FileText;
-                      const color = statusIconClasses[option] ?? "text-slate-500";
-                      return (
-                        <SelectItem key={option} value={option}>
-                          <div className="flex items-center gap-2">
-                            <Icon className={`h-4 w-4 ${color}`} />
-                            <span>{option}</span>
-                          </div>
-                        </SelectItem>
-                      );
-                    })}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-0.5">
-                <Label className="text-sm font-semibold">Grupo asignado</Label>
-                <Select
-                  value={assignedGroupId ?? "none"}
-                  onValueChange={(value) =>
-                    setAssignedGroupId(value === "none" ? null : value)
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue>
-                      <div className="flex items-center gap-2">
-                        <Users className="h-4 w-4 text-muted-foreground" />
-                        <span>
-                          {assignedGroupId
-                            ? groups.find((group) => group._id === assignedGroupId)?.name ||
-                              "Grupo"
-                            : "Sin grupo"}
-                        </span>
-                      </div>
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">
-                      <div className="flex items-center gap-2">
-                        <Users className="h-4 w-4 text-muted-foreground" />
-                        <span>Sin grupo</span>
-                      </div>
-                    </SelectItem>
-                    {groups.map((group) => (
-                      <SelectItem key={group._id} value={group._id}>
-                        <div className="flex flex-col gap-0.5">
-                          <div className="flex items-center gap-2">
-                            <Users className="h-4 w-4 text-muted-foreground" />
-                            <span>{group.name}</span>
-                          </div>
-                          {group.description ? (
-                            <span className="text-[11px] text-muted-foreground">
-                              {group.description}
-                            </span>
-                          ) : null}
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-0.5">
-                <Label className="text-sm font-semibold">Prioridad</Label>
-                <Select value={priority} onValueChange={(value) => setPriority(value as Ticket["priority"])}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Prioridad" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {priorityOptions.map((option) => {
-                      const meta = priorityMeta[option];
-                      const Icon = meta.Icon;
-                      return (
-                        <SelectItem key={option} value={option}>
-                          <div className="flex items-center gap-2">
-                            <Icon className={`h-4 w-4 ${meta.color}`} />
-                            <span>{option}</span>
-                          </div>
-                        </SelectItem>
-                      );
-                    })}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-0.5">
-                <Label className="text-sm font-semibold">Asignado a</Label>
-                <Select value={assignedTo || "unassigned"} onValueChange={(value) => setAssignedTo(value === "unassigned" ? null : value)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Sin asignar">
-                      {assignedTo ? (
-                        <div className="flex items-center gap-2">
-                          {(() => {
-                            const user = users.find((u) => u.email === assignedTo);
-                            if (!user) return assignedTo;
-                            const avatarUrl = (user as any).avatar;
-                            return (
-                              <>
-                                {avatarUrl ? (
-                                  <img
-                                    src={
-                                      avatarUrl.startsWith("http")
-                                        ? avatarUrl
-                                        : `${API_URL.replace('/api', '')}${avatarUrl}`
-                                    }
-                                    alt={user.name}
-                                    className="h-5 w-5 rounded-full object-cover"
-                                  />
-                                ) : (
-                                  <div className="h-5 w-5 rounded-full bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center text-white text-xs font-semibold">
-                                    {user.name.charAt(0).toUpperCase()}
-                                  </div>
-                                )}
-                                <span className="truncate">{user.name}</span>
-                              </>
-                            );
-                          })()}
-                        </div>
-                      ) : (
-                        "Sin asignar"
-                      )}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="unassigned">Sin asignar</SelectItem>
-                    {users.map((user: any) => (
-                      <SelectItem key={user.id} value={user.email}>
-                        <div className="flex items-center gap-2">
-                          {user.avatar ? (
-                            <img
-                              src={
-                                user.avatar.startsWith("http")
-                                  ? user.avatar
-                                  : `${API_URL.replace('/api', '')}${user.avatar}`
-                              }
-                              alt={user.name}
-                              className="h-5 w-5 rounded-full object-cover"
-                            />
-                          ) : (
-                            <div className="h-5 w-5 rounded-full bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center text-white text-xs font-semibold">
-                              {user.name.charAt(0).toUpperCase()}
+                  <SelectContent className="rounded-2xl">
+                    {statusOptions.map(opt => (
+                        <SelectItem key={opt} value={opt} className="rounded-xl">
+                            <div className="flex items-center gap-2">
+                                {React.createElement(statusIcons[opt] || FileText, { className: cn("h-4 w-4", statusIconClasses[opt]) })}
+                                {opt}
                             </div>
-                          )}
-                          <span>{user.name} ({user.email})</span>
-                        </div>
-                      </SelectItem>
+                        </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-black uppercase text-slate-400 tracking-wider">Prioridad</Label>
+                <Select value={priority} onValueChange={(v) => setPriority(v as any)}>
+                  <SelectTrigger className="h-11 rounded-2xl border-slate-200 font-bold">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="rounded-2xl">
+                    {priorityOptions.map(opt => (
+                        <SelectItem key={opt} value={opt} className="rounded-xl">
+                            <div className="flex items-center gap-2">
+                                {React.createElement(priorityMeta[opt].Icon, { className: cn("h-4 w-4", priorityMeta[opt].color) })}
+                                {opt}
+                            </div>
+                        </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="lg:col-span-2 space-y-1">
+                <Label className="text-xs font-black uppercase text-slate-400 tracking-wider">Asignación (Grupo o Usuario)</Label>
+                <UnifiedAssignmentSearch 
+                   users={users}
+                   groups={groups}
+                   assignedTo={assignedTo}
+                   assignedGroupId={assignedGroupId}
+                   onAssign={(type, value) => {
+                       if (type === 'user') { setAssignedTo(value); setAssignedGroupId(null); }
+                       else if (type === 'group') { setAssignedGroupId(value); setAssignedTo(null); }
+                       else { setAssignedTo(null); setAssignedGroupId(null); }
+                   }}
+                />
+              </div>
             </div>
-            <div className="space-y-1">
+
+            <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <Label htmlFor="ticket-description" className="text-sm font-semibold">
-                  Descripción
-                </Label>
-                <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
-                  <button
-                    type="button"
-                    aria-label={isRecording ? "Detener grabación" : "Grabar nota de voz"}
-                    onClick={isRecording ? handleStopRecording : handleStartRecording}
-                    className="flex h-9 w-9 items-center justify-center rounded-xl border border-border/60 bg-muted/10 text-muted-foreground transition hover:border-primary"
-                  >
-                    {isRecording ? (
-                      <MicOff className="h-4 w-4 text-red-500" />
-                    ) : (
-                      <Mic className="h-4 w-4 text-primary" />
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    aria-label="Adjuntar archivos"
-                    onClick={() => document.getElementById(fileInputId)?.click()}
-                    className="flex h-9 w-9 items-center justify-center rounded-xl border border-border/60 bg-muted/10 text-muted-foreground transition hover:border-primary"
-                  >
-                    <Paperclip className="h-4 w-4" />
-                  </button>
+                <Label className="text-xs font-black uppercase text-slate-400 tracking-wider">Descripción del Incidente</Label>
+                <div className="flex gap-2">
+                    <Button variant="ghost" size="icon" className="rounded-full" type="button" onClick={isRecording ? handleStopRecording : handleStartRecording}>
+                        {isRecording ? <MicOff className="h-4 w-4 text-rose-500 animate-pulse" /> : <Mic className="h-4 w-4 text-slate-400" />}
+                    </Button>
+                    <Button variant="ghost" size="icon" className="rounded-full" type="button" onClick={() => document.getElementById(fileInputId)?.click()}>
+                        <Paperclip className="h-4 w-4 text-slate-400" />
+                    </Button>
                 </div>
               </div>
-              <div className="rounded-lg border border-dashed border-border/80 bg-white">
-                <TextEditor value={description} onChange={setDescription} placeholder="Describe el incidente con detalle. Puedes subir imágenes." />
+              <div className="rounded-3xl border border-slate-100 bg-slate-50/50 p-1">
+                <TextEditor value={description} onChange={setDescription} placeholder="Escribe detalles aquí..." />
               </div>
             </div>
-            <input
-              id={fileInputId}
-              type="file"
-              className="hidden"
-              multiple
-              onChange={handleFileInputChange}
-            />
+            <input id={fileInputId} type="file" className="hidden" multiple onChange={handleFileInputChange} />
           </Card>
 
           {attachments.length > 0 && (
-            <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
-              {attachments.map((attachment) => (
-                <div
-                  key={attachment.id}
-                  className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white/70 px-3 py-2"
-                >
-                  <div className="flex items-center gap-2">
-                    <Paperclip className="h-4 w-4 text-slate-500" />
-                    <div>
-                      <p className="font-medium text-slate-900">{attachment.name}</p>
-                      <p className="text-[11px] text-slate-500">{formatBytes(attachment.size)}</p>
-                    </div>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="text-destructive"
-                    onClick={() => handleRemoveAttachment(attachment.id)}
-                  >
-                    <Trash2 className="h-4 w-4" />
+            <div className="grid grid-cols-2 gap-2">
+              {attachments.map((att) => (
+                <div key={att.id} className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 border border-slate-100 text-xs">
+                  <span className="font-bold truncate max-w-[150px]">{att.name}</span>
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-rose-500" onClick={() => handleRemoveAttachment(att.id)}>
+                    <Trash2 className="h-3.5 w-3.5" />
                   </Button>
                 </div>
               ))}
             </div>
           )}
 
-          <Card className="space-y-2 rounded-2xl border border-border/70 bg-white p-3 shadow-sm">
-            <div className="flex items-center gap-2">
-              <FileText className="h-4 w-4 text-primary" />
-              <p className="text-sm font-semibold">Notas internas</p>
-            </div>
-            <Textarea
-              placeholder="Notas internas para el equipo."
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-            />
-
+          <Card className="rounded-3xl border border-slate-200 p-6 space-y-2">
+            <Label className="text-xs font-black uppercase text-slate-400 tracking-wider">Nota interna (Opcional)</Label>
+            <Textarea className="rounded-2xl border-slate-100 bg-slate-50/30" placeholder="Solo para el equipo técnico..." value={notes} onChange={(e) => setNotes(e.target.value)} />
           </Card>
         </div>
 
-        <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-border/70 bg-white shadow-sm">
-          <div className="flex items-center gap-2 border-b border-border/50 bg-muted/30 px-4 py-3">
-            <Clock className="h-4 w-4 text-muted-foreground" />
-            <p className="text-sm font-semibold">Historial del Cliente</p>
+        <div className="flex h-full flex-col overflow-hidden rounded-3xl border border-slate-200 bg-slate-50/30">
+          <div className="px-6 py-4 border-b border-slate-200 bg-white/50 backdrop-blur">
+            <p className="text-xs font-black uppercase text-slate-400 tracking-wider">Historial Reciente</p>
           </div>
-
-          <div className="flex-1 overflow-y-auto p-0">
-            {clientsLoading || clientTicketsLoading ? (
-              <div className="flex h-32 items-center justify-center">
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-              </div>
-            ) : clientTickets.length > 0 ? (
-              <div className="divide-y divide-border/50">
-                {clientTickets.map((t) => {
-                  const StatusIcon = statusIcons[t.status] || FileText;
-                  const statusColor = statusIconClasses[t.status] || "text-slate-500";
-
-                  return (
-                    <Link
-                      key={t.id}
-                      href={`/tickets/${t.id}`}
-                      className="group flex flex-col gap-2 p-3 transition-all hover:bg-muted/50"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex items-start gap-2 overflow-hidden">
-                          <div className={`mt-0.5 rounded-full bg-white p-1 shadow-sm ring-1 ring-inset ring-slate-200`}>
-                            <StatusIcon className={`h-3 w-3 ${statusColor}`} />
-                          </div>
-                          <div className="flex flex-col gap-0.5 overflow-hidden">
-                            <span className="truncate text-xs font-medium text-foreground group-hover:text-primary transition-colors" title={t.title}>
-                              {t.title}
-                            </span>
-                            <span className="text-[10px] text-muted-foreground">
-                              {new Date(t.createdAt).toLocaleDateString()}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex items-center justify-between gap-2 pl-8">
-                        <Badge variant={getStatusBadgeVariant(t.status)} className="h-4 px-1.5 text-[10px] font-normal">
-                          {t.status}
-                        </Badge>
-                        <span className="text-[10px] text-muted-foreground opacity-70">#{t.id.slice(0, 8)}</span>
-                      </div>
-                    </Link>
-                  );
-                })}
-              </div>
+          <div className="flex-1 overflow-y-auto p-4 space-y-3">
+            {clientTicketsLoading ? <Loader2 className="h-6 w-6 animate-spin mx-auto opacity-20" /> : clientTickets.length > 0 ? (
+              clientTickets.map(t => (
+                <Link key={t.id} href={`/tickets/${t.id}`} className="block p-4 rounded-2xl bg-white border border-slate-100 shadow-sm hover:shadow-md transition-all active:scale-95">
+                  <p className="text-sm font-bold text-slate-900 line-clamp-1 mb-2">{t.title}</p>
+                  <div className="flex items-center justify-between">
+                    <Badge className={cn("text-[9px] font-bold uppercase border-none px-1.5 h-4", getStatusTone(t.status))}>{t.status}</Badge>
+                    <span className="text-[10px] text-slate-400">{new Date(t.createdAt).toLocaleDateString()}</span>
+                  </div>
+                </Link>
+              ))
             ) : (
-              <div className="flex h-full flex-col items-center justify-center p-4 text-center text-muted-foreground">
-                <FileText className="mb-2 h-8 w-8 opacity-20" />
-                <p className="text-xs">No hay tickets previos</p>
+              <div className="text-center py-12 text-slate-300">
+                <TicketIcon className="h-8 w-8 mx-auto mb-2 opacity-20" />
+                <p className="text-[10px] font-bold uppercase tracking-widest">Sin antecedentes</p>
               </div>
             )}
           </div>
         </div>
       </div>
-    </form>
+    </div>
   );
+
+  function getStatusTone(s: string) {
+      const lower = s.toLowerCase();
+      if (lower.includes('resuelto') || lower.includes('pago')) return "bg-emerald-100 text-emerald-700";
+      if (lower.includes('proceso') || lower.includes('abierto')) return "bg-blue-100 text-blue-700";
+      return "bg-slate-100 text-slate-500";
+  }
 
   if (isPageVariant) {
     return (
-      <div className="min-h-screen p-6">
+      <div className="min-h-screen p-6 bg-slate-50/50">
         <PageHeader
-          title={isEditMode ? "Editar ticket" : "Nuevo ticket"}
-          subtitle="Registra la solicitud con cliente, prioridad, monto y adjuntos."
+          title={<ShinyText size="3xl" weight="bold">{isEditMode ? "Editar Ticket" : "Nuevo Ticket"}</ShinyText>}
+          subtitle="Registra la labor técnica y asigna responsables."
           backHref="/tickets"
-          leadingIcon={<TicketIcon className="h-6 w-6 text-slate-800" />}
+          leadingIcon={<div className="p-2 rounded-xl bg-indigo-600 shadow-lg shadow-indigo-100"><TicketIcon className="h-6 w-6 text-white" /></div>}
           breadcrumbs={[
             { label: "Tickets", href: "/tickets", icon: <TicketIcon className="h-3 w-3 text-slate-500" /> },
             { label: isEditMode ? "Editar" : "Nuevo", icon: <FilePlus className="h-3 w-3 text-slate-500" /> },
           ]}
-          actions={null}
           breadcrumbAction={
-            <div className="flex items-center gap-2">
-              {(() => {
-                const StatusIcon = statusIcons[status] ?? FileText;
-                const statusColor = statusIconClasses[status] ?? "text-slate-500";
-                return (
-                  <Badge variant="outline" className="flex items-center gap-1.5 bg-white px-2 py-0.5 text-xs font-medium text-slate-700 shadow-sm">
-                    <StatusIcon className={`h-3.5 w-3.5 ${statusColor}`} />
-                    {status}
-                  </Badge>
-                );
-              })()}
-
-              {(() => {
-                const meta = priorityMeta[priority];
-                const PriorityIcon = meta.Icon;
-                return (
-                  <Badge variant="outline" className="flex items-center gap-1.5 bg-white px-2 py-0.5 text-xs font-medium text-slate-700 shadow-sm">
-                    <PriorityIcon className={`h-3.5 w-3.5 ${meta.color}`} />
-                    {priority}
-                  </Badge>
-                );
-              })()}
-
-              {visit && (
-                <Badge variant="outline" className="flex items-center gap-1.5 bg-white px-2 py-0.5 text-xs font-medium text-slate-700 shadow-sm">
-                  <User className="h-3.5 w-3.5 text-purple-500" />
-                  Visita
-                </Badge>
-              )}
-
-              <Button
-                type="submit"
-                form="ticket-form"
-                size="sm"
-                disabled={isRecording || isAttachmentProcessing}
-                className="gap-2 h-8 text-xs ml-2"
-              >
-                {isEditMode ? <FileText className="h-3.5 w-3.5" /> : <PlusCircle className="h-3.5 w-3.5" />}
-                {isEditMode ? "Actualizar" : "Crear Ticket"}
-              </Button>
-            </div>
+            <Button onClick={handleSubmit} disabled={isAttachmentProcessing} className="h-10 px-8 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold shadow-xl shadow-indigo-100">
+              {isEditMode ? "Actualizar Registro" : "Crear Ticket"}
+            </Button>
           }
         />
-        <div className="mt-6">
-          {formContent}
-        </div>
+        <div className="mt-8">{formContent}</div>
       </div>
     );
   }
 
   return (
     <Dialog open={isOpen} onOpenChange={handleDialogChange}>
-      <DialogTrigger asChild onClick={() => setIsOpen(true)}>
-        {children}
-      </DialogTrigger>
-      <DialogContent
-        className="w-[96vw] max-w-[1500px] overflow-hidden border border-border/50 bg-background p-0"
-        onInteractOutside={(event) => event.preventDefault()}
-        onEscapeKeyDown={(event) => event.preventDefault()}
-      >
-        <div className="flex h-[90vh] flex-col">
-          <DialogHeader className="flex flex-row items-start justify-between gap-6 border-b px-8 py-6">
-            <div className="space-y-1">
-              <DialogTitle className="text-2xl font-semibold">
-                {isEditMode ? "Editar ticket" : "Nuevo ticket"}
-              </DialogTitle>
-              <DialogDescription className="text-base text-muted-foreground">
-                {isEditMode
-                  ? "Actualiza los datos del ticket."
-                  : "Completa la información para registrar un nuevo ticket."}
-              </DialogDescription>
-            </div>
-            <DialogClose asChild>
-              <button
-                type="button"
-                aria-label="Cerrar"
-                className="rounded-full border border-border p-2 text-muted-foreground transition hover:text-foreground"
-                onClick={handleClose}
-              >
-                &times;
-              </button>
-            </DialogClose>
-          </DialogHeader>
-          {formContent}
-        </div>
+      <DialogTrigger asChild>{children}</DialogTrigger>
+      <DialogContent className="max-w-[1400px] h-[90vh] p-0 rounded-3xl overflow-hidden border-none shadow-2xl">
+          <div className="flex flex-col h-full bg-white">
+              <div className="px-8 py-6 border-b border-slate-100 flex items-center justify-between">
+                  <div>
+                    <DialogTitle className="text-2xl font-black tracking-tight">{isEditMode ? "Editar Ticket" : "Nuevo Ticket"}</DialogTitle>
+                    <DialogDescription className="text-slate-500 font-medium">Panel de gestión de incidencias</DialogDescription>
+                  </div>
+                  <DialogClose asChild><Button variant="ghost" size="icon" className="rounded-full">×</Button></DialogClose>
+              </div>
+              <div className="flex-1 overflow-hidden p-8">{formContent}</div>
+              <div className="px-8 py-4 border-t border-slate-50 bg-slate-50/30 flex justify-end">
+                <Button onClick={handleSubmit} className="h-11 px-10 rounded-2xl font-bold bg-indigo-600 shadow-lg shadow-indigo-100">
+                    {isEditMode ? "Guardar Cambios" : "Emitir Ticket"}
+                </Button>
+              </div>
+          </div>
       </DialogContent>
     </Dialog>
   );
 }
 
-
-
 function formatBytes(bytes: number, decimals = 2) {
   if (!+bytes) return '0 Bytes';
-
   const k = 1024;
   const dm = decimals < 0 ? 0 : decimals;
-  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
-
+  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
-
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
 }

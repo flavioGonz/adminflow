@@ -3,8 +3,9 @@
 import { useRouter } from "next/navigation";
 import { EditTicketDialog } from "@/components/clients/edit-ticket-dialog";
 import { Ticket } from "@/types/ticket";
+import { Suspense } from "react";
 
-export default function NewTicketPage() {
+function NewTicketContent() {
   const router = useRouter();
 
   return (
@@ -16,5 +17,13 @@ export default function NewTicketPage() {
       }}
       onClose={() => router.push("/tickets")}
     />
+  );
+}
+
+export default function NewTicketPage() {
+  return (
+    <Suspense fallback={<div className="p-10 text-center">Cargando formulario...</div>}>
+      <NewTicketContent />
+    </Suspense>
   );
 }

@@ -3,26 +3,26 @@ const path = require("path");
 const DB_CONFIG_DEFAULTS = require("./dbConfigDefaults");
 
 const CONFIG_FILE = path.resolve(__dirname, "..", ".selected-db.json");
-const SUPPORTED_ENGINES = ["mongodb", "sqlite"];
+const SUPPORTED_ENGINES = ["mongodb"]; // SQLite removido
 
-let selectedEngine = process.env.DB_ENGINE ? process.env.DB_ENGINE.toLowerCase() : null;
+let selectedEngine = "mongodb"; // Forzado a mongodb
 
 const readConfigFile = () => {
   if (fs.existsSync(CONFIG_FILE)) {
     try {
       const data = JSON.parse(fs.readFileSync(CONFIG_FILE, "utf-8"));
-      return { ...DB_CONFIG_DEFAULTS, ...data };
+      return { ...DB_CONFIG_DEFAULTS, ...data, engine: "mongodb" };
     } catch {
-      return { ...DB_CONFIG_DEFAULTS };
+      return { ...DB_CONFIG_DEFAULTS, engine: "mongodb" };
     }
   }
-  return { ...DB_CONFIG_DEFAULTS };
+  return { ...DB_CONFIG_DEFAULTS, engine: "mongodb" };
 };
 
 const persistConfig = (payload) => {
   try {
     const current = readConfigFile();
-    const merged = { ...current, ...payload };
+    const merged = { ...current, ...payload, engine: "mongodb" };
     fs.writeFileSync(CONFIG_FILE, JSON.stringify(merged, null, 2), "utf-8");
   } catch (error) {
     console.warn("No se pudo persistir la selección de base de datos:", error.message);
@@ -30,34 +30,24 @@ const persistConfig = (payload) => {
 };
 
 const determineDbEngine = async () => {
-  const persisted = readConfigFile();
-  if (selectedEngine && SUPPORTED_ENGINES.includes(selectedEngine)) {
-    process.env.DB_ENGINE = selectedEngine;
-    persistConfig({ engine: selectedEngine });
-    return selectedEngine;
-  }
-  if (persisted?.engine && SUPPORTED_ENGINES.includes(persisted.engine)) {
-    selectedEngine = persisted.engine;
-  } else {
-    selectedEngine = DB_CONFIG_DEFAULTS.engine;
-  }
-  process.env.DB_ENGINE = selectedEngine;
-  persistConfig({ engine: selectedEngine });
-  return selectedEngine;
+  // Siempre retornar mongodb
+  selectedEngine = "mongodb";
+  process.env.DB_ENGINE = "mongodb";
+  persistConfig({ engine: "mongodb" });
+  return "mongodb";
 };
 
-const getCurrentDbEngine = () => selectedEngine;
+const getCurrentDbEngine = () => "mongodb";
 
 const getDbConfigFromFile = () => readConfigFile();
 
 const updateDbConfig = (updates = {}) => {
   const current = readConfigFile();
-  const merged = { ...current, ...updates };
+  // Ignorar cualquier intento de cambiar el engine que no sea mongodb
+  const merged = { ...current, ...updates, engine: "mongodb" };
   persistConfig(merged);
-  if (updates.engine && SUPPORTED_ENGINES.includes(updates.engine)) {
-    selectedEngine = updates.engine;
-    process.env.DB_ENGINE = selectedEngine;
-  }
+  selectedEngine = "mongodb";
+  process.env.DB_ENGINE = "mongodb";
   return merged;
 };
 

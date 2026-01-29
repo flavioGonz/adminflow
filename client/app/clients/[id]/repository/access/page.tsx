@@ -3,10 +3,10 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { Plus, ShieldCheck, Users, User, KeyRound, FileSpreadsheet } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/layout/page-header";
 import { AccessTable, exportAccessToExcel } from "@/components/repository/access/access-table";
 import { CreateAccessDialog } from "@/components/repository/access/create-access-dialog";
+import { ImportAccessDialog } from "@/components/repository/access/import-access-dialog";
 import { getClientAccesses, AccessItem } from "@/lib/api-access";
 import { fetchClientById } from "@/lib/api-clients";
 import { Client } from "@/types/client";
@@ -20,6 +20,7 @@ export default function ClientAccessPage() {
   const [client, setClient] = useState<Client | null>(null);
   const [loading, setLoading] = useState(true);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isImportOpen, setIsImportOpen] = useState(false);
 
   const fetchAccesses = useCallback(async () => {
     if (!clientId) return;
@@ -81,6 +82,7 @@ export default function ClientAccessPage() {
           onUpdate={fetchAccesses}
           showExportButton={false}
           onCreateNew={() => setIsCreateOpen(true)}
+          onImport={() => setIsImportOpen(true)}
           onExport={() => exportAccessToExcel(accesses)}
         />
       )}
@@ -88,6 +90,12 @@ export default function ClientAccessPage() {
       <CreateAccessDialog
         open={isCreateOpen}
         onOpenChange={setIsCreateOpen}
+        clientId={clientId}
+        onSuccess={fetchAccesses}
+      />
+      <ImportAccessDialog
+        open={isImportOpen}
+        onOpenChange={setIsImportOpen}
         clientId={clientId}
         onSuccess={fetchAccesses}
       />

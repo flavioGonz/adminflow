@@ -21,7 +21,9 @@ import {
     ArrowUpDown,
     User,
     ShieldCheck,
-    Eye
+    Eye,
+    ChevronRight,
+    Home
 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -64,8 +66,8 @@ import { FilePreviewDialog } from "./file-preview-dialog";
 
 // --- Types ---
 interface FileItem {
-    id: string; // Relative path
-    value: string; // Filename
+    id: string; // Relative path from client root
+    value: string; // Filename/Foldername
     size?: number; // Optional for folders
     date?: number; // Unix timestamp
     type: "file" | "folder";
@@ -77,6 +79,7 @@ interface FileItem {
 interface ClientFileVaultProps {
     clients: Client[];
     isLoadingClients: boolean;
+    initialClientId?: string;
 }
 
 type FileTypeFilter = "all" | "folder" | "image" | "document" | "media" | "archive";
@@ -120,34 +123,34 @@ const getFileFriendlyType = (filename: string, type: "file" | "folder"): string 
 };
 
 const getFileIcon = (filename: string, type: "file" | "folder") => {
-    if (type === "folder") return <Folder className="h-5 w-5 text-indigo-500 fill-indigo-100/50" />;
+    if (type === "folder") return <Folder className="h-4 w-4 text-indigo-500 fill-indigo-100/50" />;
 
     const ext = getExtension(filename);
     switch (ext) {
-        case 'pdf': return <FileText className="h-5 w-5 text-red-500" />;
+        case 'pdf': return <FileText className="h-4 w-4 text-red-500" />;
         case 'doc':
-        case 'docx': return <FileText className="h-5 w-5 text-blue-500" />;
+        case 'docx': return <FileText className="h-4 w-4 text-blue-500" />;
         case 'xls':
-        case 'xlsx': return <FileText className="h-5 w-5 text-emerald-500" />;
+        case 'xlsx': return <FileText className="h-4 w-4 text-emerald-500" />;
         case 'jpg':
         case 'jpeg':
         case 'png':
         case 'gif':
-        case 'webp': return <ImageIcon className="h-5 w-5 text-purple-500" />;
+        case 'webp': return <ImageIcon className="h-4 w-4 text-purple-500" />;
         case 'mp4':
         case 'mov':
-        case 'avi': return <Video className="h-5 w-5 text-pink-500" />;
+        case 'avi': return <Video className="h-4 w-4 text-pink-500" />;
         case 'mp3':
-        case 'wav': return <Music className="h-5 w-5 text-amber-500" />;
+        case 'wav': return <Music className="h-4 w-4 text-amber-500" />;
         case 'zip':
         case 'rar':
-        case '7z': return <Archive className="h-5 w-5 text-orange-500" />;
-        default: return <FileIcon className="h-5 w-5 text-slate-400" />;
+        case '7z': return <Archive className="h-4 w-4 text-orange-500" />;
+        default: return <FileIcon className="h-4 w-4 text-slate-400" />;
     }
 };
 
-export default function ClientFileVault({ clients, isLoadingClients }: ClientFileVaultProps) {
-    const [currentClientId, setCurrentClientId] = useState<string | null>(null);
+export default function ClientFileVault({ clients, isLoadingClients, initialClientId }: ClientFileVaultProps) {
+    const [currentClientId, setCurrentClientId] = useState<string | null>(initialClientId || null);
     const [currentPath, setCurrentPath] = useState("/");
     const [files, setFiles] = useState<FileItem[]>([]);
     const [loading, setLoading] = useState(false);
@@ -164,9 +167,9 @@ export default function ClientFileVault({ clients, isLoadingClients }: ClientFil
     const [fileToPreview, setFileToPreview] = useState<FileItem | null>(null);
 
     // Dialog States
-    const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
     const [stats, setStats] = useState({ count: 0, size: 0 });
     const [newFolderName, setNewFolderName] = useState("");
+    const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
 
     const [fileToRename, setFileToRename] = useState<FileItem | null>(null);
     const [newName, setNewName] = useState("");
@@ -176,6 +179,7 @@ export default function ClientFileVault({ clients, isLoadingClients }: ClientFil
     );
 
     const fetchFiles = useCallback(async () => {
+        setFiles([]); // Clear existing list for transition
         if (!currentClientId) {
             setLoading(true);
             const clientFolders: FileItem[] = clients.map(client => ({
@@ -194,7 +198,7 @@ export default function ClientFileVault({ clients, isLoadingClients }: ClientFil
 
         setLoading(true);
         try {
-            const res = await fetch(`${API_URL}/files/${currentClientId}/items?id=${currentPath}`);
+            const res = await fetch(`${API_URL}/files/${currentClientId}/items?id=${encodeURIComponent(currentPath)}`);
             if (!res.ok) throw new Error("Error al cargar archivos");
             const data: FileItem[] = await res.json();
             const enriched = data.map(f => ({
@@ -290,7 +294,7 @@ export default function ClientFileVault({ clients, isLoadingClients }: ClientFil
     };
 
     const handleDelete = async (item: FileItem) => {
-        if (!item.clientId) return; // Can't delete virtual clients
+        if (!item.clientId) return; 
         if (!confirm(`¿Estás seguro de eliminar "${item.value}"?`)) return;
         try {
             const res = await fetch(`${API_URL}/files/${item.clientId}/delete`, {
@@ -337,7 +341,6 @@ export default function ClientFileVault({ clients, isLoadingClients }: ClientFil
 
     const handlePreview = (item: FileItem) => {
         if (item.type !== "file") return;
-        // Check if previewable
         const ext = item.value.split('.').pop()?.toLowerCase();
         if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf'].includes(ext || '')) {
             setFileToPreview(item);
@@ -347,15 +350,13 @@ export default function ClientFileVault({ clients, isLoadingClients }: ClientFil
         }
     };
 
-    const navigateUp = () => {
-        if (currentPath === "/") {
-            setCurrentClientId(null);
-            return;
-        }
-        const parts = currentPath.split("/").filter(Boolean);
-        parts.pop();
-        const newPath = parts.length === 0 ? "/" : parts.join("/");
-        setCurrentPath(newPath);
+    const navigateToPath = (path: string) => {
+        setCurrentPath(path);
+    };
+
+    const navigateToClient = (clientId: string | null) => {
+        setCurrentClientId(clientId);
+        setCurrentPath("/");
     };
 
     const enterFolder = (item: FileItem) => {
@@ -363,20 +364,29 @@ export default function ClientFileVault({ clients, isLoadingClients }: ClientFil
             setCurrentClientId(item.id);
             setCurrentPath("/");
         } else {
-            const newPath = currentPath === "/"
-                ? item.value
-                : `${currentPath}/${item.value}`;
-            setCurrentPath(newPath);
+            setCurrentPath(item.id);
         }
     };
 
-    const getPathText = () => {
-        if (!currentClientId) return "Repositorio Global";
-        return `${currentClient?.name || "Cliente"} / ${currentPath === "/" ? "" : currentPath}`;
-    };
+    const breadcrumbs = useMemo(() => {
+        const crumbs: { label: string; path?: string; clientId?: string | null }[] = [];
+        crumbs.push({ label: "Inicio", clientId: null });
+        if (currentClientId) {
+            crumbs.push({ label: currentClient?.name || "Cliente", path: "/" });
+            if (currentPath !== "/") {
+                const parts = currentPath.split("/").filter(Boolean);
+                let buildPath = "";
+                parts.forEach((part, index) => {
+                    buildPath += (index === 0 ? "" : "/") + part;
+                    crumbs.push({ label: part, path: buildPath });
+                });
+            }
+        }
+        return crumbs;
+    }, [currentClientId, currentPath, currentClient]);
 
     return (
-        <div className="flex flex-col h-[700px] overflow-hidden">
+        <div className="flex flex-col h-[700px] overflow-hidden bg-white/50 backdrop-blur-sm rounded-3xl border border-slate-100">
             <FileVaultUploadModal
                 open={isUploadModalOpen}
                 onOpenChange={setIsUploadModalOpen}
@@ -391,63 +401,62 @@ export default function ClientFileVault({ clients, isLoadingClients }: ClientFil
                 file={fileToPreview}
             />
 
-            {/* Header / Path */}
-            <div className="flex items-center justify-between p-4 border-b border-slate-100/50 bg-transparent">
-                <div className="flex items-center gap-3">
-                    {/* Only show back arrow if we are INSIDE a client (currentClientId is set) */}
-                    {currentClientId && (
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={navigateUp}
-                            className="h-8 w-8 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+            <div className="flex items-center gap-2 p-4 border-b border-slate-100/50 bg-slate-50/30">
+                {breadcrumbs.map((crumb, idx) => (
+                    <div key={idx} className="flex items-center gap-2 text-[11px] uppercase tracking-wider font-bold">
+                        {idx > 0 && <ChevronRight className="h-3 w-3 text-slate-300" />}
+                        <button
+                            onClick={() => {
+                                if (crumb.clientId !== undefined) {
+                                    if (initialClientId && crumb.clientId === null) return;
+                                    navigateToClient(crumb.clientId);
+                                } else if (crumb.path !== undefined) {
+                                    navigateToPath(crumb.path);
+                                }
+                            }}
+                            className={cn(
+                                "flex items-center gap-1.5 transition-colors hover:text-indigo-600",
+                                idx === breadcrumbs.length - 1 ? "text-slate-900" : "text-slate-400"
+                            )}
                         >
-                            <ArrowLeft className="h-4 w-4" />
-                        </Button>
-                    )}
-
-                    <div className="flex flex-col">
-                        <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
-                            {currentClientId ? <Folder className="h-4 w-4 text-indigo-500" /> : <ShieldCheck className="h-4 w-4 text-emerald-500" />}
-                            <span className="truncate max-w-[200px] sm:max-w-md">
-                                {getPathText()}
-                            </span>
-                        </div>
+                            {idx === 0 && <Home className="h-3 w-3" />}
+                            {crumb.label}
+                        </button>
                     </div>
-                </div>
+                ))}
 
                 {currentClientId && (
-                    <div className="flex items-center gap-2">
+                    <div className="ml-auto flex items-center gap-2">
                         <Button
                             size="sm"
-                            className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-200 transition-all hover:shadow-lg hover:translate-y-[-1px]"
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white h-8 px-4 rounded-xl shadow-sm transition-all text-[10px] uppercase font-black tracking-widest"
                             onClick={() => setIsUploadModalOpen(true)}
                         >
-                            <Upload className="h-4 w-4 mr-2" />
-                            <span className="hidden sm:inline">Subir Archivo</span>
+                            <Upload className="h-3.5 w-3.5 mr-2" />
+                            Subir
                         </Button>
 
                         <Dialog open={isCreateFolderOpen} onOpenChange={setIsCreateFolderOpen}>
                             <DialogTrigger asChild>
-                                <Button variant="outline" size="sm" className="border-slate-300 hover:border-indigo-400 hover:text-indigo-600 transition-colors shadow-sm">
-                                    <FolderPlus className="h-4 w-4 sm:mr-2" />
-                                    <span className="hidden sm:inline">Nueva Carpeta</span>
+                                <Button variant="outline" size="sm" className="h-8 px-3 rounded-xl border-slate-200 bg-white text-slate-600">
+                                    <FolderPlus className="h-3.5 w-3.5" />
                                 </Button>
                             </DialogTrigger>
-                            <DialogContent>
+                            <DialogContent className="rounded-3xl">
                                 <DialogHeader>
-                                    <DialogTitle>Crear Carpeta</DialogTitle>
-                                    <DialogDescription>Crea una nueva carpeta en: <b>{currentPath}</b></DialogDescription>
+                                    <DialogTitle className="font-black">Nueva Carpeta</DialogTitle>
+                                    <DialogDescription className="text-xs font-medium">Ubicación: <b>{currentPath}</b></DialogDescription>
                                 </DialogHeader>
                                 <Input
                                     autoFocus
                                     value={newFolderName}
                                     onChange={(e) => setNewFolderName(e.target.value)}
                                     placeholder="Nombre de la carpeta"
+                                    className="h-11 rounded-2xl border-slate-200 font-bold"
                                     onKeyDown={(e) => e.key === 'Enter' && handleCreateFolder()}
                                 />
                                 <DialogFooter>
-                                    <Button onClick={handleCreateFolder}>Crear</Button>
+                                    <Button onClick={handleCreateFolder} className="h-10 rounded-xl bg-indigo-600 font-bold">Crear Carpeta</Button>
                                 </DialogFooter>
                             </DialogContent>
                         </Dialog>
@@ -455,190 +464,93 @@ export default function ClientFileVault({ clients, isLoadingClients }: ClientFil
                 )}
             </div>
 
-            {/* Toolbar Filters */}
-            <div className="p-3 border-b border-transparent flex flex-col md:flex-row gap-3 items-center justify-between">
-                <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto pb-2 md:pb-0 scrollbar-hide">
-                    {currentClientId ? (
-                        <ToggleGroup type="single" value={typeFilter} onValueChange={(v) => v && setTypeFilter(v as FileTypeFilter)}>
-                            <ToggleGroupItem value="all" className="text-xs h-7 px-3 bg-white border border-slate-200 data-[state=on]:bg-indigo-50 data-[state=on]:text-indigo-600 data-[state=on]:border-indigo-200 font-medium transition-all">Todo</ToggleGroupItem>
-                            <ToggleGroupItem value="folder" className="text-xs h-7 px-3 gap-1 bg-white border border-slate-200 data-[state=on]:bg-indigo-50 data-[state=on]:text-indigo-600 data-[state=on]:border-indigo-200 font-medium transition-all"><Folder className="h-3 w-3" /> Carpetas</ToggleGroupItem>
-                            <ToggleGroupItem value="image" className="text-xs h-7 px-3 gap-1 bg-white border border-slate-200 data-[state=on]:bg-indigo-50 data-[state=on]:text-indigo-600 data-[state=on]:border-indigo-200 font-medium transition-all"><ImageIcon className="h-3 w-3" /> Img</ToggleGroupItem>
-                            <ToggleGroupItem value="document" className="text-xs h-7 px-3 gap-1 bg-white border border-slate-200 data-[state=on]:bg-indigo-50 data-[state=on]:text-indigo-600 data-[state=on]:border-indigo-200 font-medium transition-all"><FileText className="h-3 w-3" /> Docs</ToggleGroupItem>
-                            <ToggleGroupItem value="media" className="text-xs h-7 px-3 gap-1 bg-white border border-slate-200 data-[state=on]:bg-indigo-50 data-[state=on]:text-indigo-600 data-[state=on]:border-indigo-200 font-medium transition-all"><Video className="h-3 w-3" /> Media</ToggleGroupItem>
+            <div className="p-3 flex items-center justify-between gap-4">
+                <div className="flex items-center gap-1">
+                    {currentClientId && (
+                        <ToggleGroup type="single" value={typeFilter} onValueChange={(v) => v && setTypeFilter(v as FileTypeFilter)} className="bg-slate-100 p-1 rounded-xl">
+                            <ToggleGroupItem value="all" className="text-[10px] h-7 px-3 rounded-lg font-bold data-[state=on]:bg-white data-[state=on]:text-indigo-600 shadow-none border-none">Todo</ToggleGroupItem>
+                            <ToggleGroupItem value="folder" className="text-[10px] h-7 px-3 rounded-lg font-bold data-[state=on]:bg-white data-[state=on]:text-indigo-600 shadow-none border-none">Carpetas</ToggleGroupItem>
+                            <ToggleGroupItem value="image" className="text-[10px] h-7 px-3 rounded-lg font-bold data-[state=on]:bg-white data-[state=on]:text-indigo-600 shadow-none border-none">Img</ToggleGroupItem>
+                            <ToggleGroupItem value="document" className="text-[10px] h-7 px-3 rounded-lg font-bold data-[state=on]:bg-white data-[state=on]:text-indigo-600 shadow-none border-none">Docs</ToggleGroupItem>
                         </ToggleGroup>
-                    ) : (
-                        <div />
                     )}
-
                 </div>
-                <div className="relative w-full md:w-64">
-                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <div className="relative flex-1 max-w-xs">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                     <Input
-                        placeholder="Buscar archivo..."
+                        placeholder="Filtrar por nombre..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="pl-9 h-9 bg-white border-slate-200 focus:bg-white focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 transition-all rounded-lg shadow-sm"
+                        className="pl-9 h-9 bg-slate-50 border-slate-100 rounded-xl text-xs font-medium"
                     />
                 </div>
             </div>
 
-            {/* Table Area */}
-            <div className="flex-1 overflow-auto px-2">
-                <Table className="border-separate border-spacing-y-2">
+            <div className="flex-1 overflow-auto px-4">
+                <Table>
                     <TableHeader className="bg-transparent sticky top-0 z-10">
                         <TableRow className="hover:bg-transparent border-none">
-                            <TableHead className="w-[30%] cursor-pointer text-slate-500 font-semibold" onClick={() => handleSort("name")}>
-                                <div className="flex items-center gap-2">
-                                    Nombre
-                                    {sortKey === "name" && <ArrowUpDown className="h-3 w-3 text-indigo-500" />}
-                                </div>
+                            <TableHead className="w-[45%] cursor-pointer font-black text-[9px] uppercase tracking-widest text-slate-400" onClick={() => handleSort("name")}>
+                                <div className="flex items-center gap-2">Nombre {sortKey === "name" && <ArrowUpDown className="h-3 w-3" />}</div>
                             </TableHead>
-                            <TableHead className="w-[15%] cursor-pointer text-slate-500 font-semibold" onClick={() => handleSort("client")}>
-                                <div className="flex items-center gap-2">
-                                    Cliente
-                                    {sortKey === "client" && <ArrowUpDown className="h-3 w-3 text-indigo-500" />}
-                                </div>
+                            {!currentClientId && (
+                                <TableHead className="w-[20%] cursor-pointer font-black text-[9px] uppercase tracking-widest text-slate-400" onClick={() => handleSort("client")}>
+                                    <div className="flex items-center gap-2">Cliente {sortKey === "client" && <ArrowUpDown className="h-3 w-3" />}</div>
+                                </TableHead>
+                            )}
+                            <TableHead className="w-[15%] cursor-pointer font-black text-[9px] uppercase tracking-widest text-slate-400" onClick={() => handleSort("type")}>
+                                <div className="flex items-center gap-2">Tipo {sortKey === "type" && <ArrowUpDown className="h-3 w-3" />}</div>
                             </TableHead>
-                            <TableHead className="w-[15%] cursor-pointer text-slate-500 font-semibold" onClick={() => handleSort("type")}>
-                                <div className="flex items-center gap-2">
-                                    Tipo
-                                    {sortKey === "type" && <ArrowUpDown className="h-3 w-3 text-indigo-500" />}
-                                </div>
+                            <TableHead className="w-[15%] cursor-pointer font-black text-[9px] uppercase tracking-widest text-slate-400" onClick={() => handleSort("size")}>
+                                <div className="flex items-center gap-2">Tamaño {sortKey === "size" && <ArrowUpDown className="h-3 w-3" />}</div>
                             </TableHead>
-                            <TableHead className="w-[10%] cursor-pointer text-slate-500 font-semibold" onClick={() => handleSort("size")}>
-                                <div className="flex items-center gap-2">
-                                    Tamaño
-                                    {sortKey === "size" && <ArrowUpDown className="h-3 w-3 text-indigo-500" />}
-                                </div>
-                            </TableHead>
-                            <TableHead className="w-[15%] cursor-pointer text-slate-500 font-semibold" onClick={() => handleSort("date")}>
-                                <div className="flex items-center gap-2">
-                                    Fecha subida
-                                    {sortKey === "date" && <ArrowUpDown className="h-3 w-3 text-indigo-500" />}
-                                </div>
-                            </TableHead>
-                            <TableHead className="w-[10%] text-right text-slate-500 font-semibold">Acciones</TableHead>
+                            <TableHead className="w-[15%] text-right font-black text-[9px] uppercase tracking-widest text-slate-400">Acciones</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
                         {(loading || isLoadingClients) ? (
-                            <TableRow className="bg-transparent hover:bg-transparent">
-                                <TableCell colSpan={6} className="h-48 text-center bg-transparent">
-                                    <div className="flex flex-col items-center justify-center opacity-60">
-                                        <Loader2 className="h-8 w-8 animate-spin mb-2 text-indigo-500" />
-                                        <span className="text-sm text-slate-500">
-                                            {isLoadingClients ? "Cargando clientes..." : "Cargando archivos..."}
-                                        </span>
-                                    </div>
-                                </TableCell>
-                            </TableRow>
+                            <TableRow><TableCell colSpan={6} className="h-32 text-center"><Loader2 className="h-6 w-6 animate-spin mx-auto text-indigo-400" /></TableCell></TableRow>
                         ) : processedFiles.length === 0 ? (
-                            <TableRow className="bg-transparent hover:bg-transparent">
-                                <TableCell colSpan={6} className="h-48 text-center bg-transparent">
-                                    <div className="flex flex-col items-center justify-center p-8">
-                                        <div className="h-12 w-12 rounded-xl bg-slate-100 flex items-center justify-center mb-3">
-                                            {searchQuery ? <Search className="h-6 w-6 text-slate-400" /> : <Folder className="h-6 w-6 text-slate-400" />}
-                                        </div>
-                                        <p className="text-slate-600 font-medium">No se encontraron elementos</p>
-                                    </div>
-                                </TableCell>
-                            </TableRow>
+                            <TableRow><TableCell colSpan={6} className="h-32 text-center text-slate-400 text-xs font-bold uppercase tracking-widest">Bóveda vacía</TableCell></TableRow>
                         ) : (
                             processedFiles.map((item) => (
                                 <TableRow
                                     key={item.id}
-                                    className="group bg-white hover:bg-indigo-50/30 transition-all cursor-pointer rounded-lg shadow-sm border-0 border-l-4 border-l-transparent hover:border-l-indigo-500"
+                                    className="group hover:bg-slate-50 transition-colors cursor-pointer border-b border-slate-50 last:border-0"
                                     onClick={() => (item.type === "folder") ? enterFolder(item) : handlePreview(item)}
                                 >
-                                    <TableCell className="rounded-l-lg py-3">
+                                    <TableCell className="py-2.5">
                                         <div className="flex items-center gap-3">
-                                            <div className={cn(
-                                                "h-9 w-9 rounded-xl flex items-center justify-center transition-transform group-hover:scale-105 shadow-sm",
-                                                item.type === "folder" ? "bg-indigo-50" : "bg-white border border-slate-100"
-                                            )}>
-                                                {!currentClientId && item.type === "folder" ? (
-                                                    <div className="h-full w-full rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold shadow-indigo-200">
-                                                        {item.value.charAt(0).toUpperCase()}
-                                                    </div>
-                                                ) : getFileIcon(item.value, item.type)}
-                                            </div>
-                                            <span className={cn(
-                                                "font-medium truncate max-w-[200px] sm:max-w-[300px]",
-                                                item.type === "folder" ? "text-slate-800" : "text-slate-600"
-                                            )}>
-                                                {item.value}
-                                            </span>
+                                            {item.type === "folder" && !currentClientId ? (
+                                                <div className="h-7 w-7 rounded-lg bg-indigo-600 flex items-center justify-center text-white text-[10px] font-black">{item.value.charAt(0)}</div>
+                                            ) : getFileIcon(item.value, item.type)}
+                                            <span className="font-bold text-xs text-slate-700 truncate max-w-[250px]">{item.value}</span>
                                         </div>
                                     </TableCell>
-                                    <TableCell className="text-slate-600 font-medium text-xs">
-                                        <div className="flex items-center gap-1">
-                                            {currentClientId ? <span className="opacity-50">—</span> : (
-                                                <>
-                                                    <User className="h-3 w-3 text-slate-400" />
-                                                    {item.clientName}
-                                                </>
-                                            )}
-                                        </div>
-                                    </TableCell>
-                                    <TableCell className="text-slate-500 text-xs">
-                                        <Badge variant="outline" className="font-normal text-slate-500 bg-slate-50 border-slate-200">
+                                    {!currentClientId && (
+                                        <TableCell className="py-2.5">
+                                            <span className="text-[11px] font-medium text-slate-400">{item.clientName}</span>
+                                        </TableCell>
+                                    )}
+                                    <TableCell className="py-2.5">
+                                        <Badge variant="outline" className="text-[9px] font-black uppercase tracking-tighter h-5 border-slate-200 text-slate-400">
                                             {getFileFriendlyType(item.value, item.type)}
                                         </Badge>
                                     </TableCell>
-                                    <TableCell className="text-slate-500 text-xs font-mono">
+                                    <TableCell className="py-2.5 text-[10px] font-mono text-slate-400">
                                         {item.type === "file" ? formatBytes(item.size) : "—"}
                                     </TableCell>
-                                    <TableCell className="text-slate-500 text-xs font-mono">
-                                        {item.date ? format(new Date(item.date * 1000), "dd MMM yyyy, HH:mm", { locale: es }) : "—"}
-                                    </TableCell>
-                                    <TableCell className="text-right rounded-r-lg">
+                                    <TableCell className="py-2.5 text-right">
                                         {currentClientId && (
-                                            <div className="flex justify-end gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                                            <div className="flex justify-end gap-1" onClick={e => e.stopPropagation()}>
                                                 {item.type === "file" && (
-                                                    <>
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="icon"
-                                                            className="h-8 w-8 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50"
-                                                            onClick={(e) => { e.stopPropagation(); handlePreview(item); }}
-                                                            title="Ver"
-                                                        >
-                                                            <Eye className="h-4 w-4" />
-                                                        </Button>
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="icon"
-                                                            className="h-8 w-8 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50"
-                                                            onClick={(e) => { e.stopPropagation(); handleDownload(item); }}
-                                                            title="Descargar"
-                                                        >
-                                                            <Download className="h-4 w-4" />
-                                                        </Button>
-                                                    </>
+                                                    <Button variant="ghost" size="icon" className="h-7 w-7 rounded-lg hover:bg-white" onClick={() => handleDownload(item)}><Download className="h-3.5 w-3.5" /></Button>
                                                 )}
-
                                                 <DropdownMenu>
-                                                    <DropdownMenuTrigger asChild>
-                                                        <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-slate-700" onClick={(e) => e.stopPropagation()}>
-                                                            <MoreVertical className="h-4 w-4" />
-                                                        </Button>
-                                                    </DropdownMenuTrigger>
-                                                    <DropdownMenuContent align="end" className="w-48">
-                                                        <DropdownMenuLabel>Acciones</DropdownMenuLabel>
-                                                        <DropdownMenuSeparator />
-                                                        <DropdownMenuItem onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            setFileToRename(item);
-                                                            setNewName(item.value);
-                                                        }}>
-                                                            <Edit2 className="mr-2 h-3.5 w-3.5" /> Renombrar
-                                                        </DropdownMenuItem>
-                                                        <DropdownMenuItem
-                                                            className="text-red-600 focus:text-red-600 focus:bg-red-50"
-                                                            onClick={(e) => { e.stopPropagation(); handleDelete(item); }}
-                                                        >
-                                                            <Trash2 className="mr-2 h-3.5 w-3.5" /> Eliminar Archivo
-                                                        </DropdownMenuItem>
+                                                    <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7 rounded-lg"><MoreVertical className="h-3.5 w-3.5" /></Button></DropdownMenuTrigger>
+                                                    <DropdownMenuContent align="end" className="rounded-xl">
+                                                        <DropdownMenuItem onClick={() => { setFileToRename(item); setNewName(item.value); }}><Edit2 className="mr-2 h-3.5 w-3.5" /> Renombrar</DropdownMenuItem>
+                                                        <DropdownMenuItem className="text-red-600" onClick={() => handleDelete(item)}><Trash2 className="mr-2 h-3.5 w-3.5" /> Eliminar</DropdownMenuItem>
                                                     </DropdownMenuContent>
                                                 </DropdownMenu>
                                             </div>
@@ -651,31 +563,18 @@ export default function ClientFileVault({ clients, isLoadingClients }: ClientFil
                 </Table>
             </div>
 
-            {/* Footer Status */}
-            <div className="p-4 bg-transparent text-xs text-slate-400 flex justify-between items-center font-medium border-t border-slate-100/50">
+            <div className="p-3 bg-slate-50/50 border-t border-slate-100 flex justify-between items-center text-[10px] font-black uppercase text-slate-400 tracking-widest">
                 <div className="flex gap-4">
                     <span>{stats.count} elementos</span>
-                    {currentClientId && <span>{formatBytes(stats.size)} usados en este directorio</span>}
+                    {currentClientId && <span>{formatBytes(stats.size)} usados</span>}
                 </div>
             </div>
 
-            {/* Rename Dialog */}
             <Dialog open={!!fileToRename} onOpenChange={(o) => { if (!o) setFileToRename(null); }}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Renombrar</DialogTitle>
-                        <DialogDescription>Cambiar nombre a: {fileToRename?.value}</DialogDescription>
-                    </DialogHeader>
-                    <Input
-                        value={newName}
-                        onChange={(e) => setNewName(e.target.value)}
-                        placeholder="Nuevo nombre"
-                        onKeyDown={(e) => e.key === 'Enter' && handleRename()}
-                    />
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setFileToRename(null)}>Cancelar</Button>
-                        <Button onClick={handleRename}>Guardar</Button>
-                    </DialogFooter>
+                <DialogContent className="rounded-3xl">
+                    <DialogHeader><DialogTitle className="font-black">Renombrar</DialogTitle></DialogHeader>
+                    <Input value={newName} onChange={e => setNewName(e.target.value)} className="h-11 rounded-2xl border-slate-200 font-bold" onKeyDown={e => e.key === 'Enter' && handleRename()} />
+                    <DialogFooter><Button onClick={handleRename} className="h-10 rounded-xl bg-indigo-600 font-bold">Guardar</Button></DialogFooter>
                 </DialogContent>
             </Dialog>
         </div>

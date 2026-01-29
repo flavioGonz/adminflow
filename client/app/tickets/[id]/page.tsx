@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { ChangeEvent, DragEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -70,6 +70,7 @@ import {
 import { Group } from "@/types/group";
 import { API_URL } from "@/lib/http";
 import { TicketsTimeline } from "@/components/tickets/tickets-timeline";
+import { UnifiedAssignmentSearch } from "@/components/tickets/unified-assignment-search";
 
 const formatDateTime = (value?: string) =>
   value
@@ -101,19 +102,6 @@ const resolveAvatarUrl = (avatarPath?: string | null) => {
 };
 
 type TicketAnnotation = NonNullable<Ticket["annotations"]>[number];
-
-const getStatusBadgeVariant = (value: TicketStatus) => {
-  if (value === "Resuelto") return "secondary";
-  if (value === "Facturar") return "destructive";
-  if (value === "Visita") return "outline";
-  return "default";
-};
-
-const getPriorityBadgeVariant = (value: TicketPriority) => {
-  if (value === "Alta") return "destructive";
-  if (value === "Media") return "outline";
-  return "secondary";
-};
 
 const statusIcons: Record<string, React.ComponentType<{ className?: string }>> = {
   "Nuevo": PlusCircle,
@@ -201,8 +189,9 @@ export default function TicketDetailPage() {
   const groupsMap = useMemo(() => {
     const map: Record<string, Group> = {};
     groups.forEach((group) => {
-      if (group._id) {
-        map[group._id] = group;
+      const gid = group._id || group.id;
+      if (gid) {
+        map[gid] = group;
       }
     });
     return map;
@@ -338,40 +327,6 @@ export default function TicketDetailPage() {
       setFormAssignedGroupId(ticket.assignedGroupId ?? null);
     }
   }, [ticket]);
-  const assignedUser = useMemo(
-    () => users.find((user) => user.email === formAssignedTo) ?? null,
-    [users, formAssignedTo]
-  );
-
-  const assignmentValue = useMemo(() => {
-    if (formAssignedTo) {
-      return `user:${formAssignedTo}`;
-    }
-    if (formAssignedGroupId) {
-      return `group:${formAssignedGroupId}`;
-    }
-    return "none";
-  }, [formAssignedGroupId, formAssignedTo]);
-
-  const handleAssignmentChange = useCallback(
-    (value: string) => {
-      if (value === "none") {
-        setFormAssignedTo(null);
-        setFormAssignedGroupId(null);
-        return;
-      }
-      if (value.startsWith("user:")) {
-        setFormAssignedTo(value.replace(/^user:/, ""));
-        setFormAssignedGroupId(null);
-        return;
-      }
-      if (value.startsWith("group:")) {
-        setFormAssignedGroupId(value.replace(/^group:/, ""));
-        setFormAssignedTo(null);
-      }
-    },
-    [setFormAssignedGroupId, setFormAssignedTo]
-  );
 
   const metrics = useMemo(
     () => [
@@ -1067,7 +1022,7 @@ export default function TicketDetailPage() {
                     <SelectValue>
                       <div className="flex items-center gap-2">
                         {(() => {
-                          const meta = priorityMeta[formPriority];
+                          const meta = priorityMeta[formPriority] || priorityMeta["Media"];
                           const Icon = meta.Icon;
                           return <Icon className={`h-4 w-4 ${meta.color}`} />;
                         })()}
@@ -1095,114 +1050,18 @@ export default function TicketDetailPage() {
 
             <div className="space-y-2">
               <Label htmlFor="assignment">Asignacion</Label>
-              <Select
-                value={assignmentValue}
-                onValueChange={handleAssignmentChange}
-                disabled={isLocked}
-              >
-                <SelectTrigger id="assignment" className="w-full">
-                  <SelectValue>{(() => {
-                    if (assignedUser) {
-                      return (
-                        <div className="flex items-center gap-2">
-                          {assignedUser.avatar ? (
-                            <img
-                              src={
-                                assignedUser.avatar.startsWith("http")
-                                  ? assignedUser.avatar
-                                  : `${API_URL.replace("/api", "")}${assignedUser.avatar}`
-                              }
-                              alt={assignedUser.name}
-                              className="h-5 w-5 rounded-full object-cover"
-                            />
-                          ) : (
-                            <div className="h-5 w-5 rounded-full bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center text-white text-xs font-semibold">
-                              {assignedUser.name.charAt(0).toUpperCase()}
-                            </div>
-                          )}
-                          <span className="leading-none">{assignedUser.name}</span>
-                        </div>
-                      );
-                    }
-                    if (formAssignedGroupId) {
-                      const activeGroup = groupsMap[formAssignedGroupId];
-                      return (
-                        <div className="flex items-center gap-2">
-                          <Users className="h-4 w-4 text-muted-foreground" />
-                          <span>{activeGroup?.name ?? "Grupo"}</span>
-                        </div>
-                      );
-                    }
-                    return (
-                      <div className="flex items-center gap-2">
-                        <User className="h-4 w-4 text-muted-foreground" />
-                        <span className="leading-none">Sin asignar</span>
-                      </div>
-                    );
-                  })()}</SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">
-                    <div className="flex items-center gap-2">
-                      <User className="h-4 w-4 text-muted-foreground" />
-                      <span>Sin asignar</span>
-                    </div>
-                  </SelectItem>
-                  <SelectSeparator />
-                  <SelectGroup>
-                    <SelectLabel>Grupos</SelectLabel>
-                    {groups.map((group) => {
-                      const groupValue = group._id || group.id || group.slug;
-                      if (!groupValue) return null;
-                      return (
-                        <SelectItem key={`group-${groupValue}`} value={`group:${groupValue}`}>
-                          <div className="flex flex-col gap-0.5">
-                            <div className="flex items-center gap-2">
-                              <Users className="h-4 w-4 text-muted-foreground" />
-                              <span>{group.name}</span>
-                            </div>
-                            {group.description ? (
-                              <span className="text-[11px] text-muted-foreground">
-                                {group.description}
-                              </span>
-                            ) : null}
-                          </div>
-                        </SelectItem>
-                      );
-                    })}
-                  </SelectGroup>
-                  <SelectSeparator />
-                  <SelectGroup>
-                    <SelectLabel>Usuarios</SelectLabel>
-                    {users.map((user) => {
-                      const userValue = user.email || user.id;
-                      if (!userValue) return null;
-                      return (
-                        <SelectItem key={`user-${userValue}`} value={`user:${userValue}`}>
-                          <div className="flex items-center gap-2">
-                            {user.avatar ? (
-                              <img
-                                src={
-                                  user.avatar.startsWith("http")
-                                    ? user.avatar
-                                    : `${API_URL.replace("/api", "")}${user.avatar}`
-                                }
-                                alt={user.email}
-                                className="h-5 w-5 rounded-full object-cover"
-                              />
-                            ) : (
-                              <div className="h-5 w-5 rounded-full bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center text-white text-xs font-semibold">
-                                {user.email.charAt(0).toUpperCase()}
-                              </div>
-                            )}
-                            <span>{user.name} ({user.email})</span>
-                          </div>
-                        </SelectItem>
-                      );
-                    })}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
+              <UnifiedAssignmentSearch 
+                   users={users}
+                   groups={groups}
+                   assignedTo={formAssignedTo}
+                   assignedGroupId={formAssignedGroupId}
+                   onAssign={(type, value) => {
+                       if (type === 'user') { setFormAssignedTo(value); setFormAssignedGroupId(null); }
+                       else if (type === 'group') { setFormAssignedGroupId(value); setFormAssignedTo(null); }
+                       else { setFormAssignedTo(null); setFormAssignedGroupId(null); }
+                   }}
+                   disabled={isLocked}
+                />
             </div >
 
             <div className="grid gap-3 md:grid-cols-2">
@@ -1451,4 +1310,3 @@ export default function TicketDetailPage() {
     </div >
   );
 }
-

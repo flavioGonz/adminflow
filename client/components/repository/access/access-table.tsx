@@ -29,7 +29,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Search, Filter, FileDown, Copy, Check, Hash, Plus, FileSpreadsheet } from "lucide-react";
+import { Search, Filter, FileDown, Copy, Check, Hash, Plus, FileSpreadsheet, Upload } from "lucide-react";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
 import { AccessItem } from "@/lib/api-access";
@@ -48,6 +48,7 @@ interface AccessTableProps {
   showExportButton?: boolean;
   onCreateNew?: () => void;
   onExport?: () => void;
+  onImport?: () => void;
 }
 
 export const exportAccessToExcel = (data: AccessItem[]) => {
@@ -102,7 +103,7 @@ function CopyButton({ value }: { value: string }) {
   );
 }
 
-export function AccessTable({ data, onUpdate, onCreateNew, onExport }: AccessTableProps) {
+export function AccessTable({ data, onUpdate, onCreateNew, onExport, onImport }: AccessTableProps) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
 
@@ -263,7 +264,7 @@ export function AccessTable({ data, onUpdate, onCreateNew, onExport }: AccessTab
             </Select>
           </div>
         </div>
-        {(onCreateNew || onExport) && (
+        {(onCreateNew || onExport || onImport) && (
           <TooltipProvider>
             <div className="flex items-center gap-2">
               {onCreateNew && (
@@ -296,6 +297,23 @@ export function AccessTable({ data, onUpdate, onCreateNew, onExport }: AccessTab
                   </TooltipTrigger>
                   <TooltipContent>
                     <p>Exportar Excel</p>
+                  </TooltipContent>
+                </Tooltip>
+              )}
+              {onImport && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      onClick={onImport}
+                      variant="outline"
+                      size="icon"
+                      className="h-9 w-9 border-blue-600 text-blue-600 hover:bg-blue-50"
+                    >
+                      <Upload className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Importar accesos</p>
                   </TooltipContent>
                 </Tooltip>
               )}

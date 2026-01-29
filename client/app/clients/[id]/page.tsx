@@ -1,9 +1,9 @@
-﻿"use client";
+"use client";
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -27,6 +27,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   ArrowLeft,
   Plus,
@@ -53,12 +54,23 @@ import {
   MapPin,
   FolderArchive,
   Rocket,
+  CalendarClock,
+  Edit2,
+  Bell,
+  FileSignature,
+  History,
+  ChevronRight,
+  Monitor,
+  Search,
+  CheckCircle2,
+  CreditCard
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { updateClient } from "@/lib/api-clients";
 import { API_URL } from "@/lib/http";
 import "leaflet/dist/leaflet.css";
 import { ShinyText } from "@/components/ui/shiny-text";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 const DEFAULT_POSITION: [number, number] = [-34.9, -56.1];
 
@@ -79,11 +91,40 @@ function MapCard({
   const markerRef = useRef<any>(null);
   const [isLocked, setIsLocked] = useState(true);
   const [isClient, setIsClient] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const pinIconRef = useRef<any>(null);
 
   useEffect(() => {
     setIsClient(true);
   }, []);
+
+  const handleSearch = async () => {
+    if (!searchQuery.trim()) return;
+    try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}`);
+        const data = await res.json();
+        if (data && data.length > 0) {
+            const { lat, lon } = data[0];
+            const newLat = parseFloat(lat);
+            const newLon = parseFloat(lon);
+            if (mapInstanceRef.current) {
+                mapInstanceRef.current.setView([newLat, newLon], 16);
+                if (markerRef.current) {
+                    markerRef.current.setLatLng([newLat, newLon]);
+                }
+            }
+            if (onLocationSave) {
+                onLocationSave(newLat, newLon);
+            }
+            setIsLocked(false);
+            toast.success("Ubicación encontrada.");
+        } else {
+            toast.error("No se encontró la dirección.");
+        }
+    } catch (err) {
+        toast.error("Error al buscar dirección.");
+    }
+  };
 
   // Initialize Map
   useEffect(() => {
@@ -102,7 +143,6 @@ function MapCard({
         attribution: '&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a>',
       }).addTo(map);
 
-      // Lucide-like pin using divIcon to avoid missing assets
       pinIconRef.current = L.divIcon({
         className: "map-pin-icon",
         html: `<div style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:50%;background:#0ea5e9;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.2);color:white;">
@@ -142,14 +182,15 @@ function MapCard({
     };
   }, [isClient]);
 
-  // Update marker position and draggable state
   useEffect(() => {
     if (!markerRef.current || !mapInstanceRef.current || !isClient) return;
 
     const updateMap = async () => {
       const newPos = getClientPosition(client);
       markerRef.current.setLatLng(newPos);
-      mapInstanceRef.current.setView(newPos);
+      if (!isLocked) {
+        mapInstanceRef.current.setView(newPos);
+      }
 
       if (isLocked) {
         markerRef.current.dragging?.disable();
@@ -168,47 +209,40 @@ function MapCard({
         className="absolute inset-0 h-full w-full"
         style={{ zIndex: 0 }}
       />
-      <div className="absolute right-3 top-3 flex items-center gap-2 rounded-full border border-slate-200 bg-white/90 px-3 py-1 text-xs font-semibold text-slate-700 shadow-md backdrop-blur" style={{ zIndex: 2 }}>
-        <button
-          className="flex items-center gap-1 text-[0.65rem] uppercase tracking-widest text-slate-700 outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-slate-200"
-          onClick={() => setIsLocked((prev) => !prev)}
-          type="button"
-        >
-          {isLocked ? (
-            <>
-              <Lock className="h-3 w-3" />
-              Bloqueado
-            </>
-          ) : (
-            <>
-              <Unlock className="h-3 w-3" />
-              Reubicar
-            </>
-          )}
-        </button>
+      <div className="absolute left-3 top-3 right-3 flex items-center gap-2" style={{ zIndex: 2 }}>
+          <div className="relative flex-1 group">
+            <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
+            <Input 
+                placeholder="Buscar dirección..." 
+                className="h-9 pl-8 bg-white/90 backdrop-blur border-slate-200 shadow-lg text-xs"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+            />
+          </div>
+          <button
+            className="flex items-center gap-1 h-9 px-3 rounded-xl border border-slate-200 bg-white/90 text-[0.65rem] font-bold uppercase tracking-widest text-slate-700 shadow-lg backdrop-blur outline-none transition-all hover:bg-white active:scale-95"
+            onClick={() => setIsLocked((prev) => !prev)}
+            type="button"
+          >
+            {isLocked ? (
+              <>
+                <Lock className="h-3 w-3 text-slate-500" />
+                Bloqueado
+              </>
+            ) : (
+              <>
+                <Unlock className="h-3 w-3 text-blue-500 animate-bounce" />
+                Mover dot
+              </>
+            )}
+          </button>
       </div>
     </section>
   );
 }
-import autoTable from "jspdf-autotable";
-import { jsPDF } from "jspdf";
-import * as XLSX from "xlsx";
 
-interface Client {
-  id: string;
-  name: string;
-  alias?: string;
-  rut?: string;
-  email: string;
-  phone?: string;
-  address?: string;
-  avatarUrl?: string;
-  contract?: boolean;
-  latitude?: number;
-  longitude?: number;
-  createdAt?: string;
-  updatedAt?: string;
-}
+import { Client } from "@/types/client";
 
 interface Ticket {
   id: string;
@@ -249,7 +283,7 @@ interface ClientContract {
   currency?: string;
 }
 
-type MovementType = "Ticket" | "Pago" | "Repositorio" | "Contrato";
+type MovementType = "Ticket" | "Pago" | "Repositorio";
 
 interface MovementRow {
   id: string;
@@ -264,7 +298,7 @@ interface MovementRow {
 interface CardField {
   key: keyof Client;
   label: string;
-  type?: "text" | "email" | "tel" | "textarea" | "select";
+  type?: "text" | "email" | "tel" | "textarea" | "select" | "checkbox";
   placeholder?: string;
   options?: { label: string; value: string }[];
   parse?: (value: string) => Client[keyof Client];
@@ -286,16 +320,16 @@ interface EditableClientCardProps {
 const formatDate = (value?: string) =>
   value ? new Date(value).toLocaleDateString() : "—";
 
-const formatCurrency = (value: number, currency = "ARS") =>
-  new Intl.NumberFormat("es-AR", {
+const formatCurrency = (value: number, currency = "UYU") =>
+  new Intl.NumberFormat("es-UY", {
     style: "currency",
     currency,
     maximumFractionDigits: 0,
   }).format(value);
 
-const CONTRACT_NONE_VALUE = "__none__";
 export default function ClientDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const rawId = params?.id;
   if (!rawId) {
     throw new Error("Client ID is required.");
@@ -312,19 +346,11 @@ export default function ClientDetailPage() {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [savingSection, setSavingSection] = useState<string | null>(null);
-  const [showRackDesigner, setShowRackDesigner] = useState(false);
-  const [rackName, setRackName] = useState("Rack principal");
-  const [rackHeight, setRackHeight] = useState(42);
-  const [patchPanels, setPatchPanels] = useState<
-    { id: number; name: string; ports: number }[]
-  >([
-    { id: 1, name: "Patch Panel 1", ports: 24 },
-  ]);
-  const [movementFilterType, setMovementFilterType] = useState<MovementType | "Todos">("Todos");
-  const [movementStatusFilter, setMovementStatusFilter] = useState<string>("Todos");
+  const [activeTab, setActiveTab] = useState<string>("movimientos");
+
   const [movementSearch, setMovementSearch] = useState("");
   const [movementPage, setMovementPage] = useState(1);
-  const MOVEMENTS_PAGE_SIZE = 6;
+  const MOVEMENTS_PAGE_SIZE = 8;
 
   const fetchClient = useCallback(async () => {
     if (!id) return;
@@ -443,34 +469,22 @@ export default function ClientDetailPage() {
     fetchContracts,
   ]);
 
-  const handleAddPatchPanel = () => {
-    setPatchPanels((prev) => [
-      ...prev,
-      { id: Date.now(), name: `Patch Panel ${prev.length + 1}`, ports: 24 },
-    ]);
-  };
-
-  const handlePatchPanelChange = (
-    id: number,
-    field: "name" | "ports",
-    value: string
+  const handleCardSave = async (
+    sectionId: string,
+    updates: Partial<Client>
   ) => {
-    setPatchPanels((prev) =>
-      prev.map((panel) =>
-        panel.id === id
-          ? { ...panel, [field]: field === "ports" ? Number(value) || 0 : value }
-          : panel
-      )
-    );
-  };
-
-  const handleRemovePatchPanel = (id: number) => {
-    setPatchPanels((prev) => prev.filter((panel) => panel.id !== id));
-  };
-
-  const handleSaveRack = () => {
-    toast.success("Rack guardado para el cliente");
-    setShowRackDesigner(false);
+    if (!client) return;
+    try {
+      setSavingSection(sectionId);
+      const updated = await updateClient(client.id, updates);
+      setClient(updated);
+      toast.success("Datos actualizados.");
+    } catch (err) {
+      console.error("Error updating client:", err);
+      toast.error("No se pudo actualizar.");
+    } finally {
+      setSavingSection(null);
+    }
   };
 
   const movementRows = useMemo<MovementRow[]>(() => {
@@ -501,21 +515,10 @@ export default function ClientDetailPage() {
       rows.push({
         id: item.id,
         type: "Repositorio",
-        description: `${item.equipo} (${item.usuario})`,
+        description: `${item.equipo || 'Item'} (${item.usuario || 'N/A'})`,
         status: item.comentarios,
         date: item.updatedAt ?? item.createdAt,
         reference: item.mac_serie,
-      })
-    );
-
-    contracts.forEach((contract) =>
-      rows.push({
-        id: contract.id,
-        type: "Contrato",
-        description: contract.title,
-        status: contract.status,
-        date: contract.startDate ?? contract.createdAt,
-        amount: contract.amount,
       })
     );
 
@@ -523,231 +526,96 @@ export default function ClientDetailPage() {
       value ? new Date(value).getTime() : 0;
 
     return rows.sort((a, b) => parseDate(b.date) - parseDate(a.date));
-  }, [tickets, payments, repositoryItems, contracts]);
-
-  const movementStatuses = useMemo(() => {
-    const set = new Set<string>();
-    movementRows.forEach((row) => row.status && set.add(row.status));
-    return Array.from(set);
-  }, [movementRows]);
+  }, [tickets, payments, repositoryItems]);
 
   const filteredMovements = useMemo(() => {
-    const typeFiltered = movementFilterType === "Todos"
-      ? movementRows
-      : movementRows.filter((row) => row.type === movementFilterType);
-
-    const statusFiltered = movementStatusFilter === "Todos"
-      ? typeFiltered
-      : typeFiltered.filter((row) => row.status === movementStatusFilter);
+    let base = movementRows;
+    if (activeTab === "tickets") base = movementRows.filter(r => r.type === "Ticket");
+    if (activeTab === "pagos") base = movementRows.filter(r => r.type === "Pago");
+    if (activeTab === "repositorio") base = movementRows.filter(r => r.type === "Repositorio");
 
     const text = movementSearch.trim().toLowerCase();
-    const searched = text
-      ? statusFiltered.filter((row) =>
-          row.description.toLowerCase().includes(text) ||
-          row.status?.toLowerCase().includes(text) ||
-          row.reference?.toLowerCase().includes(text)
-        )
-      : statusFiltered;
+    if (text) {
+        base = base.filter((row) =>
+            row.description.toLowerCase().includes(text) ||
+            row.status?.toLowerCase().includes(text) ||
+            row.reference?.toLowerCase().includes(text)
+        );
+    }
 
-    return searched;
-  }, [movementRows, movementFilterType, movementStatusFilter, movementSearch]);
+    return base;
+  }, [movementRows, activeTab, movementSearch]);
 
-  useEffect(() => {
-    setMovementPage(1);
-  }, [movementFilterType, movementStatusFilter, movementSearch]);
-
-  const totalMovementPages = Math.max(1, Math.ceil(filteredMovements.length / MOVEMENTS_PAGE_SIZE));
   const paginatedMovements = filteredMovements.slice(
     (movementPage - 1) * MOVEMENTS_PAGE_SIZE,
     movementPage * MOVEMENTS_PAGE_SIZE
   );
 
-  const movementTypeMeta: Record<MovementType, { icon: LucideIcon; color: string; bg: string; extra?: string }> = {
-    Ticket: { icon: TicketIcon, color: "text-sky-600", bg: "bg-sky-50" },
-    Pago: { icon: DollarSign, color: "text-emerald-600", bg: "bg-emerald-50", extra: "animate-bounce" },
-    Repositorio: { icon: Folder, color: "text-amber-600", bg: "bg-amber-50" },
-    Contrato: { icon: FileText, color: "text-purple-600", bg: "bg-purple-50" },
-  };
+  const totalMovementPages = Math.max(1, Math.ceil(filteredMovements.length / MOVEMENTS_PAGE_SIZE));
 
-  const statusTone = (status?: string) => {
-    if (!status) return { bg: "bg-slate-100", color: "text-slate-700" };
-    const normalized = status.toLowerCase();
-    if (normalized.includes("abiert") || normalized.includes("pend")) {
-      return { bg: "bg-amber-100", color: "text-amber-800" };
-    }
-    if (normalized.includes("cerrad") || normalized.includes("final")) {
-      return { bg: "bg-slate-100", color: "text-slate-800" };
-    }
-    if (normalized.includes("pago") || normalized.includes("pagado") || normalized.includes("complet")) {
-      return { bg: "bg-emerald-100", color: "text-emerald-800" };
-    }
-    if (normalized.includes("cancel") || normalized.includes("fall")) {
-      return { bg: "bg-rose-100", color: "text-rose-800" };
-    }
-    return { bg: "bg-sky-100", color: "text-sky-800" };
-  };
+  if (loading) return <div className="p-6">Cargando...</div>;
+  if (error) return <div className="p-6 text-red-500">Error: {error}</div>;
+  if (!client) return <div className="p-6">No encontrado.</div>;
 
-  const infoPills = useMemo(
-    () => [
-      {
-        label: "Tickets",
-        value: tickets.length,
-        meta: "asociados",
-      },
-      {
-        label: "Pagos",
-        value: payments.length,
-        meta: "registrados",
-      },
-      {
-        label: "Repositorio",
-        value: repositoryItems.length,
-        meta: "items",
-      },
-      {
-        label: "Contratos",
-        value: contracts.length,
-        meta: "vigentes",
-      },
-    ],
-    [tickets.length, payments.length, repositoryItems.length, contracts.length]
-  );
-  const infoPillIcons: Record<string, LucideIcon> = {
-    Tickets: TicketIcon,
-    Pagos: DollarSign,
-    Repositorio: Folder,
-    Contratos: FileText,
-  };
-
-  const exportTicketsExcel = () => {
-    const worksheet = XLSX.utils.json_to_sheet(
-      tickets.map((ticket) => ({
-        ID: ticket.id,
-        Titulo: ticket.title ?? "Ticket sin Titulo",
-        Estado: ticket.status,
-        Fecha: ticket.createdAt,
-      }))
-    );
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Tickets");
-    XLSX.writeFile(workbook, `${client?.name ?? "cliente"}-tickets.xlsx`);
-  };
-
-  const exportPaymentsExcel = () => {
-    const worksheet = XLSX.utils.json_to_sheet(
-      payments.map((payment) => ({
-        ID: payment.id,
-        Estado: payment.status,
-        Monto: payment.amount,
-        Fecha: payment.createdAt,
-      }))
-    );
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Pagos");
-    XLSX.writeFile(workbook, `${client?.name ?? "cliente"}-pagos.xlsx`);
-  };
-
-  const exportTicketsPDF = () => {
-    const doc = new jsPDF();
-    autoTable(doc, {
-      head: [["ID", "Titulo", "Estado", "Fecha"]],
-      body: tickets.map((ticket) => [
-        ticket.id,
-        ticket.title ?? "Ticket sin Titulo",
-        ticket.status,
-        ticket.createdAt,
-      ]),
-    });
-    doc.save(`${client?.name ?? "cliente"}-tickets.pdf`);
-  };
-
-  const exportPaymentsPDF = () => {
-    const doc = new jsPDF();
-    autoTable(doc, {
-      head: [["ID", "Estado", "Monto", "Fecha"]],
-      body: payments.map((payment) => [
-        payment.id,
-        payment.status ?? "Pendiente",
-        payment.amount,
-        payment.createdAt,
-      ]),
-    });
-    doc.save(`${client?.name ?? "cliente"}-pagos.pdf`);
-  };
-
-  const handleCardSave = async (
-    sectionId: string,
-    updates: Partial<Client>
-  ) => {
-    if (!client) return;
-    try {
-      setSavingSection(sectionId);
-      const updated = await updateClient(client.id, updates);
-      setClient(updated);
-      toast.success("Datos del cliente actualizados.");
-    } catch (err) {
-      console.error("Error updating client:", err);
-      toast.error("No se pudo actualizar el cliente.");
-    } finally {
-      setSavingSection(null);
-    }
-  };
-
-  if (loading) {
-    return <div className="p-6">Cargando cliente...</div>;
-  }
-
-  if (error) {
-    return <div className="p-6 text-red-500">Error: {error}</div>;
-  }
-
-  if (!client) {
-    return <div className="p-6">Cliente no encontrado.</div>;
-  }
-
-  const resourceCards: Array<{
-    title: string;
-    description: string;
-    icon: LucideIcon;
-    accent: string;
-    href?: string;
-    onClick?: () => void;
-  }> = [
+  const resourceCards = [
     {
-      title: "Datos / Accesos",
-      description: "Credenciales y dispositivos",
+      title: "Accesos",
+      description: "Credenciales",
       icon: Lock,
       href: `/clients/${client.id}/repository/access`,
-      accent: "from-blue-50 to-indigo-50",
+      accent: "bg-blue-50 text-blue-600",
     },
     {
-      title: "Bóbeda de Archivos",
-      description: "Documentos y archivos del cliente",
+      title: "Bóveda",
+      description: "Archivos",
       icon: FolderArchive,
-      href: `/repository?search=${encodeURIComponent(client.name)}`,
-      accent: "from-slate-50 to-slate-100",
+      href: `/repository?clientId=${client.id}`,
+      accent: "bg-slate-50 text-slate-600",
     },
     {
       title: "Diagramas",
-      description: "Diagramas de red en Excalidraw",
+      description: "Red",
       icon: Network,
       href: `/clients/${client.id}/diagram`,
-      accent: "from-emerald-50 to-teal-50",
+      accent: "bg-emerald-50 text-emerald-600",
     },
     {
-      title: "Implementaciones",
-      description: "Proyectos e implementaciones del cliente",
+      title: "Proyectos",
+      description: "Plan",
       icon: Rocket,
       href: `/clients/${client.id}/implementation`,
-      accent: "from-purple-50 to-pink-50",
+      accent: "bg-purple-50 text-purple-600",
     },
+    {
+      title: "Abrir Ticket",
+      description: "Soporte",
+      icon: TicketIcon,
+      href: `/tickets/new?clientId=${client.id}`,
+      accent: "bg-amber-100 text-amber-700 border-amber-200",
+      primary: true
+    },
+    {
+      title: "Cargar Pago",
+      description: "Admin",
+      icon: DollarSign,
+      href: `/payments?clientId=${client.id}&action=new`,
+      accent: "bg-indigo-100 text-indigo-700 border-indigo-200",
+      primary: true
+    },
+  ];
+
+  const tabList = [
+      { id: 'movimientos', label: 'Todos', icon: History, count: movementRows.length },
+      { id: 'tickets', label: 'Tickets', icon: TicketIcon, count: tickets.length },
+      { id: 'pagos', label: 'Pagos', icon: DollarSign, count: payments.length },
+      { id: 'repositorio', label: 'Inventario', icon: Monitor, count: repositoryItems.length },
   ];
 
   return (
     <div className="space-y-6 p-6">
       <PageHeader
         title={<ShinyText size="3xl" weight="bold">{client.name}</ShinyText>}
-        subtitle="Ficha completa del cliente con contratos, tickets y pagos vinculados."
+        subtitle="Gestión centralizada del cliente"
         backHref="/clients"
         leadingIcon={
           <div className="p-2 rounded-lg bg-gradient-to-br from-emerald-500 to-green-600">
@@ -755,31 +623,15 @@ export default function ClientDetailPage() {
           </div>
         }
         breadcrumbs={[
-          { label: "Clientes", href: "/clients", icon: <Users className="h-3 w-3 text-slate-500" /> },
-          { label: client.name, icon: <User className="h-3 w-3 text-slate-500" /> },
+            { label: "Clientes", href: "/clients", icon: <Users className="h-3 w-3 text-slate-500" /> },
+            { label: client.name, icon: <User className="h-3 w-3 text-slate-500" /> },
         ]}
-        actions={null}
-        breadcrumbAction={
-          <div className="flex flex-wrap gap-2 items-center">
-            <Badge variant="outline" className="flex items-center gap-1.5 bg-white px-2 py-0.5 text-xs font-medium text-slate-700 shadow-sm">
-              <Hash className="h-3.5 w-3.5 text-slate-500" />
-              ID {client.id}
-            </Badge>
-            {infoPills.map((pill) => {
-              const Icon = infoPillIcons[pill.label] ?? Hash;
-              return (
-                <Badge
-                  key={pill.label}
-                  variant="outline"
-                  className="flex items-center gap-1.5 bg-white px-2 py-0.5 text-xs font-medium text-slate-700 shadow-sm"
-                >
-                  <Icon className="h-3.5 w-3.5 text-slate-500" />
-                  <span className="font-semibold text-slate-900">{pill.value}</span>
-                  <span className="text-slate-500">{pill.label}</span>
-                </Badge>
-              );
-            })}
-          </div>
+        actions={
+            <div className="flex items-center gap-2">
+                 <Badge variant="outline" className="bg-white border-slate-200 text-slate-500 text-[10px] font-mono px-2">
+                    ID: {client.id}
+                 </Badge>
+            </div>
         }
       />
 
@@ -796,61 +648,46 @@ export default function ClientDetailPage() {
             { key: "email", label: "Correo electrónico", type: "email", icon: Mail },
             { key: "phone", label: "Teléfono", type: "tel", icon: Phone },
             { key: "address", label: "Dirección", type: "textarea", icon: MapPin },
+            { key: "notificationsEnabled", label: "Notificaciones", type: "checkbox", icon: Bell },
           ]}
           onSave={(updates) => handleCardSave("contact", updates)}
           isSaving={savingSection === "contact"}
           avatarUrl={client.avatarUrl}
         />
+        
         <ContractSelectionCard
-          contracts={contracts}
-          selectedContractId={selectedContractId}
-          onContractSelect={setSelectedContractId}
-          payments={payments}
+            contracts={contracts}
+            selectedContractId={selectedContractId}
+            onContractSelect={setSelectedContractId}
+            payments={payments}
+            client={client}
+            onSave={(updates) => handleCardSave("contract", updates)}
         />
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm flex flex-col h-full">
           <div className="flex items-center gap-2 mb-3">
-            <Lock className="h-5 w-5 text-blue-600" />
-            <h3 className="text-lg font-semibold text-slate-800">Accesos y Recursos</h3>
+            <Plus className="h-5 w-5 text-blue-600" />
+            <h3 className="text-lg font-semibold text-slate-800">Recursos y Acciones</h3>
           </div>
-          <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-2 flex-1">
             {resourceCards.map((card) => {
               const ContentIcon = card.icon;
-              const content = (
-                <div className="group flex items-center justify-between rounded-xl border border-slate-200 bg-gradient-to-r from-white to-slate-50 px-3 py-2 hover:shadow-sm transition-all hover:-translate-y-0.5">
-                  <div className="flex items-center gap-3">
-                    <div className="rounded-lg bg-slate-100 p-2 group-hover:bg-slate-200 transition-colors">
-                      <ContentIcon className="h-5 w-5 text-slate-800" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-slate-800">{card.title}</p>
-                      <p className="text-xs text-slate-500">{card.description}</p>
-                    </div>
-                  </div>
-                  <ArrowLeft className="h-4 w-4 text-slate-400 rotate-180 group-hover:translate-x-1 transition-transform" />
-                </div>
-              );
-
-              if (card.href) {
-                return (
-                  <Link key={card.title} href={card.href} className="block">
-                    {content}
-                  </Link>
-                );
-              }
-
               return (
-                <button
-                  key={card.title}
-                  type="button"
-                  onClick={card.onClick}
-                  className="w-full text-left"
-                >
-                  {content}
-                </button>
+                <Link key={card.title} href={card.href} className="group block h-full">
+                  <div className={cn(
+                    "flex flex-col items-center justify-center h-full rounded-xl border border-slate-100 p-3 transition-all hover:shadow-md active:scale-95",
+                    card.accent,
+                    card.primary ? "border-2 shadow-sm font-bold" : "hover:bg-white hover:border-blue-200"
+                  )}>
+                    <ContentIcon className={cn("h-5 w-5 mb-1", card.primary ? "animate-pulse" : "text-slate-600 group-hover:text-blue-600")} />
+                    <p className="text-[10px] uppercase text-center leading-tight">{card.title}</p>
+                  </div>
+                </Link>
               );
             })}
           </div>
         </div>
+
         <MapCard
           client={client}
           onLocationSave={(lat, lng) =>
@@ -859,369 +696,357 @@ export default function ClientDetailPage() {
         />
       </section>
 
-      <Dialog open={showRackDesigner} onOpenChange={setShowRackDesigner}>
-        <DialogContent className="sm:max-w-[600px]">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Server className="h-5 w-5 text-slate-600" />
-              Diseñador de Racks
-            </DialogTitle>
-            <p className="text-sm text-muted-foreground">
-              Define el rack del cliente, su altura y patch panels.
-            </p>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Nombre del rack</Label>
-                <Input value={rackName} onChange={(e) => setRackName(e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label>Altura (U)</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  value={rackHeight}
-                  onChange={(e) => setRackHeight(Number(e.target.value) || 0)}
-                />
-              </div>
-            </div>
-            <div className="flex items-center justify-between">
-              <Label className="text-sm font-semibold">Patch panels</Label>
-              <Button variant="outline" size="sm" className="gap-2" onClick={handleAddPatchPanel}>
-                <Plus className="h-4 w-4" />
-                Agregar
-              </Button>
-            </div>
-            <div className="space-y-3">
-              {patchPanels.map((panel) => (
-                <div
-                  key={panel.id}
-                  className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 flex items-center gap-3"
+      <section className="flex flex-wrap gap-2 p-1 bg-slate-100/50 rounded-2xl border border-slate-200 w-fit">
+        {tabList.map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+            return (
+                <button
+                    key={tab.id}
+                    onClick={() => { setActiveTab(tab.id); setMovementPage(1); }}
+                    className={cn(
+                        "flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all",
+                        isActive 
+                            ? "bg-white text-emerald-700 shadow-sm border border-emerald-100" 
+                            : "text-slate-500 hover:text-slate-700 hover:bg-white/50"
+                    )}
                 >
-                  <Network className="h-4 w-4 text-slate-600" />
-                  <div className="flex-1 grid grid-cols-2 gap-2">
+                    <Icon className={cn("h-4 w-4", isActive ? "text-emerald-600" : "text-slate-400")} />
+                    {tab.label}
+                    <Badge variant="outline" className={cn("text-[10px] px-1.5 h-4 border-none", isActive ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-600")}>
+                        {tab.count}
+                    </Badge>
+                </button>
+            );
+        })}
+      </section>
+
+      <section className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/30">
+            <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                {tabList.find(t => t.id === activeTab)?.label}
+                <span className="text-slate-400 font-normal text-xs">— Historial</span>
+            </h3>
+            <div className="flex items-center gap-2">
+                <div className="relative">
+                    <Hash className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
                     <Input
-                      value={panel.name}
-                      onChange={(e) => handlePatchPanelChange(panel.id, "name", e.target.value)}
-                      placeholder="Nombre"
+                        placeholder="Filtrar historial..."
+                        value={movementSearch}
+                        onChange={(e) => setMovementSearch(e.target.value)}
+                        className="h-9 w-64 pl-9 text-xs border-slate-200 rounded-xl bg-white"
                     />
-                    <Input
-                      type="number"
-                      min={1}
-                      value={panel.ports}
-                      onChange={(e) => handlePatchPanelChange(panel.id, "ports", e.target.value)}
-                      placeholder="Puertos"
-                    />
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="text-red-500"
-                    onClick={() => handleRemovePatchPanel(panel.id)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
                 </div>
-              ))}
             </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setShowRackDesigner(false)}>
-                Cancelar
-              </Button>
-              <Button onClick={handleSaveRack} className="gap-2">
-                <Save className="h-4 w-4" />
-                Guardar rack
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+        </div>
 
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm text-left">
+            <thead className="text-[11px] uppercase tracking-wider text-slate-500 bg-slate-50/50">
+              <tr>
+                <th className="px-6 py-3 font-semibold">Fecha</th>
+                <th className="px-6 py-3 font-semibold">Tipo</th>
+                <th className="px-6 py-3 font-semibold">Descripción</th>
+                <th className="px-6 py-3 font-semibold">Importe / Ref</th>
+                <th className="px-6 py-3 font-semibold">Estado</th>
+                <th className="px-6 py-3 text-right">Acción</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {paginatedMovements.map((movement) => {
+                const dateLabel = movement.date ? new Date(movement.date).toLocaleDateString() : "—";
+                const amountLabel = typeof movement.amount === "number" ? formatCurrency(movement.amount) : (movement.reference || "—");
+                
+                const detailHref = (() => {
+                  if (movement.type === "Ticket") return `/tickets/${movement.id}`;
+                  if (movement.type === "Pago") return `/payments?search=${movement.id}`;
+                  if (movement.type === "Repositorio") return `/clients/${client.id}/repository/access`;
+                  return "#";
+                })();
 
+                return (
+                  <tr key={`${movement.type}-${movement.id}`} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-6 py-4 text-slate-500 font-medium">{dateLabel}</td>
+                    <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                            <Badge variant="outline" className="text-[9px] font-bold border-slate-200 text-slate-500 uppercase px-1.5 h-5">
+                                {movement.type}
+                            </Badge>
+                        </div>
+                    </td>
+                    <td className="px-6 py-4">
+                        <p className="font-semibold text-slate-800 line-clamp-1">{movement.description}</p>
+                    </td>
+                    <td className="px-6 py-4 font-mono text-slate-600">{amountLabel}</td>
+                    <td className="px-6 py-4">
+                        <Badge className={cn("text-[10px] font-bold border-none px-2", getStatusTone(movement.status))}>
+                            {movement.status || "—"}
+                        </Badge>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                        <Button asChild variant="ghost" size="icon" className="h-8 w-8 rounded-full hover:bg-slate-100">
+                            <Link href={detailHref}>
+                                <ChevronRight className="h-4 w-4 text-slate-400" />
+                            </Link>
+                        </Button>
+                    </td>
+                  </tr>
+                );
+              })}
+              {paginatedMovements.length === 0 && (
+                  <tr>
+                      <td colSpan={6} className="px-6 py-12 text-center">
+                          <div className="flex flex-col items-center text-slate-400">
+                              <Hash className="h-8 w-8 mb-2 opacity-20" />
+                              <p className="text-sm">No se encontraron registros.</p>
+                          </div>
+                      </td>
+                  </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
 
-
-      <section className="grid gap-4 lg:grid-cols-[3fr,2fr]">
-        <section className="rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm space-y-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                Movimientos del Cliente
-              </p>
-              <h3 className="text-lg font-semibold text-slate-800">
-                Tickets, pagos, repositorio y contratos recientes
-              </h3>
-            </div>
-            <div className="flex flex-wrap gap-2 text-xs text-slate-600">
-              <div className="flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 shadow-inner">
-                <Input
-                  placeholder="Buscar…"
-                  value={movementSearch}
-                  onChange={(e) => setMovementSearch(e.target.value)}
-                  className="h-8 w-40 border-0 bg-transparent text-xs focus-visible:ring-0"
-                />
-              </div>
-              <Select value={movementFilterType} onValueChange={(v) => setMovementFilterType(v as MovementType | "Todos")}> 
-                <SelectTrigger className="h-8 w-[130px] border-slate-200 text-xs">
-                  <SelectValue placeholder="Tipo" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Todos">Todos</SelectItem>
-                  <SelectItem value="Ticket">Tickets</SelectItem>
-                  <SelectItem value="Pago">Pagos</SelectItem>
-                  <SelectItem value="Repositorio">Repositorio</SelectItem>
-                  <SelectItem value="Contrato">Contratos</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={movementStatusFilter} onValueChange={(v) => setMovementStatusFilter(v)}> 
-                <SelectTrigger className="h-8 w-[150px] border-slate-200 text-xs">
-                  <SelectValue placeholder="Estado" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Todos">Estado: Todos</SelectItem>
-                  {movementStatuses.map((status) => (
-                    <SelectItem key={status} value={status}>
-                      {status}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          {movementRows.length === 0 ? (
-            <p className="mt-2 text-sm text-slate-500">
-              Aún no se registran movimientos para este cliente.
-            </p>
-          ) : (
-            <div className="space-y-3">
-              <div className="overflow-hidden rounded-2xl border border-slate-200">
-                <div className="min-w-full overflow-x-auto">
-                  <table className="min-w-full text-sm text-slate-800">
-                    <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-                      <tr className="divide-x divide-slate-200">
-                        <th className="px-3 py-2 text-left">Fecha</th>
-                        <th className="px-3 py-2 text-left">Tipo</th>
-                        <th className="px-3 py-2 text-left">Descripción</th>
-                        <th className="px-3 py-2 text-left">Monto / Ref</th>
-                        <th className="px-3 py-2 text-left">Estado</th>
-                        <th className="px-3 py-2 text-right">Acciones</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 bg-white">
-                      {paginatedMovements.map((movement) => {
-                        const meta = movementTypeMeta[movement.type];
-                        const tone = statusTone(movement.status);
-                        const dateLabel = movement.date
-                          ? new Date(movement.date).toLocaleDateString()
-                          : "—";
-                        const amountLabel = typeof movement.amount === "number"
-                          ? formatCurrency(movement.amount)
-                          : movement.reference ?? "—";
-
-                        const detailHref = (() => {
-                          if (movement.type === "Ticket") return `/tickets/${movement.id}`;
-                          if (movement.type === "Pago") return `/payments?search=${movement.id}`;
-                          if (movement.type === "Repositorio") return `/clients/${client.id}/repository/access`;
-                          if (movement.type === "Contrato") return `/contracts?highlight=${movement.id}`;
-                          return "#";
-                        })();
-
-                        return (
-                          <tr key={`${movement.type}-${movement.id}`} className="hover:bg-slate-50">
-                            <td className="px-3 py-3 align-middle text-slate-700">{dateLabel}</td>
-                            <td className="px-3 py-3 align-middle">
-                              <div className="flex items-center gap-2">
-                                <span className={cn("grid h-9 w-9 place-items-center rounded-xl", meta.bg)}>
-                                  <meta.icon className={cn("h-5 w-5", meta.color, meta.extra)} />
-                                </span>
-                                <div>
-                                  <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">{movement.type}</p>
-                                  {movement.reference ? (
-                                    <p className="text-xs text-slate-500">{movement.reference}</p>
-                                  ) : null}
-                                </div>
-                              </div>
-                            </td>
-                            <td className="px-3 py-3 align-middle">
-                              <p className="font-semibold text-slate-900 leading-tight line-clamp-2">{movement.description}</p>
-                            </td>
-                            <td className="px-3 py-3 align-middle text-slate-800">{amountLabel}</td>
-                            <td className="px-3 py-3 align-middle">
-                              <span className={cn("rounded-full px-3 py-1 text-xs font-semibold", tone.bg, tone.color)}>
-                                {movement.status ?? "Sin estado"}
-                              </span>
-                            </td>
-                            <td className="px-3 py-3 align-middle text-right">
-                              <Button asChild variant="ghost" size="sm" className="gap-1 text-xs text-slate-600">
-                                <Link href={detailHref}>
-                                  Ver detalle
-                                  <ArrowLeft className="h-3 w-3 rotate-180" />
-                                </Link>
-                              </Button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between border-t border-slate-200 pt-3 text-sm text-slate-600">
-                <span>
-                  Página {movementPage} de {totalMovementPages} · {filteredMovements.length} registros
-                </span>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
+        <div className="p-4 bg-slate-50/30 border-t border-slate-100 flex items-center justify-between text-xs font-medium text-slate-500">
+            <p>Mostrando {paginatedMovements.length} de {filteredMovements.length} resultados</p>
+            <div className="flex items-center gap-2">
+                <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="h-8 rounded-lg"
                     disabled={movementPage === 1}
-                    onClick={() => setMovementPage((p) => Math.max(1, p - 1))}
-                  >
-                    Anterior
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
+                    onClick={() => setMovementPage(p => p - 1)}
+                >Anterior</Button>
+                <span className="px-2">Página {movementPage} de {totalMovementPages}</span>
+                <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="h-8 rounded-lg"
                     disabled={movementPage === totalMovementPages}
-                    onClick={() => setMovementPage((p) => Math.min(totalMovementPages, p + 1))}
-                  >
-                    Siguiente
-                  </Button>
-                </div>
-              </div>
+                    onClick={() => setMovementPage(p => p + 1)}
+                >Siguiente</Button>
             </div>
-          )}
-        </section>
-        <div className="grid gap-4 md:grid-cols-2">
-          <article className="space-y-3 rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm">
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  Tickets asociados
-                </p>
-                <h3 className="text-lg font-semibold text-slate-800">
-                  Últimos abiertos
-                </h3>
-              </div>
-              <div className="flex items-center gap-2 text-xs text-slate-600">
-                <TicketIcon className="h-5 w-5 text-slate-500" />
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={exportTicketsExcel}
-                  className="gap-1 px-2"
-                >
-                  <FileSpreadsheet className="h-3 w-3" />
-                  Excel
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={exportTicketsPDF}
-                  className="gap-1 px-2"
-                >
-                  <FileDown className="h-3 w-3" />
-                  PDF
-                </Button>
-              </div>
-            </div>
-            <div className="space-y-2">
-              {tickets.slice(0, 4).map((ticket) => (
-                <div
-                  key={ticket.id}
-                  className="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700"
-                >
-                  <div>
-                    <p className="font-semibold text-slate-800">
-                      {ticket.title ?? "Ticket sin Titulo"}
-                    </p>
-                    <p className="text-xs text-slate-500">
-                      {new Date(ticket.createdAt).toLocaleDateString()}
-                    </p>
-                  </div>
-                  <Badge
-                    variant="outline"
-                    className="rounded-full border-slate-300 bg-slate-100 px-2 py-1 text-xs text-slate-700"
-                  >
-                    {ticket.status}
-                  </Badge>
-                </div>
-              ))}
-              {!tickets.length && (
-                <p className="text-sm text-slate-500">
-                  Aún no hay tickets asociados.
-                </p>
-              )}
-            </div>
-          </article>
-          <article className="space-y-3 rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm">
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  Pagos vinculados
-                </p>
-                <h3 className="text-lg font-semibold text-slate-800">
-                  Últimos movimientos
-                </h3>
-              </div>
-              <div className="flex items-center gap-2 text-xs text-slate-600">
-                <DollarSign className="h-5 w-5 text-slate-500" />
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={exportPaymentsExcel}
-                  className="gap-1 px-2"
-                >
-                  <FileSpreadsheet className="h-3 w-3" />
-                  Excel
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={exportPaymentsPDF}
-                  className="gap-1 px-2"
-                >
-                  <FileDown className="h-3 w-3" />
-                  PDF
-                </Button>
-              </div>
-            </div>
-            <div className="space-y-2">
-              {payments.slice(0, 4).map((payment) => (
-                <div
-                  key={payment.id}
-                  className="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700"
-                >
-                  <div>
-                    <p className="font-semibold text-slate-800">
-                      {formatCurrency(payment.amount)}{" "}
-                      <span className="text-xs text-slate-500">
-                        {payment.method ?? ""}
-                      </span>
-                    </p>
-                    <p className="text-xs text-slate-500">
-                      {new Date(payment.createdAt).toLocaleDateString()}
-                    </p>
-                  </div>
-                  <Badge
-                    variant="outline"
-                    className="rounded-full border-slate-300 bg-slate-100 px-2 py-1 text-xs text-slate-700"
-                  >
-                    {payment.status ?? "Pendiente"}
-                  </Badge>
-                </div>
-              ))}
-              {!payments.length && (
-                <p className="text-sm text-slate-500">No se encontraron pagos.</p>
-              )}
-            </div>
-          </article>
         </div>
       </section>
 
     </div >
+  );
+}
+
+function getStatusTone(status?: string) {
+    if (!status) return "bg-slate-100 text-slate-500";
+    const s = status.toLowerCase();
+    if (s.includes("pagado") || s.includes("complet") || s.includes("cerrado")) return "bg-emerald-100 text-emerald-700";
+    if (s.includes("pendiente") || s.includes("abierto")) return "bg-amber-100 text-amber-700";
+    if (s.includes("error") || s.includes("fallido") || s.includes("vencido")) return "bg-rose-100 text-rose-700";
+    return "bg-slate-100 text-slate-500";
+}
+
+function ContractSelectionCard({
+  contracts,
+  selectedContractId,
+  onContractSelect,
+  client,
+  onSave
+}: {
+  contracts: ClientContract[];
+  selectedContractId: string | null;
+  onContractSelect: (id: string | null) => void;
+  payments: Payment[];
+  client: Client;
+  onSave: (updates: Partial<Client>) => Promise<void>;
+}) {
+  const selectedContract = contracts.find(
+    (contract) => contract.id === selectedContractId
+  );
+  const hasContract = Boolean(selectedContract);
+  const [openConfig, setOpenConfig] = useState(false);
+  const [localAmount, setLocalAmount] = useState(client.recurringAmount || 0);
+  const [localCurrency, setLocalCurrency] = useState(client.recurringCurrency || "UYU");
+
+  return (
+    <section
+      className={`relative h-full overflow-hidden rounded-2xl border bg-gradient-to-br from-emerald-50 to-green-50 p-5 shadow-sm transition-all duration-500 ${hasContract ? "border-emerald-400 ring-2 ring-emerald-100 ring-offset-2" : "border-slate-200"
+        }`}
+    >
+      <div className="absolute -right-6 -top-6 opacity-10">
+        <Award className={`h-32 w-32 text-emerald-600 ${hasContract ? 'animate-pulse' : ''}`} />
+      </div>
+
+      <div className="relative z-10 flex h-full flex-col justify-between space-y-4">
+        <div className="flex items-start justify-between">
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-700">
+                Contrato vigente
+                </p>
+                <div className="flex items-center gap-1.5 ml-2 px-2 py-0.5 rounded-full bg-emerald-100/50 border border-emerald-200">
+                    <Checkbox 
+                        id="contract-active"
+                        checked={!!client.contract} 
+                        onCheckedChange={(checked) => onSave({ contract: !!checked })}
+                        className="h-3 w-3 border-emerald-400 data-[state=checked]:bg-emerald-600"
+                    />
+                    <Label htmlFor="contract-active" className="text-[9px] font-black text-emerald-800 cursor-pointer">ACTIVO</Label>
+                </div>
+            </div>
+            <div className="flex flex-col gap-2">
+              {contracts.length > 0 ? (
+                <Select value={selectedContractId || ""} onValueChange={onContractSelect}>
+                    <SelectTrigger className="h-9 bg-white/80 border-emerald-200 text-emerald-900 font-bold text-xs rounded-xl shadow-sm">
+                        <SelectValue placeholder="Seleccionar contrato" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {contracts.map(c => (
+                            <SelectItem key={c.id} value={c.id}>{c.title}</SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+              ) : (
+                <p className="text-xs text-slate-600 italic">Sin contratos disponibles</p>
+              )}
+            </div>
+          </div>
+          {hasContract && (
+            <div className="rounded-full bg-emerald-100 p-2 border border-emerald-200 shadow-sm">
+              <Award className="h-5 w-5 text-emerald-600" />
+            </div>
+          )}
+        </div>
+
+        {selectedContract && (
+          <div className="space-y-3 py-2">
+            <div className="flex items-baseline gap-1">
+              <span className="text-2xl font-black text-slate-900">
+                {formatCurrency(selectedContract.amount ?? 0, selectedContract.currency)}
+              </span>
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter">por mes</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-[10px]">
+                <div className="flex flex-col">
+                    <span className="text-emerald-700 font-bold uppercase opacity-60">Inicio</span>
+                    <span className="font-bold text-slate-700">{formatDate(selectedContract.startDate)}</span>
+                </div>
+                <div className="flex flex-col">
+                    <span className="text-emerald-700 font-bold uppercase opacity-60">Vencimiento</span>
+                    <span className="font-bold text-slate-700">{formatDate(selectedContract.endDate)}</span>
+                </div>
+            </div>
+          </div>
+        )}
+
+        <div className="border-t border-emerald-200/50 pt-3 mt-auto">
+             <div className="flex items-center justify-between mb-2">
+                 <div className="flex items-center gap-2">
+                    <CalendarClock className="h-4 w-4 text-emerald-600" />
+                    <span className="text-[10px] font-black text-emerald-700 uppercase tracking-widest">Pago Recurrente</span>
+                 </div>
+                 <div className="flex items-center gap-2">
+                    <Dialog open={openConfig} onOpenChange={setOpenConfig}>
+                        <DialogTrigger asChild>
+                            <button className="p-1 rounded-md hover:bg-emerald-100 text-emerald-600 transition-colors">
+                                <Edit2 className="h-3 w-3" />
+                            </button>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-md rounded-3xl p-6">
+                            <DialogHeader>
+                                <div className="mx-auto h-12 w-12 rounded-full bg-emerald-100 flex items-center justify-center mb-4">
+                                    <CreditCard className="h-6 w-6 text-emerald-600" />
+                                </div>
+                                <DialogTitle className="text-center text-xl font-bold">Configuración de Pago</DialogTitle>
+                                <p className="text-center text-slate-500 text-sm">Define los valores para la facturación automática mensual.</p>
+                            </DialogHeader>
+                            <div className="space-y-6 py-6">
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <Label className="text-[10px] uppercase font-black text-slate-400 tracking-wider">Monto Mensual</Label>
+                                        <div className="relative">
+                                            <DollarSign className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+                                            <Input 
+                                                type="number" 
+                                                className="h-11 pl-9 rounded-2xl border-slate-200 font-bold"
+                                                value={localAmount}
+                                                onChange={(e) => setLocalAmount(Number(e.target.value))}
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label className="text-[10px] uppercase font-black text-slate-400 tracking-wider">Moneda</Label>
+                                        <Select 
+                                            value={localCurrency}
+                                            onValueChange={setLocalCurrency}
+                                        >
+                                            <SelectTrigger className="h-11 rounded-2xl border-slate-200 font-bold">
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="UYU">Pesos (UYU)</SelectItem>
+                                                <SelectItem value="USD">Dólares (USD)</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                </div>
+                                
+                                <div className="flex items-center justify-between p-4 rounded-2xl bg-slate-50 border border-slate-100">
+                                    <div className="flex items-center gap-3">
+                                        <div className="h-8 w-8 rounded-lg bg-white flex items-center justify-center border border-slate-200">
+                                            <Bell className="h-4 w-4 text-emerald-600" />
+                                        </div>
+                                        <div>
+                                            <p className="text-xs font-bold text-slate-700">Facturación el día 1</p>
+                                            <p className="text-[10px] text-slate-400">Se generará un pago pendiente automáticamente.</p>
+                                        </div>
+                                    </div>
+                                    <Checkbox 
+                                        checked={!!client.recurringPaymentEnabled}
+                                        onCheckedChange={(val) => onSave({ recurringPaymentEnabled: !!val })}
+                                        className="h-5 w-5 rounded-md"
+                                    />
+                                </div>
+                            </div>
+                            <DialogFooter>
+                                <Button 
+                                    className="w-full h-12 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-lg shadow-emerald-200 transition-all"
+                                    onClick={() => {
+                                        onSave({ recurringAmount: localAmount, recurringCurrency: localCurrency });
+                                        setOpenConfig(false);
+                                    }}
+                                >
+                                    <Save className="h-4 w-4 mr-2" />
+                                    Guardar Pago
+                                </Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
+                    <Checkbox 
+                        id="recurring-enabled"
+                        checked={!!client.recurringPaymentEnabled} 
+                        onCheckedChange={(checked) => onSave({ recurringPaymentEnabled: !!checked })}
+                        className="h-4 w-4 border-emerald-400 data-[state=checked]:bg-emerald-600"
+                    />
+                 </div>
+             </div>
+             {client.recurringPaymentEnabled ? (
+                 <div className="flex items-center justify-between rounded-xl bg-white/50 px-3 py-2 border border-emerald-200/30 shadow-sm">
+                    <div className="flex flex-col">
+                        <div className="flex items-center gap-1">
+                            <CheckCircle2 className="h-2.5 w-2.5 text-emerald-600" />
+                            <span className="text-[10px] font-bold text-emerald-800 leading-none">Generación Activa</span>
+                        </div>
+                        <span className="text-[9px] text-emerald-600/70 mt-1 font-medium">Auto-invoice día 1 cada mes</span>
+                    </div>
+                    <span className="text-sm font-black text-slate-900">
+                        {formatCurrency(client.recurringAmount || 0, client.recurringCurrency)}
+                    </span>
+                 </div>
+             ) : (
+                <div className="p-2 rounded-xl bg-slate-100/50 border border-slate-200/50 text-center">
+                    <p className="text-[10px] text-slate-400 italic">Facturación automática desactivada</p>
+                </div>
+             )}
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -1236,20 +1061,13 @@ function EditableClientCard({
   avatarUrl,
 }: EditableClientCardProps) {
   const [open, setOpen] = useState(false);
-  const [formValues, setFormValues] = useState<Record<string, string>>({});
+  const [formValues, setFormValues] = useState<Record<string, any>>({});
 
   const buildInitialValues = () => {
-    const values: Record<string, string> = {};
+    const values: Record<string, any> = {};
     fields.forEach((field) => {
-      const key = String(field.key);
       const currentValue = client[field.key];
-      if (typeof currentValue === "boolean") {
-        values[key] = currentValue ? "true" : "false";
-      } else if (currentValue === null || currentValue === undefined) {
-        values[key] = "";
-      } else {
-        values[key] = String(currentValue);
-      }
+      values[String(field.key)] = currentValue ?? (field.type === "checkbox" ? false : "");
     });
     return values;
   };
@@ -1263,26 +1081,16 @@ function EditableClientCard({
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const updates: Partial<Client> = {};
-    fields.forEach((field) => {
-      const fieldKey = field.key as keyof Client;
-      const key = String(fieldKey);
-      const rawValue = formValues[key] ?? "";
-      const parsedValue: Client[keyof Client] = field.parse
-        ? field.parse(rawValue)
-        : ((rawValue as unknown) as Client[keyof Client]);
-      (updates as Record<keyof Client, Client[keyof Client]>)[fieldKey] = parsedValue;
-    });
-    await onSave(updates);
+    await onSave(formValues);
     setOpen(false);
   };
 
-  const handleChange = (key: string, value: string) => {
+  const handleChange = (key: string, value: any) => {
     setFormValues((prev) => ({ ...prev, [key]: value }));
   };
 
   return (
-    <section className="relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-50/80 p-4 shadow-sm backdrop-blur-sm">
+    <section className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
       {avatarUrl && (
         <div
           className="absolute inset-0 z-0 opacity-10 bg-center bg-no-repeat bg-contain pointer-events-none"
@@ -1294,102 +1102,140 @@ function EditableClientCard({
           }}
         />
       )}
-      <div className="relative z-10">
-        <div className="flex items-center justify-between gap-4">
+      <div className="relative z-10 h-full flex flex-col">
+        <div className="flex items-center justify-between gap-4 mb-4">
           <div className="flex items-center gap-3">
-            <span className="grid h-11 w-11 place-items-center rounded-2xl bg-slate-100 text-slate-700">
+            <span className="grid h-11 w-11 place-items-center rounded-2xl bg-slate-50 text-slate-700 border border-slate-100">
               <Icon className="h-5 w-5" />
             </span>
             <div>
-              <p className="text-base font-semibold text-slate-800">{title}</p>
-              <p className="text-xs text-slate-500">{description}</p>
+              <p className="text-base font-bold text-slate-800 tracking-tight">{title}</p>
+              <p className="text-[10px] uppercase font-black text-slate-400 tracking-widest">{description}</p>
             </div>
           </div>
           <Dialog open={open} onOpenChange={handleOpenChange}>
             <DialogTrigger asChild>
-              <Button variant="outline" size="sm">
-                Editar
+              <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full hover:bg-slate-100">
+                <Edit2 className="h-3.5 w-3.5 text-slate-400" />
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-lg">
-              <DialogHeader>
-                <DialogTitle>Editar {title.toLowerCase()}</DialogTitle>
-              </DialogHeader>
-              <form onSubmit={handleSubmit} className="space-y-4">
+            <DialogContent className="max-w-[1320px] max-h-[90vh] overflow-y-visible rounded-3xl p-6">
+            <DialogHeader className="pb-1">
+              <DialogTitle>Editar {title.toLowerCase()}</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 {fields.map((field) => {
                   const key = String(field.key);
-                  const value = formValues[key] ?? "";
+                  const value = formValues[key];
+                  const spanClasses =
+                    field.type === "checkbox" || field.type === "textarea"
+                      ? "md:col-span-2"
+                      : "";
+
+                  if (field.type === "checkbox") {
+                    return (
+                      <div
+                        key={key}
+                        className={cn(
+                          spanClasses,
+                          "flex items-center gap-3 rounded-2xl border border-slate-200 bg-white/70 px-4 py-3 text-sm text-slate-700 shadow-sm transition hover:border-slate-300"
+                        )}
+                      >
+                        <Checkbox
+                          id={key}
+                          checked={!!value}
+                          onCheckedChange={(checked) => handleChange(key, !!checked)}
+                          className="border-slate-300"
+                        />
+                        <Label
+                          htmlFor={key}
+                          className="text-sm font-semibold leading-none cursor-pointer flex items-center gap-2"
+                        >
+                          {field.icon && (
+                            <field.icon className="h-3.5 w-3.5 text-slate-500" />
+                          )}
+                          {field.label}
+                        </Label>
+                      </div>
+                    );
+                  }
 
                   if (field.type === "textarea") {
                     return (
-                      <div key={key} className="space-y-2">
-                        <Label className="text-sm text-slate-500">
+                      <div
+                        key={key}
+                        className={cn(spanClasses, "space-y-2")}
+                      >
+                        <Label className="text-xs font-bold text-slate-400 flex items-center gap-2 uppercase tracking-wider">
+                          {field.icon && (
+                            <field.icon className="h-3.5 w-3.5" />
+                          )}
                           {field.label}
                         </Label>
                         <Textarea
-                          value={value}
+                          value={value ?? ""}
                           onChange={(event) =>
                             handleChange(key, event.target.value)
                           }
                           placeholder={field.placeholder}
+                          className="min-h-[110px] rounded-2xl border border-slate-200 px-3 py-2 text-sm shadow-sm focus-visible:border-emerald-400 focus-visible:ring-2 focus-visible:ring-emerald-100 transition-all"
                         />
                       </div>
                     );
                   }
 
-                  if (field.type === "select" && field.options) {
-                    return (
-                      <div key={key} className="space-y-2">
-                        <Label className="text-sm text-slate-500">
-                          {field.label}
-                        </Label>
-                        <Select
-                          value={value}
-                          onValueChange={(newValue) => handleChange(key, newValue)}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Selecciona una opción" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {field.options.map((option) => (
-                              <SelectItem key={option.value} value={option.value}>
-                                {option.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    );
-                  }
-
                   return (
-                    <div key={key} className="space-y-2">
-                      <Label className="text-sm text-slate-500">
+                    <div
+                      key={key}
+                      className={cn(spanClasses, "space-y-2")}
+                    >
+                      <Label className="text-xs font-bold text-slate-400 flex items-center gap-2 uppercase tracking-wider">
+                        {field.icon && (
+                          <field.icon className="h-3.5 w-3.5" />
+                        )}
                         {field.label}
                       </Label>
                       <Input
                         type={field.type ?? "text"}
-                        value={value}
+                        value={value ?? ""}
                         onChange={(event) =>
                           handleChange(key, event.target.value)
                         }
                         placeholder={field.placeholder}
+                        className="h-11 rounded-2xl border border-slate-200 px-3 text-sm shadow-sm focus-visible:border-emerald-400 focus-visible:ring-2 focus-visible:ring-emerald-100 transition-all"
                       />
                     </div>
                   );
                 })}
-                <DialogFooter>
-                  <Button type="submit" disabled={isSaving}>
-                    {isSaving ? "Guardando..." : "Guardar cambios"}
-                  </Button>
-                </DialogFooter>
-              </form>
-            </DialogContent>
+              </div>
+              <DialogFooter className="mt-2 border-t pt-4">
+                <Button type="submit" disabled={isSaving} className="h-11 rounded-2xl px-8 bg-emerald-600 hover:bg-emerald-700">
+                  {isSaving ? "Guardando..." : "Guardar cambios"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
           </Dialog>
         </div>
-        <div className="mt-4 space-y-2 text-sm text-slate-600">
+        <div className="space-y-2 text-sm flex-1">
           {fields.map((field) => {
             const rawValue = client[field.key];
+            
+            if (field.type === "checkbox") {
+              return (
+                <div key={String(field.key)} className="flex items-center justify-between text-xs py-1 border-b border-slate-50 last:border-0">
+                  <span className="text-slate-400 flex items-center gap-1.5 font-medium">
+                    {field.icon && <field.icon className="h-3 w-3" />}
+                    {field.label}
+                  </span>
+                  <Badge variant={rawValue ? "default" : "outline"} className={cn("text-[9px] uppercase px-1.5 h-4 border-none", rawValue ? "bg-emerald-500/10 text-emerald-700" : "bg-slate-100 text-slate-400")}>
+                    {rawValue ? "Sí" : "No"}
+                  </Badge>
+                </div>
+              );
+            }
+
             const displayValue =
               field.format?.(rawValue) ??
               (rawValue === null || rawValue === undefined || rawValue === ""
@@ -1399,117 +1245,17 @@ function EditableClientCard({
             return (
               <div
                 key={String(field.key)}
-                className="flex items-center justify-between text-sm"
+                className="flex items-center justify-between text-xs py-1 border-b border-slate-50 last:border-0"
               >
-                <span className="text-slate-500">{field.label}</span>
-                <span className="font-medium text-slate-800">{displayValue}</span>
+                <span className="text-slate-400 flex items-center gap-1.5 font-medium">
+                  {field.icon && <field.icon className="h-3 w-3" />}
+                  {field.label}
+                </span>
+                <span className="font-bold text-slate-700 truncate ml-4 max-w-[120px]">{displayValue}</span>
               </div>
             );
           })}
         </div>
-      </div>
-    </section>
-  );
-}
-
-interface ContractSelectionCardProps {
-  contracts: ClientContract[];
-  selectedContractId: string | null;
-  onContractSelect: (id: string | null) => void;
-  payments: Payment[];
-}
-
-function ContractSelectionCard({
-  contracts,
-  selectedContractId,
-  onContractSelect,
-  payments,
-}: ContractSelectionCardProps) {
-  const selectedContract = contracts.find(
-    (contract) => contract.id === selectedContractId
-  );
-  const hasContract = Boolean(selectedContract);
-
-  const lastPayments = useMemo(() => {
-    return payments
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-      .slice(0, 2);
-  }, [payments]);
-
-  return (
-    <section
-      className={`relative h-full overflow-hidden rounded-2xl border bg-gradient-to-br from-emerald-50 to-green-50 p-6 shadow-sm transition-all duration-500 ${hasContract ? "border-emerald-400 ring-2 ring-emerald-100 ring-offset-2" : "border-slate-200"
-        }`}
-    >
-      {/* Animated background icon */}
-      <div className="absolute -right-6 -top-6 opacity-10">
-        <Award className={`h-32 w-32 text-emerald-600 ${hasContract ? 'animate-pulse' : ''}`} />
-      </div>
-
-      <div className="relative z-10 flex h-full flex-col justify-between space-y-4">
-        <div className="flex items-start justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-emerald-700">
-              Contrato vigente
-            </p>
-            <div className="mt-2">
-              {hasContract ? (
-                <Badge
-                  variant="outline"
-                  className="rounded-lg border-emerald-200 bg-white/80 px-3 py-1 text-sm font-semibold text-emerald-800 shadow-sm backdrop-blur-sm"
-                >
-                  {selectedContract?.title}
-                </Badge>
-              ) : (
-                <p className="text-sm text-slate-600 mt-1">Sin contrato asignado</p>
-              )}
-            </div>
-          </div>
-          {hasContract && (
-            <div className="rounded-full bg-emerald-100 p-2 animate-pulse">
-              <Award className="h-5 w-5 text-emerald-600" />
-            </div>
-          )}
-        </div>
-
-        {selectedContract && (
-          <div className="space-y-4">
-            <div className="flex items-baseline gap-1">
-              <span className="text-2xl font-bold text-slate-800">
-                {formatCurrency(selectedContract.amount ?? 0, selectedContract.currency)}
-              </span>
-              <span className="text-xs font-medium text-slate-500">/ mes</span>
-            </div>
-
-            <div className="space-y-2">
-              <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">
-                Últimos pagos
-              </p>
-              {lastPayments.length > 0 ? (
-                <div className="space-y-2">
-                  {lastPayments.map((payment) => (
-                    <div
-                      key={payment.id}
-                      className="flex items-center justify-between rounded-lg border border-emerald-100 bg-white/60 px-3 py-2 text-xs backdrop-blur-sm"
-                    >
-                      <div className="flex items-center gap-2">
-                        <div className={`h-1.5 w-1.5 rounded-full ${payment.status === 'Pagado' ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-                        <span className="font-medium text-slate-700">
-                          {new Date(payment.createdAt).toLocaleDateString()}
-                        </span>
-                      </div>
-                      <span className="font-semibold text-slate-900">
-                        {formatCurrency(payment.amount)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-xs text-slate-500 italic">No hay pagos registrados</p>
-              )}
-            </div>
-          </div>
-        )}
       </div>
     </section>
   );

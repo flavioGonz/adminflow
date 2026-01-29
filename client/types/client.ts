@@ -16,7 +16,9 @@ export interface Client {
   hasAccess?: boolean;
   hasFiles?: boolean;
   hasImplementation?: boolean;
+  recurringPaymentEnabled?: boolean;
+  recurringAmount?: number;
+  recurringCurrency?: string;
   createdAt?: string;
   updatedAt?: string;
 }
-

@@ -1,7 +1,6 @@
 const { ObjectId } = require('mongodb');
 
 const { getMongoDb } = require('./mongoClient');
-const { recordSyncEvent } = require('./sqliteSync');
 const { listGroups } = require('./groupService');
 
 const getUsersCollection = () => {
@@ -9,28 +8,9 @@ const getUsersCollection = () => {
   return db ? db.collection('users') : null;
 };
 
-const trackRegisteredUser = async ({ sqliteId, email }) => {
-  const collection = getUsersCollection();
-  if (!collection) return null;
-  const now = new Date();
-  const { value } = await collection.findOneAndUpdate(
-    { sqliteId },
-    {
-      $set: {
-        email,
-        updatedAt: now,
-      },
-      $setOnInsert: {
-        createdAt: now,
-        roles: ['viewer'],
-      },
-    },
-    { upsert: true, returnDocument: 'after' }
-  );
-  recordSyncEvent('users', value).catch(() => { });
-  return value;
-};
-
+/**
+ * Normaliza IDs de MongoDB (ObjectIds o numéricos legacy) a string
+ */
 const normalizeObjectId = (value) => {
   if (!value) return undefined;
 
@@ -54,6 +34,9 @@ const normalizeObjectId = (value) => {
   return typeof value.toString === "function" ? value.toString() : value;
 };
 
+/**
+ * Obtiene la lista de usuarios registrados con sus grupos
+ */
 const listRegisteredUsers = async () => {
   const collection = getUsersCollection();
   if (!collection) return [];
@@ -69,7 +52,7 @@ const listRegisteredUsers = async () => {
     const normalizedId = normalizeObjectId(user._id);
     return {
       ...user,
-      id: normalizedId, // Añadir campo 'id' para compatibilidad con frontend
+      id: normalizedId,
       _id: normalizedId,
       groupId: user.groupId || null,
       groupName: user.groupId ? groupMap[user.groupId]?.name || null : null,
@@ -77,6 +60,9 @@ const listRegisteredUsers = async () => {
   });
 };
 
+/**
+ * Actualiza un usuario por su ID
+ */
 const updateRegisteredUser = async (identifier, updates = {}) => {
   const collection = getUsersCollection();
   if (!collection) return null;
@@ -93,14 +79,14 @@ const updateRegisteredUser = async (identifier, updates = {}) => {
   else if (ObjectId.isValid(identifier) && identifier.length === 24) {
     filter = { _id: new ObjectId(identifier) };
   }
-  // Fallback: intentar como sqliteId
+  // Fallback por ID literal
   else {
-    filter = { sqliteId: Number.isNaN(Number(identifier)) ? identifier : Number(identifier) };
+    filter = { _id: identifier };
   }
 
   const now = new Date();
 
-  // Separate null values to use $unset
+  // Separar valores null para usar $unset
   const setUpdates = {};
   const unsetUpdates = {};
 
@@ -127,65 +113,13 @@ const updateRegisteredUser = async (identifier, updates = {}) => {
     updateOperation,
     { returnDocument: 'after' }
   );
-  if (value) {
-    recordSyncEvent('users', value).catch(() => { });
-  }
+  
   return value;
 };
 
-const syncSqliteUserToMongo = async (sqliteUser, updates = {}) => {
-  if (!sqliteUser) return null;
-  const collection = getUsersCollection();
-  if (!collection) return null;
-  const now = new Date();
-  const existing = await collection.findOne({ sqliteId: sqliteUser.id });
-  const roles = updates.roles ?? existing?.roles ?? ['viewer'];
-  const metadata = updates.metadata ?? existing?.metadata ?? {};
-  const groupId = updates.groupId ?? existing?.groupId ?? null;
-  const avatar = updates.avatar ?? existing?.avatar ?? sqliteUser.avatar ?? null;
-  const name =
-    updates.name ??
-    existing?.name ??
-    sqliteUser.name ??
-    (sqliteUser.email ? sqliteUser.email.split('@')[0] : 'user');
-  const email = updates.email ?? existing?.email ?? sqliteUser.email;
-  const doc = {
-    email,
-    name,
-    avatar,
-    sqliteId: sqliteUser.id,
-    roles,
-    metadata,
-    groupId,
-    updatedAt: now,
-  };
-
-  const result = await collection.findOneAndUpdate(
-    { sqliteId: sqliteUser.id },
-    {
-      $set: doc,
-      $setOnInsert: {
-        createdAt: now,
-        password: existing?.password ?? sqliteUser.password ?? undefined,
-      },
-    },
-    { upsert: true, returnDocument: 'after' }
-  );
-
-  if (!result.value) {
-    return null;
-  }
-
-  recordSyncEvent('users', result.value).catch(() => { });
-  return {
-    ...result.value,
-    _id: normalizeObjectId(result.value._id),
-  };
-};
+// Funciones legacy de SQLite removidas (syncSqliteUserToMongo, trackRegisteredUser)
 
 module.exports = {
-  trackRegisteredUser,
   listRegisteredUsers,
   updateRegisteredUser,
-  syncSqliteUserToMongo,
 };

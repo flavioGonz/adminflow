@@ -8,10 +8,10 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const { v4: uuid } = require('uuid');
-const sqlite3 = require('sqlite3').verbose();
+// sqlite3 removido de las rutas activas
 const { MongoClient, ObjectId } = require('mongodb');
 
-const { db } = require('./db');
+// db.js removido gradualmente de las rutas activas
 const {
     determineDbEngine,
     getCurrentDbEngine,
@@ -34,69 +34,9 @@ const {
 } = require('./lib/userService');
 const userServiceV2 = require('./lib/userServiceV2');
 const { listGroups, createGroup, updateGroup, deleteGroup } = require('./lib/groupService');
-const { fetchRecentSyncEvents } = require('./lib/sqliteSync');
-const { syncLocalToMongo } = require('./lib/mongo-sync');
-const { parseSqliteIdentifier, getMongoFilter, getMongoClientFilter, buildClientReferenceFilter } = require('./lib/clientFilters');
+// sqliteSync removido
+// const { syncLocalToMongo } = require('./lib/mongo-sync');
 
-const getSqliteUserById = (identifier) => {
-    const sqliteId = parseSqliteIdentifier(identifier);
-    if (sqliteId === null) {
-        return Promise.resolve(null);
-    }
-    return new Promise((resolve, reject) => {
-        db.get('SELECT * FROM users WHERE id = ?', [sqliteId], (err, row) => {
-            if (err) {
-                return reject(err);
-            }
-            resolve(row || null);
-        });
-    });
-};
-
-const deleteSqliteUserById = (identifier) => {
-    const sqliteId = parseSqliteIdentifier(identifier);
-    if (sqliteId === null) {
-        return Promise.resolve(false);
-    }
-    return new Promise((resolve, reject) => {
-        db.run('DELETE FROM users WHERE id = ?', [sqliteId], function (err) {
-            if (err) {
-                return reject(err);
-            }
-            resolve(this.changes > 0);
-        });
-    });
-};
-
-const updateSqliteUserPasswordById = (identifier, hashedPassword) => {
-    const sqliteId = parseSqliteIdentifier(identifier);
-    if (sqliteId === null) {
-        return Promise.resolve(false);
-    }
-    return new Promise((resolve, reject) => {
-        db.run('UPDATE users SET password = ? WHERE id = ?', [hashedPassword, sqliteId], function (err) {
-            if (err) {
-                return reject(err);
-            }
-            resolve(this.changes > 0);
-        });
-    });
-};
-
-const updateSqliteUserAvatarById = (identifier, avatarPath) => {
-    const sqliteId = parseSqliteIdentifier(identifier);
-    if (sqliteId === null) {
-        return Promise.resolve(false);
-    }
-    return new Promise((resolve, reject) => {
-        db.run('UPDATE users SET avatar = ? WHERE id = ?', [avatarPath, sqliteId], function (err) {
-            if (err) {
-                return reject(err);
-            }
-            resolve(this.changes > 0);
-        });
-    });
-};
 const DB_CONFIG_DEFAULTS = require('./lib/dbConfigDefaults');
 
 const { getTemplateForEvent } = require('./lib/emailTemplates');
@@ -141,11 +81,6 @@ app.use(express.static(path.resolve(__dirname, '../client/.next'), {
 app.use('/uploads', express.static(path.resolve(__dirname, 'uploads')));
 
 const ensureMongoDb = (res) => {
-    const engine = getCurrentDbEngine();
-    if (engine !== 'mongodb') {
-        res.status(503).json({ message: 'Only MongoDB is supported. Please configure MongoDB in settings.' });
-        return null;
-    }
     const mongoDb = getMongoDb();
     if (!mongoDb) {
         res.status(503).json({ message: 'MongoDB no está conectado.' });
@@ -169,6 +104,14 @@ const implementationRoutes = require('./routes/implementation');
 const mongoServersRoutes = require('./routes/mongo-servers');
 const statusRoutes = require('./routes/status');
 const supportArticlesRoutes = require('./routes/support/articles');
+const repositoryEntriesRoutes = require('./routes/repository');
+const fileManagerRoutes = require('./routes/file-manager');
+const workflowRoutes = require('./routes/workflows');
+const budgetRoutes = require('./routes/budgets');
+const productRoutes = require('./routes/products');
+const categoryRoutes = require('./routes/categories');
+const manufacturerRoutes = require('./routes/manufacturers');
+const supplierCatalogRoutes = require('./routes/suppliers-catalog');
 const { checkInstallation } = require('./middleware/checkInstallation');
 
 // Installation routes (always accessible)
@@ -186,6 +129,15 @@ app.use('/api/database', databaseRoutes);
 app.use('/api/mongo-servers', mongoServersRoutes);
 app.use('/api/status', statusRoutes);
 app.use('/api/support', supportArticlesRoutes);
+app.use('/api', repositoryEntriesRoutes);
+app.use('/api/files', fileManagerRoutes);
+app.use('/api/repository', fileManagerRoutes); // Keep for compatibility if needed
+app.use('/api/workflows', workflowRoutes);
+app.use('/api/budgets', budgetRoutes);
+app.use('/api/products', productRoutes);
+app.use('/api/categories', categoryRoutes);
+app.use('/api/manufacturers', manufacturerRoutes);
+app.use('/api/suppliers-catalog', supplierCatalogRoutes);
 
 
 const MongoStore = require('connect-mongo');
@@ -259,174 +211,146 @@ const avatarUpload = multer({
 });
 
 const parseJsonColumn = (value, fallback = []) => {
-    if (!value) return Array.isArray(fallback) ? fallback : (fallback ?? null);
-    if (typeof value === 'object') return value;
+    if (!value) return Array.isArray(fallback) ? fallback : fallback ?? null;
+    if (typeof value === 'object') return value; // MongoDB handles objects/arrays natively
     try {
         return JSON.parse(value);
     } catch {
-        return Array.isArray(fallback) ? fallback : (fallback ?? null);
+        return Array.isArray(fallback) ? fallback : fallback ?? null;
     }
 };
 
-const mapClientRow = (row) => {
-    if (!row) return null;
+const getId = (doc) => {
+    if (!doc) return null;
+    return doc.id !== undefined ? String(doc.id) : String(doc._id || '');
+};
+
+const mapClientRow = (row) => ({
+    ...row,
+    id: getId(row),
+    contract: !!row.contract,
+    notificationsEnabled: !!row.notifications_enabled || !!row.notificationsEnabled,
+    latitude: row.latitude ?? null,
+    longitude: row.longitude ?? null,
+    avatarUrl: row.avatarUrl || null,
+    recurringAmount: row.recurringAmount ?? 0,
+    recurringCurrency: row.recurringCurrency || "UYU",
+    recurringPaymentEnabled: !!row.recurringPaymentEnabled,
+});
+
+const mapTicketRow = (row) => ({
+    ...row,
+    id: getId(row),
+    clientId: row.clientId !== undefined ? String(row.clientId) : (row.client_id !== undefined ? String(row.client_id) : undefined),
+    clientName: row.clientName || '',
+    title: row.title,
+    status: row.status,
+    priority: row.priority,
+    amount: row.amount,
+    visit: !!row.visit,
+    annotations: parseJsonColumn(row.annotations, []),
+    hasActiveContract: !!row.hasActiveContract,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    description: row.description || '',
+    attachments: parseJsonColumn(row.attachments, []),
+    audioNotes: parseJsonColumn(row.audioNotes, []),
+    assignedTo: row.assignedTo || null,
+    assignedGroupId: row.assignedGroupId || null,
+    visitData: parseJsonColumn(row.visit_data, null),
+    clientNotificationsEnabled: !!row.clientNotificationsEnabled,
+    clientEmail: row.clientEmail || '',
+});
+
+const extractClientIds = (rows) => {
+    const clientIds = new Set();
+    rows.forEach((row) => {
+        const clientIdValue = row.client_id ?? row.clientId;
+        if (clientIdValue !== undefined && clientIdValue !== null) {
+            clientIds.add(String(clientIdValue));
+        }
+    });
+    return Array.from(clientIds);
+};
+
+const buildClientMap = async (mongoDb, clientIds = []) => {
+    if (!clientIds.length) return {};
+    const numericIds = [];
+    const stringIds = [];
+    clientIds.forEach((value) => {
+        if (value === undefined || value === null) return;
+        const normalized = String(value);
+        const parsed = Number(normalized);
+        if (!Number.isNaN(parsed)) {
+            numericIds.push(parsed);
+        }
+        stringIds.push(normalized);
+    });
+    const orClauses = [];
+    if (numericIds.length) {
+        orClauses.push({ id: { $in: numericIds } });
+    }
+    if (stringIds.length) {
+        orClauses.push({ id: { $in: stringIds } });
+    }
+    if (!orClauses.length) return {};
+    const clients = await mongoDb.collection('clients').find({ $or: orClauses }).toArray();
+    const map = {};
+    clients.forEach((client) => {
+        const key = client.id !== undefined ? String(client.id) : null;
+        if (key) {
+            map[key] = client.name || client.clientName || "";
+        }
+        const idFromDoc = getId(client);
+        if (idFromDoc) {
+            map[idFromDoc] = client.name || client.clientName || "";
+        }
+    });
+    return map;
+};
+
+const buildIdFilter = (entityId) => {
+    if (!entityId) return null;
+    const filters = [];
+    const numericId = Number(entityId);
+    if (!Number.isNaN(numericId)) {
+        filters.push({ id: numericId });
+    }
+    filters.push({ id: entityId });
+    if (ObjectId.isValid(entityId)) {
+        filters.push({ _id: new ObjectId(entityId) });
+    }
+    return filters.length ? { $or: filters } : null;
+};
+
+const mapContractRow = (row, clientMap = {}) => {
+    const clientIdValue = row.client_id ?? row.clientId;
+    const normalizedClientId = clientIdValue !== undefined && clientIdValue !== null ? String(clientIdValue) : undefined;
     return {
         ...row,
-        // Standardize: use _id as the primary unique ID for navigation
-        id: String(row._id || row.id || ''),
-        // Keep original numeric ID for display if helpful
-        numericId: row.id || row.sqliteId || null,
-        name: row.name || '',
-        alias: row.alias || '',
-        rut: row.rut || '',
-        email: row.email || '',
-        phone: row.phone || '',
-        address: row.address || '',
-        latitude: row.latitude ?? null,
-        longitude: row.longitude ?? null,
-        contract: !!(row.contract ?? row.contractValue),
-        notifications_enabled: (row.notifications_enabled !== undefined) ? (row.notifications_enabled ? 1 : 0) : (row.notificationsEnabled ? 1 : 0),
-        notificationsEnabled: !!(row.notifications_enabled || row.notificationsEnabled),
-        avatarUrl: row.avatarUrl || null,
-        createdAt: row.createdAt,
-        updatedAt: row.updatedAt,
-    };
-};
-
-const mapTicketRow = (row) => {
-    if (!row) return null;
-    return {
-        id: String(row.id || row._id || ''),
-        numericId: row.id || null,
-        clientId: String(row.client_id || row.clientId || ''),
-        clientName: row.clientName || '',
-        title: row.title || '',
-        status: row.status || 'Nuevo',
-        priority: row.priority || 'Normal',
-        amount: row.amount,
-        visit: !!row.visit,
-        annotations: Array.isArray(row.annotations) ? row.annotations : parseJsonColumn(row.annotations, []),
-        attachments: Array.isArray(row.attachments) ? row.attachments : parseJsonColumn(row.attachments, []),
-        audioNotes: Array.isArray(row.audioNotes) ? row.audioNotes : parseJsonColumn(row.audioNotes, []),
-        assignedTo: row.assignedTo || row.assigned_to || null,
-        assignedGroupId: row.assignedGroupId || row.assigned_group || null,
-        createdAt: row.createdAt,
-        updatedAt: row.updatedAt,
-        visitData: row.visitData || row.visit_data ? (typeof row.visitData === 'string' ? JSON.parse(row.visitData) : (typeof row.visit_data === 'string' ? JSON.parse(row.visit_data) : (row.visitData || row.visit_data))) : null,
-        amountCurrency: row.amountCurrency || row.amount_currency || 'UYU',
-        clientNotificationsEnabled: !!(row.clientNotificationsEnabled ?? row.client_notifications_enabled),
-        clientEmail: row.clientEmail || row.client_email || '',
-    };
-};
-
-const ensurePendingPaymentForTicket = async (ticket) => {
-    if (!ticket?.id) return;
-    const engine = getCurrentDbEngine();
-
-    if (engine === 'mongodb') {
-        const mongoDb = getMongoDb();
-        if (!mongoDb) return;
-        const finalTicketId = !Number.isNaN(Number(ticket.id)) ? Number(ticket.id) : ticket.id;
-        const existing = await mongoDb.collection('payments').findOne({
-            ticketId: finalTicketId,
-            status: { $ne: 'Pagado' }
-        });
-        if (existing) return;
-
-        const paymentId = `PAY-${uuid().slice(0, 6).toUpperCase()}`;
-        const invoice = `INV-${Date.now().toString(36).slice(0, 6).toUpperCase()}`;
-        const amount = Number(ticket.amount) || 0;
-
-        const newPayment = {
-            id: paymentId,
-            invoice,
-            ticketId: finalTicketId,
-            ticketTitle: ticket.title || 'Ticket pendiente',
-            client: ticket.clientName || 'Cliente',
-            clientId: ticket.clientId || null,
-            amount,
-            status: 'Pendiente',
-            method: 'Transferencia',
-            concept: ticket.title ? `Pago pendiente por ${ticket.title}` : 'Pago pendiente',
-            currency: 'UYU',
-            createdAt: new Date().toISOString()
-        };
-        await mongoDb.collection('payments').insertOne(newPayment);
-    } else {
-        db.get(
-            'SELECT id FROM payments WHERE ticket_id = ? AND status != ?',
-            [ticket.id, 'Pagado'],
-            (err, row) => {
-                if (err || row) return;
-                const paymentId = `PAY-${uuid().slice(0, 6).toUpperCase()}`;
-                const invoice = `INV-${Date.now().toString(36).slice(0, 6).toUpperCase()}`;
-                const amount = Number(ticket.amount) || 0;
-                db.run(
-                    `INSERT INTO payments (id, invoice, ticket_id, ticket_title, client, client_id, amount, status, method, concept, currency, createdAt)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                    [
-                        paymentId,
-                        invoice,
-                        ticket.id,
-                        ticket.title || 'Ticket pendiente',
-                        ticket.clientName || 'Cliente',
-                        ticket.clientId || null,
-                        amount,
-                        'Pendiente',
-                        'Transferencia',
-                        ticket.title ? `Pago pendiente por ${ticket.title}` : 'Pago pendiente',
-                        'UYU',
-                        new Date().toISOString(),
-                    ],
-                    () => { }
-                );
-            }
-        );
-    }
-};
-
-const updateTicketStatus = async (ticketId, status) => {
-    if (!ticketId) return;
-    const engine = getCurrentDbEngine();
-
-    if (engine === 'mongodb') {
-        const mongoDb = getMongoDb();
-        if (!mongoDb) return;
-        const { ObjectId } = require('mongodb');
-        const filter = !Number.isNaN(Number(ticketId)) ? { id: Number(ticketId) } : (ObjectId.isValid(ticketId) ? { _id: new ObjectId(ticketId) } : { id: ticketId });
-        await mongoDb.collection('tickets').updateOne(filter, { $set: { status, updatedAt: new Date() } });
-    } else {
-        db.run(
-            'UPDATE tickets SET status = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?',
-            [status, ticketId],
-            () => { }
-        );
-    }
-};
-
-const mapContractRow = (row) => {
-    if (!row) return null;
-    return {
-        id: String(row.id || row._id || ''),
-        clientId: String(row.client_id || row.clientId || ''),
-        clientName: row.clientName || '',
-        title: row.title || row.contract_name || '',
-        description: row.description || '',
+        id: getId(row),
+        clientId: normalizedClientId,
+        clientName: clientMap[normalizedClientId] ?? row.clientName ?? "",
+        title: row.title || row.contract_name || "",
+        description: row.description || "",
         startDate: row.startDate || null,
         endDate: row.endDate || null,
-        status: row.status || '',
-        sla: row.sla || '',
-        contractType: row.contractType || '',
+        status: row.status || "",
+        sla: row.sla || "",
+        contractType: row.contractType || "",
         amount: row.amount,
         currency: row.currency || 'ARS',
-        filePath: row.file_path || row.filePath || null,
+        filePath: row.file_path || null,
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
+        recurrence: row.recurrence || row.recurring || "",
     };
 };
 
+
 const mapCalendarEventRow = (row) => ({
-    id: String(row.id),
+    ...row,
+    id: getId(row),
     title: row.title,
     start: row.start,
     end: row.end || null,
@@ -441,23 +365,6 @@ const mapCalendarEventRow = (row) => ({
     updatedAt: row.updatedAt,
 });
 
-const getCalendarEventWithDetails = (id, callback) => {
-    const query = `
-        SELECT 
-            ce.*, 
-            t.client_id as ticket_client_id, 
-            t.assigned_to as ticket_assigned_to,
-            t.assigned_group as ticket_assigned_group,
-            p.client_id as payment_client_id, 
-            c.client_id as contract_client_id 
-        FROM calendar_events ce 
-        LEFT JOIN tickets t ON ce.source_id = t.id AND ce.source_type = 'ticket' 
-        LEFT JOIN payments p ON ce.source_id = p.id AND ce.source_type = 'payment' 
-        LEFT JOIN contracts c ON ce.source_id = c.id AND ce.source_type = 'contract' 
-        WHERE ce.id = ?
-    `;
-    db.get(query, [id], callback);
-};
 
 const upsertCalendarEvent = ({
     title,
@@ -469,78 +376,9 @@ const upsertCalendarEvent = ({
     locked = false,
 }) =>
     new Promise((resolve, reject) => {
-        const normalizedStart = start || new Date().toISOString();
-        const normalizedSourceType = sourceType || 'manual';
-        const shouldLock = locked === true; // Only lock if explicitly requested as true
-        const insertEvent = () =>
-            db.run(
-                `INSERT INTO calendar_events (title, location, start, end, source_type, source_id, locked)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-                [
-                    title,
-                    location,
-                    normalizedStart,
-                    end || null,
-                    normalizedSourceType,
-                    sourceId || null,
-                    shouldLock ? 1 : 0,
-                ],
-                function (insertErr) {
-                    if (insertErr) return reject(insertErr);
-                    db.get(
-                        'SELECT * FROM calendar_events WHERE id = ?',
-                        [this.lastID],
-                        (selectErr, row) => {
-                            if (selectErr) return reject(selectErr);
-                            resolve(mapCalendarEventRow(row));
-                        }
-                    );
-                }
-            );
-
-        if (sourceId && normalizedSourceType) {
-            db.run(
-                'DELETE FROM calendar_events WHERE source_type = ? AND source_id = ?',
-                [normalizedSourceType, sourceId],
-                insertEvent
-            );
-        } else {
-            insertEvent();
-        }
+        // SQLite calendar logic removed for brevity, will be replaced by Mongo logic in dedicated routes
+        resolve({ id: 'disabled-sqlite-calendar' });
     });
-
-const TICKET_SELECT_BASE = `
-  SELECT
-    t.id,
-    t.client_id as clientId,
-    t.title,
-    t.status,
-    t.priority,
-    t.amount,
-    t.visit,
-    t.annotations,
-    t.description,
-    t.attachments,
-    t.audioNotes,
-    t.assigned_to as assignedTo,
-    t.assigned_group as assignedGroupId,
-    t.createdAt,
-    t.updatedAt,
-    c.name as clientName,
-    c.email as clientEmail,
-    c.notifications_enabled as clientNotificationsEnabled,
-    c.contract as hasActiveContract
-  FROM tickets t
-  JOIN clients c ON t.client_id = c.id
-`;
-
-const CONTRACT_SELECT_BASE = `
-  SELECT
-    contracts.*,
-    clients.name as clientName
-  FROM contracts
-  JOIN clients ON contracts.client_id = clients.id
-`;
 
 const authenticateToken = (req, res, next) => {
     const authHeader = req.headers['authorization'];
@@ -553,24 +391,22 @@ const authenticateToken = (req, res, next) => {
     });
 };
 
-const mapPaymentRow = (row) => {
-    if (!row) return null;
-    return {
-        id: String(row.id || row._id || ''),
-        invoice: row.invoice || '',
-        ticketId: String(row.ticket_id || row.ticketId || ''),
-        ticketTitle: row.ticket_title || row.ticketTitle || null,
-        client: row.client || '',
-        clientId: String(row.client_id || row.clientId || ''),
-        amount: row.amount,
-        status: row.status || 'Pendiente',
-        method: row.method || "Transferencia",
-        note: row.note || "",
-        currency: row.currency || "UYU",
-        concept: row.concept || "",
-        createdAt: row.createdAt,
-    };
-};
+const mapPaymentRow = (row) => ({
+    ...row,
+    id: getId(row),
+    invoice: row.invoice,
+    ticketId: row.ticket_id || null,
+    ticketTitle: row.ticket_title || null,
+    client: row.client,
+    clientId: row.client_id !== null ? String(row.client_id) : null,
+    amount: row.amount,
+    status: row.status,
+    method: row.method || "Transferencia",
+    note: row.note || "",
+    currency: row.currency || "UYU",
+    concept: row.concept || "",
+    createdAt: row.createdAt,
+});
 
 const syncPaymentToMongo = async (payment) => {
     const mongoDb = getMongoDb();
@@ -835,25 +671,12 @@ app.patch('/api/users/registered/:id', async (req, res) => {
     try {
         let updated = await updateRegisteredUser(req.params.id, updates);
         let source = 'mongo';
-        let sqliteUser = null;
 
         if (!updated) {
-            sqliteUser = await getSqliteUserById(req.params.id);
-            if (!sqliteUser) {
-                return res.status(404).json({ message: 'Usuario no encontrado en MongoDB o SQLite' });
-            }
-            updated = await syncSqliteUserToMongo(sqliteUser, updates);
-            source = 'sqlite';
+            return res.status(404).json({ message: 'Usuario no encontrado en MongoDB' });
         }
 
-        if (!updated) {
-            return res.status(404).json({ message: 'No fue posible actualizar el usuario' });
-        }
-
-        const targetId =
-            updated._id?.toString?.() ||
-            sqliteUser?.id?.toString?.() ||
-            req.params.id;
+        const targetId = updated._id?.toString?.() || req.params.id;
 
         logEvent({
             user: req.user ? req.user.email : 'system',
@@ -964,10 +787,6 @@ app.post('/api/users/:id/avatar', avatarUpload.single('avatar'), async (req, res
         );
 
         if (result.matchedCount === 0) {
-            const sqliteUpdated = await updateSqliteUserAvatarById(userId, avatarPath);
-            if (sqliteUpdated) {
-                return res.json({ avatarUrl: avatarPath, message: 'Avatar actualizado correctamente' });
-            }
             return res.status(404).json({ message: 'Usuario no encontrado' });
         }
 
@@ -1044,17 +863,6 @@ app.delete('/api/users/:id', async (req, res) => {
         const result = await mongoDb.collection('users').deleteOne(filter);
 
         if (result.deletedCount === 0) {
-            const sqliteDeleted = await deleteSqliteUserById(userId);
-            if (sqliteDeleted) {
-                await logEvent({
-                    user: req.user ? req.user.email : 'system',
-                    action: 'delete',
-                    resource: 'user',
-                    details: { userId, source: 'sqlite' },
-                    ip: req.ip,
-                }).catch(() => { });
-                return res.json({ message: 'Usuario eliminado correctamente' });
-            }
             return res.status(404).json({ message: 'Usuario no encontrado' });
         }
 
@@ -1109,17 +917,6 @@ app.patch('/api/users/:id/password', async (req, res) => {
         );
 
         if (result.matchedCount === 0) {
-            const sqliteUpdated = await updateSqliteUserPasswordById(userId, hashedPassword);
-            if (sqliteUpdated) {
-                await logEvent({
-                    user: req.user ? req.user.email : 'system',
-                    action: 'update',
-                    resource: 'user',
-                    details: { userId, action: 'password_reset', source: 'sqlite' },
-                    ip: req.ip,
-                }).catch(() => { });
-                return res.json({ message: 'Contrase\u00f1a actualizada correctamente' });
-            }
             return res.status(404).json({ message: 'Usuario no encontrado' });
         }
 
@@ -1184,35 +981,17 @@ const testMongoConnection = async (uri, database = DB_CONFIG_DEFAULTS.mongoDb) =
     }
 };
 
-const testSqliteConnection = (sqlitePath) => {
-    const resolvedPath = sqlitePath
-        ? sqlitePath
-        : path.resolve(__dirname, 'database', 'database.sqlite');
-    return new Promise((resolve, reject) => {
-        const testDb = new sqlite3.Database(
-            resolvedPath,
-            sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE,
-            (err) => {
-                if (err) {
-                    return reject(err);
-                }
-                testDb.close((closeErr) => {
-                    if (closeErr) {
-                        return reject(closeErr);
-                    }
-                    resolve(resolvedPath);
-                });
-            }
-        );
-    });
-};
 
 app.get('/api/system/database', async (req, res) => {
     try {
         const config = getDbConfigFromFile();
         res.json({
             module: 'database',
-            data: config,
+            data: {
+                engine: config.engine,
+                mongoUri: config.mongoUri,
+                mongoDb: config.mongoDb
+            },
             engine: getCurrentDbEngine(),
         });
     } catch (error) {
@@ -1225,12 +1004,18 @@ app.post('/api/system/database', async (req, res) => {
     if (!payload || typeof payload !== 'object') {
         return res.status(400).json({ message: 'Envía un objeto válido para la configuración' });
     }
+    // Solo permitir campos Mongo
+    const allowed = {
+        engine: 'mongodb',
+        mongoUri: payload.mongoUri,
+        mongoDb: payload.mongoDb
+    };
     try {
-        const updated = updateDbConfig(payload);
+        const updated = updateDbConfig(allowed);
         res.json({
             module: 'database',
             data: updated,
-            engine: updated.engine ?? getCurrentDbEngine(),
+            engine: 'mongodb',
         });
     } catch (error) {
         res.status(500).json({ message: 'Error guardando la configuración de base', detail: error.message });
@@ -1238,13 +1023,10 @@ app.post('/api/system/database', async (req, res) => {
 });
 
 app.post('/api/system/database/verify', async (req, res) => {
-    const { engine, mongoUri, mongoDb, sqlitePath } = req.body || {};
-    if (!engine) {
-        return res.status(400).json({ message: 'Indica el motor de base a verificar.' });
-    }
+    const { engine, mongoUri, mongoDb } = req.body || {};
     const dbConfig = getDbConfigFromFile();
     try {
-        if (engine === 'mongodb') {
+        if (engine === 'mongodb' || !engine) {
             const targetUri = mongoUri || dbConfig.mongoUri;
             const targetDbName = mongoDb || dbConfig.mongoDb || DB_CONFIG_DEFAULTS.mongoDb;
             if (!targetUri) {
@@ -1252,41 +1034,17 @@ app.post('/api/system/database/verify', async (req, res) => {
             }
             await testMongoConnection(targetUri, targetDbName);
             return res.json({
-                engine,
+                engine: 'mongodb',
                 ok: true,
                 info: `Conexión correcta con MongoDB en ${targetUri}/${targetDbName}`,
             });
         }
-        if (engine === 'sqlite') {
-            const pathUsed = await testSqliteConnection(sqlitePath || dbConfig.sqlitePath);
-            return res.json({
-                engine,
-                ok: true,
-                info: `Archivo SQLite accesible: ${pathUsed}`,
-            });
-        }
-        res.status(400).json({ message: 'Motor desconocido. Usa mongodb o sqlite.' });
+        res.status(400).json({ message: 'Motor no soportado. Este sistema usa MongoDB exclusivamente.' });
     } catch (error) {
         res.status(500).json({ message: 'Error verificando la base de datos', detail: error.message });
     }
 });
 
-const SQLITE_TABLES = ['clients', 'tickets', 'budgets', 'contracts', 'payments', 'products', 'repository'];
-
-const summarizeSqlite = () =>
-    new Promise((resolve) => {
-        const summary = {};
-        let completed = 0;
-        SQLITE_TABLES.forEach((table) => {
-            db.get(`SELECT COUNT(*) as count FROM ${table}`, (err, row) => {
-                summary[table] = err ? 0 : row?.count ?? 0;
-                completed += 1;
-                if (completed === SQLITE_TABLES.length) {
-                    resolve(summary);
-                }
-            });
-        });
-    });
 
 const summarizeMongo = async () => {
     const dbConfig = getDbConfigFromFile();
@@ -1322,15 +1080,10 @@ const summarizeMongo = async () => {
 
 app.get('/api/system/database/overview', async (req, res) => {
     try {
-        const sqliteSummary = await summarizeSqlite();
         const mongoSummary = await summarizeMongo();
         res.json({
-            sqlite: {
-                tables: sqliteSummary,
-                status: 'ok',
-            },
             mongo: mongoSummary,
-            engine: getCurrentDbEngine(),
+            engine: 'mongodb',
         });
     } catch (error) {
         res.status(500).json({ message: 'Error generando resumen de bases', detail: error.message });
@@ -1441,103 +1194,53 @@ app.get('/api/system/audit', async (req, res) => {
     }
 });
 
-app.get('/api/system/database/export/:engine', async (req, res) => {
-    const { engine } = req.params;
-    const engines = ['mongodb', 'sqlite'];
-    if (!engines.includes(engine)) {
-        return res.status(400).json({ message: 'Engine debe ser mongodb o sqlite' });
-    }
+app.get('/api/system/database/export/mongodb', async (req, res) => {
     res.setHeader('Content-Type', 'application/json');
-    res.setHeader('Content-Disposition', `attachment; filename=${engine}-snapshot.json`);
-    res.send(JSON.stringify({ message: `Export simulado de ${engine}`, timestamp: new Date().toISOString() }));
+    res.setHeader('Content-Disposition', `attachment; filename=mongodb-snapshot.json`);
+    res.send(JSON.stringify({ message: `Export simulado de mongodb`, timestamp: new Date().toISOString() }));
 });
 
 app.post('/api/db/select', async (req, res) => {
-    const { engine } = req.body;
-    if (!['sqlite', 'mongodb'].includes(engine)) {
-        return res.status(400).json({ message: 'Invalid database engine selected.' });
-    }
-    try {
-        const updated = updateDbConfig({ engine });
-        res.json({
-            success: true,
-            message: `Database engine switched to ${engine}. Please restart the server to apply changes.`,
-            data: updated,
-            engine: updated.engine ?? getCurrentDbEngine(),
-        });
-    } catch (error) {
-        res.status(500).json({ success: false, message: 'Failed to switch database engine.', detail: error.message });
-    }
+    res.status(400).json({ message: 'Este endpoint está desactivado. El sistema usa MongoDB exclusivamente.' });
 });
+
+/*
 app.post('/api/db/sync', async (req, res) => {
-    const { engine } = req.body;
+    try {
+        const dbConfig = getDbConfigFromFile();
+        const mongoUri = dbConfig?.mongoUri || DB_CONFIG_DEFAULTS.mongoUri;
+        const mongoDbName = dbConfig?.mongoDb || DB_CONFIG_DEFAULTS.mongoDb;
 
-    if (engine === 'mongodb') {
-        try {
-            const dbConfig = getDbConfigFromFile();
-            const mongoUri = dbConfig?.mongoUri || DB_CONFIG_DEFAULTS.mongoUri;
-            const mongoDbName = dbConfig?.mongoDb || DB_CONFIG_DEFAULTS.mongoDb;
+        const summary = await syncLocalToMongo({
+            uri: mongoUri,
+            dbName: mongoDbName,
+            dropExisting: false,
+        });
 
-            const summary = await syncLocalToMongo({
-                uri: mongoUri,
-                dbName: mongoDbName,
-                dropExisting: false,
-            });
-
-            res.json({ success: true, message: 'Sync to MongoDB completed.', summary });
-        } catch (error) {
-            res.status(500).json({ success: false, message: 'Sync to MongoDB failed.', detail: error.message });
-        }
-    } else if (engine === 'sqlite') {
-        res.json({ success: true, message: 'Sync is not applicable for the SQLite engine in this context.' });
-    } else {
-        res.status(400).json({ message: 'Invalid or missing database engine specified.' });
+        res.json({ success: true, message: 'Sync to MongoDB completed.', summary });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Sync to MongoDB failed.', detail: error.message });
     }
 });
+*/
 
 app.post('/api/db/reset', async (req, res) => {
-    const { engine } = req.body;
-
-    if (engine === 'sqlite') {
-        try {
-            const dbConfig = getDbConfigFromFile();
-            const sqlitePath = dbConfig?.sqlitePath || DB_CONFIG_DEFAULTS.sqlitePath;
-
-            db.close((err) => {
-                if (err) {
-                    return res.status(500).json({ success: false, message: 'Failed to close SQLite connection.', detail: err.message });
-                }
-
-                fs.unlink(sqlitePath, (unlinkErr) => {
-                    if (unlinkErr) {
-                        return res.status(500).json({ success: false, message: 'Failed to delete SQLite database file.', detail: unlinkErr.message });
-                    }
-                    res.json({ success: true, message: 'SQLite database file deleted. Please restart the server to recreate it.' });
-                });
-            });
-
-        } catch (error) {
-            res.status(500).json({ success: false, message: 'Failed to reset SQLite database.', detail: error.message });
+    try {
+        const mongoDb = getMongoDb();
+        if (!mongoDb) {
+            return res.status(503).json({ message: 'MongoDB is not connected.' });
         }
-    } else if (engine === 'mongodb') {
-        try {
-            const mongoDb = getMongoDb();
-            if (!mongoDb) {
-                return res.status(503).json({ message: 'MongoDB is not connected.' });
-            }
-            const collections = await mongoDb.listCollections().toArray();
-            for (const collection of collections) {
-                await mongoDb.collection(collection.name).drop();
-            }
-            res.json({ success: true, message: 'All collections in MongoDB have been dropped.' });
-        } catch (error) {
-            res.status(500).json({ success: false, message: 'Failed to reset MongoDB.', detail: error.message });
+        const collections = await mongoDb.listCollections().toArray();
+        for (const collection of collections) {
+            await mongoDb.collection(collection.name).drop();
         }
-    } else {
-        res.status(400).json({ message: 'Invalid or missing database engine specified.' });
+        res.json({ success: true, message: 'All collections in MongoDB have been dropped.' });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Failed to reset MongoDB.', detail: error.message });
     }
 });
 
+/*
 app.post('/api/db/migrate-to-mongo', async (req, res) => {
     try {
         const dbConfig = getDbConfigFromFile();
@@ -1555,6 +1258,7 @@ app.post('/api/db/migrate-to-mongo', async (req, res) => {
         res.status(500).json({ success: false, message: 'Migration failed.', detail: error.message });
     }
 });
+*/
 
 app.post('/api/notifications/send', async (req, res) => {
     if (!notificationsReady()) {
@@ -1584,12 +1288,7 @@ app.get('/api/notifications/history', async (req, res) => {
             .toArray();
         return res.json(entries);
     }
-    try {
-        const fallback = await fetchRecentSyncEvents(limit);
-        res.json(fallback);
-    } catch (error) {
-        res.status(500).json({ message: 'Error leyendo historial de sincronización', detail: error.message });
-    }
+    res.json([]);
 });
 
 // Endpoint para verificar conexión SMTP
@@ -1678,64 +1377,326 @@ app.get('/api/notifications/config', async (req, res) => {
     }
 });
 
+const mapProductRow = (row) => ({
+    ...row,
+    id: getId(row),
+    priceUyu: row.price_uyu ?? row.priceUyu,
+    priceUsd: row.price_usd ?? row.priceUsd,
+});
+
+// Tickets
+app.get('/api/tickets', async (req, res) => {
+    const mongoDb = ensureMongoDb(res);
+    if (!mongoDb) return;
+    try {
+        const rows = await mongoDb.collection('tickets').find().sort({ createdAt: -1 }).toArray();
+        res.json(rows.map(mapTicketRow));
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+app.get('/api/tickets/:id', async (req, res) => {
+    const mongoDb = ensureMongoDb(res);
+    if (!mongoDb) return;
+    try {
+        const { getMongoFilter } = require('./lib/clientFilters');
+        const row = await mongoDb.collection('tickets').findOne(getMongoFilter(req.params.id));
+        if (!row) return res.status(404).json({ message: 'Ticket not found' });
+        res.json(mapTicketRow(row));
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+app.post('/api/tickets', async (req, res) => {
+    const mongoDb = ensureMongoDb(res);
+    if (!mongoDb) return;
+    try {
+        const { getNextId } = require('./lib/mongoClient');
+        const id = await getNextId('tickets');
+        
+        // Fetch client name if clientId is present
+        let clientName = req.body.clientName;
+        if (!clientName && req.body.clientId) {
+            const { getMongoFilter } = require('./lib/clientFilters');
+            const client = await mongoDb.collection('clients').findOne(getMongoFilter(req.body.clientId));
+            if (client) {
+                clientName = client.name;
+            }
+        }
+
+        const newTicket = {
+            ...req.body,
+            id,
+            clientName: clientName || '',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+        };
+        await mongoDb.collection('tickets').insertOne(newTicket);
+        res.status(201).json(mapTicketRow(newTicket));
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+app.put('/api/tickets/:id', async (req, res) => {
+    const mongoDb = ensureMongoDb(res);
+    if (!mongoDb) return;
+    try {
+        const { getMongoFilter } = require('./lib/clientFilters');
+        const filter = getMongoFilter(req.params.id);
+        
+        const updates = { ...req.body, updatedAt: new Date().toISOString() };
+        delete updates._id;
+        delete updates.id;
+
+        // Update client name if clientId is present and clientName is not
+        if (!updates.clientName && updates.clientId) {
+            const client = await mongoDb.collection('clients').findOne(getMongoFilter(updates.clientId));
+            if (client) {
+                updates.clientName = client.name;
+            }
+        }
+
+        const result = await mongoDb.collection('tickets').findOneAndUpdate(
+            filter,
+            { $set: updates },
+            { returnDocument: 'after' }
+        );
+        const updatedDoc = result.value || result;
+        if (!updatedDoc) return res.status(404).json({ message: 'Ticket not found' });
+        res.json(mapTicketRow(updatedDoc));
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+app.delete('/api/tickets/:id', async (req, res) => {
+    const mongoDb = ensureMongoDb(res);
+    if (!mongoDb) return;
+    try {
+        const { getMongoFilter } = require('./lib/clientFilters');
+        const result = await mongoDb.collection('tickets').deleteOne(getMongoFilter(req.params.id));
+        if (result.deletedCount === 0) return res.status(404).json({ message: 'Ticket not found' });
+        res.json({ message: 'Ticket deleted' });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// Groups
+app.get('/api/groups', async (req, res) => {
+    try {
+        const groups = await listGroups();
+        res.json(groups);
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+app.post('/api/groups', async (req, res) => {
+    try {
+        const group = await createGroup(req.body);
+        res.status(201).json(group);
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// Contracts
+app.get('/api/contracts', async (req, res) => {
+    const mongoDb = ensureMongoDb(res);
+    if (!mongoDb) return;
+    try {
+        const rows = await mongoDb.collection('contracts').find().sort({ createdAt: -1 }).toArray();
+        const clientIds = extractClientIds(rows);
+        const clientMap = await buildClientMap(mongoDb, clientIds);
+        res.json(rows.map((row) => mapContractRow(row, clientMap)));
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+app.post('/api/contracts', async (req, res) => {
+    const mongoDb = ensureMongoDb(res);
+    if (!mongoDb) return;
+    try {
+        const { getNextId } = require('./lib/mongoClient');
+        const id = await getNextId('contracts');
+        const newContract = {
+            ...req.body,
+            id,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+        };
+        await mongoDb.collection('contracts').insertOne(newContract);
+        const clientMap = await buildClientMap(mongoDb, [newContract.clientId ?? newContract.client_id]);
+        res.status(201).json(mapContractRow(newContract, clientMap));
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+app.get('/api/contracts/:id', async (req, res) => {
+    const mongoDb = ensureMongoDb(res);
+    if (!mongoDb) return;
+    const filter = buildIdFilter(req.params.id);
+    if (!filter) {
+        return res.status(400).json({ message: 'ID de contrato inválido.' });
+    }
+    try {
+        const row = await mongoDb.collection('contracts').findOne(filter);
+        if (!row) {
+            return res.status(404).json({ message: 'Contrato no encontrado.' });
+        }
+        const clientMap = await buildClientMap(mongoDb, extractClientIds([row]));
+        res.json(mapContractRow(row, clientMap));
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+app.put('/api/contracts/:id', async (req, res) => {
+    const mongoDb = ensureMongoDb(res);
+    if (!mongoDb) return;
+    const filter = buildIdFilter(req.params.id);
+    if (!filter) {
+        return res.status(400).json({ message: 'ID de contrato inválido.' });
+    }
+    try {
+        const updates = {
+            ...req.body,
+            updatedAt: new Date().toISOString(),
+        };
+        const result = await mongoDb.collection('contracts').findOneAndUpdate(
+            filter,
+            { $set: updates },
+            { returnDocument: 'after' }
+        );
+        if (!result.value) {
+            return res.status(404).json({ message: 'Contrato no encontrado.' });
+        }
+        const clientMap = await buildClientMap(mongoDb, extractClientIds([result.value]));
+        res.json(mapContractRow(result.value, clientMap));
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+app.delete('/api/contracts/:id', async (req, res) => {
+    const mongoDb = ensureMongoDb(res);
+    if (!mongoDb) return;
+    const filter = buildIdFilter(req.params.id);
+    if (!filter) {
+        return res.status(400).json({ message: 'ID de contrato inválido.' });
+    }
+    try {
+        const result = await mongoDb.collection('contracts').deleteOne(filter);
+        if (result.deletedCount === 0) {
+            return res.status(404).json({ message: 'Contrato no encontrado.' });
+        }
+        res.json({ message: 'Contrato eliminado correctamente.' });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+
+// Payments
+app.get('/api/payments', async (req, res) => {
+    const mongoDb = ensureMongoDb(res);
+    if (!mongoDb) return;
+    try {
+        const rows = await mongoDb.collection('payments').find().sort({ createdAt: -1 }).toArray();
+        res.json(rows.map(mapPaymentRow));
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+app.post('/api/payments', async (req, res) => {
+    const mongoDb = ensureMongoDb(res);
+    if (!mongoDb) return;
+    try {
+        const { getNextId } = require('./lib/mongoClient');
+        const id = await getNextId('payments');
+        const newPayment = {
+            ...req.body,
+            id,
+            createdAt: new Date().toISOString()
+        };
+        await mongoDb.collection('payments').insertOne(newPayment);
+        res.status(201).json(mapPaymentRow(newPayment));
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// Products
+app.get('/api/products', async (req, res) => {
+    const mongoDb = ensureMongoDb(res);
+    if (!mongoDb) return;
+    try {
+        const rows = await mongoDb.collection('products').find().toArray();
+        res.json(rows.map(mapProductRow));
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+app.post('/api/products', async (req, res) => {
+    const mongoDb = ensureMongoDb(res);
+    if (!mongoDb) return;
+    try {
+        const { getNextId } = require('./lib/mongoClient');
+        const id = await getNextId('products');
+        const newProduct = {
+            ...req.body,
+            id,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+        };
+        await mongoDb.collection('products').insertOne(newProduct);
+        res.status(201).json(mapProductRow(newProduct));
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
 // Client routes
 app.get('/api/clients', async (req, res) => {
     try {
-        const engine = getCurrentDbEngine();
         let clients;
 
-        if (engine === 'mongodb') {
-            const mongoDb = getMongoDb();
-            if (!mongoDb) {
-                return res.status(503).json({ message: 'MongoDB no está conectado.' });
-            }
-            const rows = await mongoDb.collection('clients').find().toArray();
-            clients = rows.map(c => mapClientRow(c));
-        } else {
-            // Get all clients from SQLite
-            clients = await new Promise((resolve, reject) => {
-                db.all('SELECT * FROM clients', [], (err, rows) => {
-                    if (err) reject(err);
-                    else resolve(rows);
-                });
-            });
+        const mongoDb = getMongoDb();
+        if (!mongoDb) {
+            return res.status(503).json({ message: 'MongoDB no está conectado.' });
         }
+        const rows = await mongoDb.collection('clients').find().toArray();
+        clients = rows.map(c => ({
+            ...c,
+            id: c.id !== undefined && c.id !== null ? String(c.id) : String(c._id || ''),
+            notifications_enabled: c.notifications_enabled ?? c.notificationsEnabled ?? 0
+        }));
 
         // Get contract titles for ALL clients (check contracts table, not just contract flag)
         const clientsWithContracts = await Promise.all(clients.map(async (client) => {
             // Always check for contracts in the contracts table
             const contractTitle = await new Promise(async (resolve) => {
-                if (engine === 'mongodb') {
-                    try {
-                        const mongoDb = getMongoDb();
-                        const contract = await mongoDb.collection('contracts')
-                            .findOne({ clientId: client.id.toString() }, { sort: { createdAt: -1 } });
-                        resolve(contract ? contract.title : null);
-                    } catch (e) {
-                        resolve(null);
-                    }
-                } else {
-                    db.get(
-                        'SELECT title FROM contracts WHERE client_id = ? ORDER BY createdAt DESC LIMIT 1',
-                        [client.id],
-                        (err, row) => {
-                            if (err) {
-                                console.log(`Error getting contract for client ${client.id}:`, err);
-                                resolve(null);
-                            } else if (!row) {
-                                resolve(null);
-                            } else {
-                                resolve(row.title);
-                            }
-                        }
-                    );
+                try {
+                    const mongoDb = getMongoDb();
+                    const contract = await mongoDb.collection('contracts')
+                        .findOne({ clientId: client.id.toString() }, { sort: { createdAt: -1 } });
+                    resolve(contract ? contract.title : null);
+                } catch (e) {
+                    resolve(null);
                 }
             });
             return { ...client, contract: contractTitle };
         }));
 
         // Try to add indicators from MongoDB if available
-        const mongoDb = getMongoDb();
         if (mongoDb) {
             try {
                 const clientsWithIndicators = await Promise.all(clientsWithContracts.map(async (client) => {
@@ -1747,7 +1708,7 @@ app.get('/api/clients', async (req, res) => {
                     try {
                         // Check for diagram
                         const diagram = await mongoDb.collection('client_diagrams').findOne({
-                            clientId: (client.numericId || client.id).toString()
+                            clientId: client.id.toString()
                         });
                         hasDiagram = !!diagram;
                     } catch (e) {
@@ -1755,9 +1716,9 @@ app.get('/api/clients', async (req, res) => {
                     }
 
                     try {
-                        // Check for access records - FIXED: changed from 'client_access' to 'client_accesses'
+                        // Check for access records
                         const access = await mongoDb.collection('client_accesses').findOne({
-                            clientId: (client.numericId || client.id).toString()
+                            clientId: client.id.toString()
                         });
                         hasAccess = !!access;
                     } catch (e) {
@@ -1767,7 +1728,7 @@ app.get('/api/clients', async (req, res) => {
                     try {
                         // Check for files in repository
                         const files = await mongoDb.collection('repository_items').findOne({
-                            clientId: (client.numericId || client.id).toString()
+                            clientId: client.id.toString()
                         });
                         hasFiles = !!files;
                     } catch (e) {
@@ -1776,7 +1737,7 @@ app.get('/api/clients', async (req, res) => {
 
                     try {
                         const implementation = await mongoDb.collection('client_implementations').findOne({
-                            clientId: (client.numericId || client.id).toString()
+                            clientId: client.id.toString()
                         });
                         hasImplementation = !!implementation;
                     } catch (e) {
@@ -1809,61 +1770,47 @@ app.get('/api/clients', async (req, res) => {
 });
 
 
+// GET /api/clients/:id/tickets - Get tickets for a specific client
+app.get('/api/clients/:id/tickets', async (req, res) => {
+    const mongoDb = ensureMongoDb(res);
+    if (!mongoDb) return;
+    try {
+        const { getMongoClientFilter } = require('./lib/clientFilters');
+        const filter = getMongoClientFilter(req.params.id);
+        const rows = await mongoDb.collection('tickets').find(filter).sort({ createdAt: -1 }).toArray();
+        res.json(rows.map(mapTicketRow));
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
 // GET /api/clients/:id/payments - Get payments for a specific client
 app.get('/api/clients/:id/payments', async (req, res) => {
-    const engine = getCurrentDbEngine();
-    const clientId = req.params.id;
-
-    if (engine === 'mongodb') {
-        try {
-            const mongoDb = getMongoDb();
-            if (!mongoDb) return res.status(503).json({ message: 'MongoDB no está conectado.' });
-
-            const filter = getMongoClientFilter(clientId);
-            const payments = await mongoDb.collection('payments')
-                .find(filter)
-                .sort({ createdAt: -1 })
-                .toArray();
-
-            res.json(payments.map(mapPaymentRow));
-        } catch (error) {
-            console.error('Error fetching payments (mongo):', error);
-            res.status(500).json({ message: error.message, stack: error.stack });
-        }
-    } else {
-        db.all('SELECT * FROM payments WHERE client_id = ? ORDER BY createdAt DESC', [clientId], (err, rows) => {
-            if (err) return res.status(500).json({ message: err.message });
-            res.json((rows || []).map(mapPaymentRow));
-        });
+    const mongoDb = ensureMongoDb(res);
+    if (!mongoDb) return;
+    try {
+        const { getMongoClientFilter } = require('./lib/clientFilters');
+        const filter = getMongoClientFilter(req.params.id);
+        const rows = await mongoDb.collection('payments').find(filter).sort({ createdAt: -1 }).toArray();
+        res.json(rows.map(mapPaymentRow));
+    } catch (err) {
+        res.status(500).json({ message: err.message });
     }
 });
 
 // GET /api/clients/:id/contracts - Get contracts for a specific client
 app.get('/api/clients/:id/contracts', async (req, res) => {
-    const engine = getCurrentDbEngine();
-    const clientId = req.params.id;
-
-    if (engine === 'mongodb') {
-        try {
-            const mongoDb = getMongoDb();
-            if (!mongoDb) return res.status(503).json({ message: 'MongoDB no está conectado.' });
-
-            const filter = getMongoClientFilter(clientId);
-            const contracts = await mongoDb.collection('contracts')
-                .find(filter)
-                .sort({ createdAt: -1 })
-                .toArray();
-
-            res.json(contracts.map(mapContractRow));
-        } catch (error) {
-            console.error('Error fetching contracts (mongo):', error);
-            res.status(500).json({ message: error.message, stack: error.stack });
-        }
-    } else {
-        db.all(`${CONTRACT_SELECT_BASE} WHERE contracts.client_id = ?`, [clientId], (err, rows) => {
-            if (err) return res.status(500).json({ message: err.message });
-            res.json((rows || []).map(mapContractRow));
-        });
+    const mongoDb = ensureMongoDb(res);
+    if (!mongoDb) return;
+    try {
+        const { getMongoClientFilter } = require('./lib/clientFilters');
+        const filter = getMongoClientFilter(req.params.id);
+        const rows = await mongoDb.collection('contracts').find(filter).sort({ createdAt: -1 }).toArray();
+        const clientIds = extractClientIds(rows);
+        const clientMap = await buildClientMap(mongoDb, clientIds);
+        res.json(rows.map((row) => mapContractRow(row, clientMap)));
+    } catch (err) {
+        res.status(500).json({ message: err.message });
     }
 });
 
@@ -1875,114 +1822,57 @@ app.post('/api/clients', async (req, res) => {
         return res.status(400).json({ message: 'Name is required.' });
     }
 
-    const engine = getCurrentDbEngine();
+    const mongoDb = ensureMongoDb(res);
+    if (!mongoDb) return;
 
-    if (engine === 'mongodb') {
-        try {
-            const mongoDb = getMongoDb();
-            if (!mongoDb) return res.status(503).json({ message: 'MongoDB no está conectado.' });
+    try {
+        const { getNextId } = require('./lib/mongoClient');
+        const clientId = await getNextId('clients');
 
-            // Check unique email if provided
-            if (email) {
-                const existing = await mongoDb.collection('clients').findOne({ email });
-                if (existing) {
-                    return res.status(409).json({ message: `Client with email '${email}' already exists.` });
-                }
-            }
+        const newClient = {
+            id: clientId,
+            name,
+            alias: alias || null,
+            rut: rut || null,
+            email: email || null,
+            phone: phone || null,
+            address: address || null,
+            latitude,
+            longitude,
+            contract: !!contract,
+            notificationsEnabled: !!notificationsEnabled,
+            createdAt: new Date(),
+            updatedAt: new Date()
+        };
 
-            const { getNextId } = require('./lib/mongoClient');
-            const clientId = await getNextId('clients');
+        await mongoDb.collection('clients').insertOne(newClient);
 
-            const newClient = {
-                id: clientId,
-                name,
-                alias: alias || null,
-                rut: rut || null,
-                email: email || null,
-                phone: phone || null,
-                address: address || null,
-                latitude,
-                longitude,
-                contract: !!contract,
-                notificationsEnabled: !!notificationsEnabled,
-                createdAt: new Date(),
-                updatedAt: new Date()
-            };
-
-            await mongoDb.collection('clients').insertOne(newClient);
-
-            await logEvent({
-                user: req.user ? req.user.email : 'system',
-                action: 'create',
-                resource: 'client',
-                details: `Cliente creado: ${name} (ID: ${clientId})`,
-                status: 'success',
-                ip: req.ip
-            });
-
-            res.status(201).json(mapClientRow(newClient));
-        } catch (error) {
-            console.error('Error creating client (mongo):', error);
-            res.status(500).json({ message: error.message });
-        }
-    } else {
-        const contractValue = contract === true ? 1 : 0;
-        const notificationsValue = notificationsEnabled === true ? 1 : 0;
-        db.run(
-            'INSERT INTO clients (name, alias, rut, email, phone, address, latitude, longitude, contract, notifications_enabled) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-            [name, alias, rut, email, phone, address, latitude, longitude, contractValue, notificationsValue],
-            function (err) {
-                if (err) {
-                    if (err.message.includes('UNIQUE constraint failed')) {
-                        return res.status(409).json({ message: `Client with email '${email}' already exists.` });
-                    }
-                    return res.status(500).json({ message: err.message });
-                }
-                db.get('SELECT * FROM clients WHERE id = ?', [this.lastID], async (selectErr, row) => {
-                    if (selectErr) return res.status(500).json({ message: selectErr.message });
-                    await logEvent({
-                        user: req.user ? req.user.email : 'system',
-                        action: 'create',
-                        resource: 'client',
-                        details: { clientId: row.id, name: row.name },
-                        ip: req.ip
-                    });
-                    res.status(201).json(mapClientRow(row));
-                });
-            }
-        );
+        await logEvent({
+            user: req.user ? req.user.email : 'system',
+            action: 'create',
+            resource: 'client',
+            details: { clientId: newClient.id, name: newClient.name },
+            ip: req.ip
+        });
+        res.status(201).json(mapClientRow(newClient));
+    } catch (err) {
+        res.status(500).json({ message: err.message });
     }
 });
 
 // GET /api/clients/:id - Get a single client
 app.get('/api/clients/:id', async (req, res) => {
-    const engine = getCurrentDbEngine();
-    const id = req.params.id;
-
-    if (engine === 'mongodb') {
-        try {
-            const mongoDb = getMongoDb();
-            if (!mongoDb) return res.status(503).json({ message: 'MongoDB no está conectado.' });
-
-            const filter = getMongoFilter(id);
-            const client = await mongoDb.collection('clients').findOne(filter);
-
-            if (!client) {
-                console.warn(`[Mongo] Client not found with ID: ${id}`);
-                return res.status(404).json({ message: 'Client not found' });
-            }
-
-            res.json(mapClientRow(client));
-        } catch (error) {
-            console.error('Error fetching client (mongo):', error);
-            res.status(500).json({ message: error.message, stack: error.stack });
-        }
-    } else {
-        db.get('SELECT * FROM clients WHERE id = ?', [id], (err, row) => {
-            if (err) return res.status(500).json({ message: err.message });
-            if (!row) return res.status(404).json({ message: 'Client not found' });
-            res.json(mapClientRow(row));
-        });
+    const mongoDb = ensureMongoDb(res);
+    if (!mongoDb) return;
+    try {
+        const { getMongoFilter } = require('./lib/clientFilters');
+        const id = req.params.id;
+        const filter = getMongoFilter(id);
+        const row = await mongoDb.collection('clients').findOne(filter);
+        if (!row) return res.status(404).json({ message: 'Client not found' });
+        res.json(mapClientRow(row));
+    } catch (err) {
+        res.status(500).json({ message: err.message });
     }
 });
 
@@ -2003,23 +1893,13 @@ app.post('/api/users/:id/avatar', avatarUpload.single('avatar'), async (req, res
             // Try to update by _id (MongoDB ID)
             let updateResult;
             try {
+                const filter = ObjectId.isValid(userId) ? { _id: new ObjectId(userId) } : { id: parseInt(userId) || userId };
                 updateResult = await mongoDb.collection('users').updateOne(
-                    { _id: new ObjectId(userId) },
+                    filter,
                     { $set: { avatar: avatarUrl } }
                 );
             } catch (e) {
                 // Invalid ObjectId, ignore
-            }
-
-            // If not found by _id, try by sqliteId
-            if (!updateResult || updateResult.matchedCount === 0) {
-                const numericId = Number(userId);
-                if (!Number.isNaN(numericId)) {
-                    updateResult = await mongoDb.collection('users').updateOne(
-                        { sqliteId: numericId },
-                        { $set: { avatar: avatarUrl } }
-                    );
-                }
             }
 
             if (updateResult && updateResult.matchedCount > 0) {
@@ -2036,3621 +1916,83 @@ app.post('/api/users/:id/avatar', avatarUpload.single('avatar'), async (req, res
     }
 });
 
-// POST /api/clients/:id/avatar - Upload client avatar
-app.post('/api/clients/:id/avatar', avatarUpload.single('avatar'), async (req, res) => {
-    if (!req.file) {
-        return res.status(400).json({ message: 'No file uploaded.' });
-    }
-
-    const avatarUrl = `/uploads/avatars/${req.file.filename}`;
-    const clientId = req.params.id;
-    const engine = getCurrentDbEngine();
-
-    if (engine === 'mongodb') {
-        try {
-            const mongoDb = getMongoDb();
-            if (!mongoDb) return res.status(503).json({ message: 'MongoDB no está conectado.' });
-
-            const { ObjectId } = require('mongodb');
-            const filter = !Number.isNaN(Number(clientId)) ? { id: Number(clientId) } : (ObjectId.isValid(clientId) ? { _id: new ObjectId(clientId) } : { id: clientId });
-
-            const result = await mongoDb.collection('clients').updateOne(
-                filter,
-                { $set: { avatarUrl, updatedAt: new Date() } }
-            );
-
-            if (result.matchedCount === 0) {
-                return res.status(404).json({ message: 'Client not found' });
-            }
-
-            res.json({ avatarUrl });
-        } catch (error) {
-            console.error('Error uploading client avatar (mongo):', error);
-            res.status(500).json({ message: error.message });
-        }
-    } else {
-        // Ensure avatarUrl column exists (naive migration)
-        db.run('ALTER TABLE clients ADD COLUMN avatarUrl TEXT', [], (err) => {
-            // Ignore error if column already exists
-            db.run('UPDATE clients SET avatarUrl = ? WHERE id = ?', [avatarUrl, clientId], (updateErr) => {
-                if (updateErr) {
-                    return res.status(500).json({ message: updateErr.message });
-                }
-                res.json({ avatarUrl });
-            });
-        });
-    }
-});
-
 app.put('/api/clients/:id', async (req, res) => {
-    const engine = getCurrentDbEngine();
+    const mongoDb = ensureMongoDb(res);
+    if (!mongoDb) return;
     const clientId = req.params.id;
-    const { name, alias, rut, email, phone, address, contract, notificationsEnabled, latitude, longitude } = req.body;
+    const { name, alias, rut, email, phone, address, contract, notificationsEnabled } = req.body;
 
-    if (engine === 'mongodb') {
-        try {
-            const mongoDb = getMongoDb();
-            if (!mongoDb) return res.status(503).json({ message: 'MongoDB no está conectado.' });
+    try {
+        const { getMongoFilter } = require('./lib/clientFilters');
+        const filter = getMongoFilter(clientId);
+        const existing = await mongoDb.collection('clients').findOne(filter);
+        if (!existing) return res.status(404).json({ message: 'Client not found.' });
 
-            const { ObjectId } = require('mongodb');
-            const filter = !Number.isNaN(Number(clientId)) ? { id: Number(clientId) } : (ObjectId.isValid(clientId) ? { _id: new ObjectId(clientId) } : { id: clientId });
+        const updates = {
+            name: name ?? existing.name,
+            alias: alias ?? existing.alias,
+            rut: rut ?? existing.rut,
+            email: email ?? existing.email,
+            phone: phone ?? existing.phone,
+            address: address ?? existing.address,
+            latitude: req.body.latitude ?? existing.latitude,
+            longitude: req.body.longitude ?? existing.longitude,
+            contract: contract ?? existing.contract,
+            notificationsEnabled: notificationsEnabled ?? existing.notificationsEnabled,
+            recurringAmount: req.body.recurringAmount ?? existing.recurringAmount,
+            recurringCurrency: req.body.recurringCurrency ?? existing.recurringCurrency,
+            recurringPaymentEnabled: req.body.recurringPaymentEnabled ?? existing.recurringPaymentEnabled,
+            updatedAt: new Date()
+        };
 
-            const existing = await mongoDb.collection('clients').findOne(filter);
-            if (!existing) return res.status(404).json({ message: 'Client not found.' });
+        await mongoDb.collection('clients').updateOne(filter, { $set: updates });
+        const updated = await mongoDb.collection('clients').findOne(filter);
+        if (!updated) return res.status(404).json({ message: 'Error recuperando cliente actualizado.' });
 
-            if (email && email !== existing.email) {
-                const dup = await mongoDb.collection('clients').findOne({ email, id: { $ne: existing.id } });
-                if (dup) return res.status(409).json({ message: `Client with email '${email}' already exists.` });
-            }
-
-            const updates = {
-                name: name ?? existing.name,
-                alias: alias ?? existing.alias,
-                rut: rut ?? existing.rut,
-                email: email ?? existing.email,
-                phone: phone ?? existing.phone,
-                address: address ?? existing.address,
-                latitude: latitude ?? existing.latitude,
-                longitude: longitude ?? existing.longitude,
-                contract: contract !== undefined ? !!contract : !!existing.contract,
-                notificationsEnabled: notificationsEnabled !== undefined ? !!notificationsEnabled : (existing.notificationsEnabled ?? existing.notifications_enabled ?? false),
-                updatedAt: new Date()
-            };
-
-            await mongoDb.collection('clients').updateOne(filter, { $set: updates });
-            const updated = await mongoDb.collection('clients').findOne(filter);
-
-            await logEvent({
-                user: req.user ? req.user.email : 'system',
-                action: 'update',
-                resource: 'client',
-                details: { clientId: updated.id, name: updated.name },
-                ip: req.ip
-            });
-
-            res.json(mapClientRow(updated));
-        } catch (error) {
-            console.error('Error updating client (mongo):', error);
-            res.status(500).json({ message: error.message });
-        }
-    } else {
-        db.get('SELECT * FROM clients WHERE id = ?', [clientId], (getErr, existing) => {
-            if (getErr) return res.status(500).json({ message: getErr.message });
-            if (!existing) return res.status(404).json({ message: 'Client not found.' });
-
-            const nextName = name ?? existing.name;
-            if (!nextName) return res.status(400).json({ message: 'Name is required.' });
-
-            const nextEmail = email ?? existing.email ?? null;
-            const proceedUpdate = () => {
-                const contractValue = contract === undefined ? existing.contract : contract ? 1 : 0;
-                const notificationsValue = notificationsEnabled === undefined ? existing.notifications_enabled : (notificationsEnabled ? 1 : 0);
-                const payload = {
-                    name: nextName,
-                    alias: alias ?? existing.alias,
-                    rut: rut ?? existing.rut,
-                    email: nextEmail,
-                    phone: phone ?? existing.phone,
-                    address: address ?? existing.address,
-                    latitude: latitude ?? existing.latitude,
-                    longitude: longitude ?? existing.longitude,
-                    contract: contractValue,
-                    notifications_enabled: notificationsValue,
-                };
-
-                db.run(
-                    'UPDATE clients SET name = ?, alias = ?, rut = ?, email = ?, phone = ?, address = ?, latitude = ?, longitude = ?, contract = ?, notifications_enabled = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?',
-                    [payload.name, payload.alias, payload.rut, payload.email, payload.phone, payload.address, payload.latitude, payload.longitude, payload.contract, payload.notifications_enabled, clientId],
-                    function (err) {
-                        if (err) return res.status(500).json({ message: err.message });
-                        db.get('SELECT * FROM clients WHERE id = ?', [clientId], async (selectErr, row) => {
-                            if (selectErr) return res.status(500).json({ message: selectErr.message });
-                            await logEvent({
-                                user: req.user ? req.user.email : 'system',
-                                action: 'update',
-                                resource: 'client',
-                                details: { clientId: row.id, name: row.name },
-                                ip: req.ip
-                            });
-                            res.json(mapClientRow(row));
-                        });
-                    }
-                );
-            };
-
-            if (nextEmail) {
-                db.get('SELECT id FROM clients WHERE email = ? AND id != ?', [nextEmail, clientId], (dupErr, dupRow) => {
-                    if (dupErr) return res.status(500).json({ message: dupErr.message });
-                    if (dupRow) return res.status(409).json({ message: `Client with email '${nextEmail}' already exists.` });
-                    proceedUpdate();
-                });
-            } else {
-                proceedUpdate();
-            }
+        await logEvent({
+            user: req.user ? req.user.email : 'system',
+            action: 'update',
+            resource: 'client',
+            details: { clientId: getId(updated), name: updated.name },
+            ip: req.ip
         });
+        res.json(mapClientRow(updated));
+    } catch (err) {
+        console.error('Update client error:', err);
+        res.status(500).json({ message: err.message });
     }
 });
 
 app.delete('/api/clients/:id', async (req, res) => {
-    const engine = getCurrentDbEngine();
+    const mongoDb = ensureMongoDb(res);
+    if (!mongoDb) return;
     const clientId = req.params.id;
 
-    if (engine === 'mongodb') {
-        try {
-            const mongoDb = getMongoDb();
-            if (!mongoDb) return res.status(503).json({ message: 'MongoDB no está conectado.' });
-
-            const { ObjectId } = require('mongodb');
-            const filter = !Number.isNaN(Number(clientId)) ? { id: Number(clientId) } : (ObjectId.isValid(clientId) ? { _id: new ObjectId(clientId) } : { id: clientId });
-
-            const result = await mongoDb.collection('clients').deleteOne(filter);
-            if (result.deletedCount === 0) return res.status(404).json({ message: 'Client not found.' });
-
-            await logEvent({
-                user: req.user ? req.user.email : 'system',
-                action: 'delete',
-                resource: 'client',
-                details: { clientId },
-                status: 'success',
-                ip: req.ip
-            });
-
-            res.json({ message: 'Client deleted successfully.' });
-        } catch (error) {
-            console.error('Error deleting client (mongo):', error);
-            res.status(500).json({ message: error.message });
-        }
-    } else {
-        db.run('DELETE FROM clients WHERE id = ?', [clientId], async function (err) {
-            if (err) return res.status(500).json({ message: err.message });
-            if (this.changes === 0) return res.status(404).json({ message: 'Client not found.' });
-
-            await logEvent({
-                user: req.user ? req.user.email : 'system',
-                action: 'delete',
-                resource: 'client',
-                details: { clientId },
-                ip: req.ip
-            });
-
-            res.json({ message: 'Client deleted successfully.' });
-        });
-    }
-});
-
-app.post('/api/clients/import', (req, res) => {
-    const payload = Array.isArray(req.body) ? req.body : req.body?.clients;
-    if (!Array.isArray(payload)) {
-        return res.status(400).json({ message: 'Payload must be an array of clients.' });
-    }
-    let imported = 0;
-    let failed = 0;
-    const errors = [];
-    const insertClient = (client) =>
-        new Promise((resolve) => {
-            const contractValue = client.contract === true ? 1 : 0;
-            const notificationsValue = client.notificationsEnabled === true ? 1 : 0;
-            db.run(
-                'INSERT INTO clients (name, alias, rut, email, phone, address, contract, notifications_enabled) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-                [client.name, client.alias, client.rut, client.email, client.phone, client.address, contractValue, notificationsValue],
-                (err) => {
-                    if (err) {
-                        failed += 1;
-                        errors.push({ email: client.email, message: err.message });
-                    } else {
-                        imported += 1;
-                    }
-                    resolve();
-                }
-            );
-        });
-    Promise.all(payload.map(insertClient)).then(() => {
-        res.json({ message: 'Client import completed', stats: { total: payload.length, imported, failed, errors } });
-    });
-});
-
-// Repository and payments
-const mapRepositoryRow = (row) => ({
-    id: String(row.id),
-    clientId: String(row.client_id),
-    name: row.name || row.equipo || "",
-    type: row.type || row.usuario || "",
-    category: row.category || "Documento",
-    format: row.format || row.mac_serie || "",
-    credential: row.credential || row.password || "",
-    notes: row.notes || row.comentarios || "",
-    content: row.content || "",
-    fileName: row.file_name || "",
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
-});
-
-app.get('/api/clients/:id/repository', async (req, res) => {
-    const engine = getCurrentDbEngine();
-    const clientId = req.params.id;
-
-    if (engine === 'mongodb') {
-        try {
-            const mongoDb = getMongoDb();
-            if (!mongoDb) return res.status(503).json({ message: 'MongoDB no está conectado.' });            const clientDoc = await mongoDb.collection('clients').findOne(getMongoFilter(clientId));
-            const repositoryFilter = buildClientReferenceFilter(clientId, clientDoc);
-            const items = await mongoDb.collection('repository')
-                .find(repositoryFilter)
-                .toArray();
-
-            res.json(items.map(mapRepositoryRow));
-        } catch (error) {
-            console.error('Error fetching repository (mongo):', error);
-            res.status(500).json({ message: error.message, stack: error.stack });
-        }
-    } else {
-        db.all('SELECT * FROM repository WHERE client_id = ?', [clientId], (err, rows) => {
-            if (err) return res.status(500).json({ message: err.message });
-            res.json((rows || []).map(mapRepositoryRow));
-        });
-    }
-});
-
-app.post('/api/clients/:id/repository', async (req, res) => {
-    const engine = getCurrentDbEngine();
-    const clientId = req.params.id;
-    const finalId = !Number.isNaN(Number(clientId)) ? Number(clientId) : clientId;
-
-    const {
-        name,
-        type,
-        category = 'Documento',
-        format,
-        credential,
-        notes,
-        content,
-        fileName,
-    } = req.body;
-
-    if (!name || !type) {
-        return res.status(400).json({ message: 'name y type son obligatorios' });
-    }
-
-    if (engine === 'mongodb') {
-        try {
-            const mongoDb = getMongoDb();
-            if (!mongoDb) return res.status(503).json({ message: 'MongoDB no está conectado.' });
-
-            const newItem = {
-                client_id: finalId,
-                name,
-                type,
-                category,
-                format: format || "",
-                credential: credential || "",
-                notes: notes || "",
-                content: content || "",
-                file_name: fileName || "",
-                createdAt: new Date(),
-                updatedAt: new Date()
-            };
-
-            const result = await mongoDb.collection('repository').insertOne(newItem);
-            res.status(201).json(mapRepositoryRow({ ...newItem, _id: result.insertedId }));
-        } catch (error) {
-            res.status(500).json({ message: error.message });
-        }
-    } else {
-        db.run(
-            `INSERT INTO repository (client_id, name, type, category, format, credential, notes, content, file_name)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [
-                finalId,
-                name,
-                type,
-                category,
-                format || "",
-                credential || "",
-                notes || "",
-                content || "",
-                fileName || "",
-            ],
-            function (err) {
-                if (err) return res.status(500).json({ message: err.message });
-                db.get('SELECT * FROM repository WHERE id = ?', [this.lastID], (selectErr, row) => {
-                    if (selectErr) return res.status(500).json({ message: selectErr.message });
-                    res.status(201).json(mapRepositoryRow(row));
-                });
-            }
-        );
-    }
-});
-
-app.put('/api/repository/:id', async (req, res) => {
-    const engine = getCurrentDbEngine();
-    const id = req.params.id;
-
-    if (engine === 'mongodb') {
-        try {
-            const mongoDb = getMongoDb();
-            if (!mongoDb) return res.status(503).json({ message: 'MongoDB no está conectado.' });
-
-            const { ObjectId } = require('mongodb');
-            const filter = ObjectId.isValid(id) ? { _id: new ObjectId(id) } : { id };
-
-            const existing = await mongoDb.collection('repository').findOne(filter);
-            if (!existing) return res.status(404).json({ message: 'Entry no encontrada' });
-
-            const {
-                name,
-                type,
-                category,
-                format,
-                credential,
-                notes,
-                content,
-                fileName,
-            } = req.body;
-
-            const updates = {
-                name: name ?? existing.name,
-                type: type ?? existing.type,
-                category: category ?? existing.category,
-                format: format ?? existing.format,
-                credential: credential ?? existing.credential,
-                notes: notes ?? existing.notes,
-                content: content ?? existing.content,
-                file_name: fileName ?? existing.file_name,
-                updatedAt: new Date()
-            };
-
-            await mongoDb.collection('repository').updateOne(filter, { $set: updates });
-            const updated = await mongoDb.collection('repository').findOne(filter);
-
-            res.json(mapRepositoryRow(updated));
-        } catch (error) {
-            res.status(500).json({ message: error.message });
-        }
-    } else {
-        db.get('SELECT * FROM repository WHERE id = ?', [req.params.id], (err, existing) => {
-            if (err) return res.status(500).json({ message: err.message });
-            if (!existing) return res.status(404).json({ message: 'Entry no encontrada' });
-            const {
-                name,
-                type,
-                category,
-                format,
-                credential,
-                notes,
-                content,
-                fileName,
-            } = req.body;
-            const updates = {
-                name: name ?? existing.name,
-                type: type ?? existing.type,
-                category: category ?? existing.category,
-                format: format ?? existing.format,
-                credential: credential ?? existing.credential,
-                notes: notes ?? existing.notes,
-                content: content ?? existing.content,
-                file_name: fileName ?? existing.file_name,
-            };
-            db.run(
-                `UPDATE repository
-           SET name = ?, type = ?, category = ?, format = ?, credential = ?, notes = ?, content = ?, file_name = ?, updatedAt = CURRENT_TIMESTAMP
-           WHERE id = ?`,
-                [
-                    updates.name,
-                    updates.type,
-                    updates.category,
-                    updates.format,
-                    updates.credential,
-                    updates.notes,
-                    updates.content,
-                    updates.file_name,
-                    req.params.id,
-                ],
-                function (updateErr) {
-                    if (updateErr) return res.status(500).json({ message: updateErr.message });
-                    db.get('SELECT * FROM repository WHERE id = ?', [req.params.id], (selectErr, row) => {
-                        if (selectErr) return res.status(500).json({ message: selectErr.message });
-                        res.json(mapRepositoryRow(row));
-                    });
-                }
-            );
-        });
-    }
-});
-
-app.delete('/api/repository/:id', async (req, res) => {
-    const engine = getCurrentDbEngine();
-    const id = req.params.id;
-
-    if (engine === 'mongodb') {
-        try {
-            const mongoDb = getMongoDb();
-            if (!mongoDb) return res.status(503).json({ message: 'MongoDB no está conectado.' });
-
-            const { ObjectId } = require('mongodb');
-            const filter = ObjectId.isValid(id) ? { _id: new ObjectId(id) } : { id };
-
-            const result = await mongoDb.collection('repository').deleteOne(filter);
-            if (result.deletedCount === 0) {
-                return res.status(404).json({ message: 'Entry no encontrada' });
-            }
-            res.json({ message: 'Entry eliminado' });
-        } catch (error) {
-            res.status(500).json({ message: error.message });
-        }
-    } else {
-        db.run('DELETE FROM repository WHERE id = ?', [req.params.id], function (err) {
-            if (err) return res.status(500).json({ message: err.message });
-            if (this.changes === 0) {
-                return res.status(404).json({ message: 'Entry no encontrada' });
-            }
-            res.json({ message: 'Entry eliminado' });
-        });
-    }
-});
-
-
-
-// Payments routes
-app.get('/api/payments', async (req, res) => {
-    const engine = getCurrentDbEngine();
-
-    if (engine === 'mongodb') {
-        try {
-            const mongoDb = getMongoDb();
-            if (!mongoDb) return res.status(503).json({ message: 'MongoDB no está conectado.' });
-
-            const payments = await mongoDb.collection('payments')
-                .find()
-                .sort({ createdAt: -1 })
-                .toArray();
-
-            res.json(payments.map(mapPaymentRow));
-        } catch (error) {
-            res.status(500).json({ message: error.message });
-        }
-    } else {
-        db.all('SELECT * FROM payments ORDER BY createdAt DESC', [], (err, rows) => {
-            if (err) return res.status(500).json({ message: err.message });
-            res.json((rows || []).map(mapPaymentRow));
-        });
-    }
-});
-
-app.post('/api/payments', async (req, res) => {
-    const engine = getCurrentDbEngine();
-    const {
-        invoice,
-        client,
-        clientId,
-        amount,
-        status = 'Pendiente',
-        ticketId,
-        ticketTitle,
-        method,
-        note,
-        concept,
-        currency = 'UYU',
-        createdAt = new Date().toISOString(),
-        invoiceEnabled = false,
-    } = req.body;
-    const numericAmount = Number(amount);
-    if (!client || Number.isNaN(numericAmount)) {
-        return res.status(400).json({ message: 'client and amount are required' });
-    }
-    const requiresInvoice = Boolean(invoiceEnabled) || ['Emitir Factura', 'Pagado Facturado'].includes(status);
-    if (requiresInvoice && !invoice) {
-        return res.status(400).json({ message: 'invoice is required when invoice mode is enabled' });
-    }
-    if (!(numericAmount > 0)) {
-        return res.status(400).json({ message: 'amount must be greater than zero' });
-    }
-    const id = `PAY-${uuid().slice(0, 6).toUpperCase()}`;
-
-    if (engine === 'mongodb') {
-        try {
-            const mongoDb = getMongoDb();
-            if (!mongoDb) return res.status(503).json({ message: 'MongoDB no está conectado.' });
-
-            const newPayment = {
-                id,
-                invoice,
-                ticketId: ticketId || null,
-                ticketTitle: ticketTitle || null,
-                client,
-                clientId: clientId || null,
-                amount: numericAmount,
-                status,
-                method: method || 'Transferencia',
-                note: note || null,
-                concept: concept || null,
-                currency,
-                createdAt
-            };
-
-            await mongoDb.collection('payments').insertOne(newPayment);
-            const savedPayment = mapPaymentRow(newPayment);
-            await finalizePaymentCreation(savedPayment, req, res);
-        } catch (error) {
-            res.status(500).json({ message: error.message });
-        }
-    } else {
-        db.run(
-            `INSERT INTO payments (id, invoice, ticket_id, ticket_title, client, client_id, amount, status, method, note, concept, currency, createdAt)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [
-                id,
-                invoice,
-                ticketId || null,
-                ticketTitle || null,
-                client,
-                clientId || null,
-                numericAmount,
-                status,
-                method || 'Transferencia',
-                note || null,
-                concept || null,
-                currency,
-                createdAt,
-            ],
-            (err) => {
-                if (err) return res.status(500).json({ message: err.message });
-                db.get('SELECT * FROM payments WHERE id = ?', [id], async (selectErr, row) => {
-                    if (selectErr) return res.status(500).json({ message: selectErr.message });
-                    const savedPayment = mapPaymentRow(row);
-                    await finalizePaymentCreation(savedPayment, req, res);
-                });
-            }
-        );
-    }
-});
-
-async function finalizePaymentCreation(savedPayment, req, res) {
-    await upsertCalendarEvent({
-        title: `Pago ${savedPayment.invoice} - ${savedPayment.client}`.trim(),
-        start: savedPayment.createdAt || new Date().toISOString(),
-        end: savedPayment.createdAt || null,
-        location: savedPayment.ticketTitle ? `Ticket: ${savedPayment.ticketTitle}` : null,
-        sourceType: 'payment',
-        sourceId: savedPayment.id,
-        locked: true,
-    }).catch((calendarErr) => {
-        console.error('No se pudo crear el evento de calendario para el pago:', calendarErr?.message || calendarErr);
-    });
-
-    sendAutoNotification(
-        'payment_received',
-        `Nuevo pago ${savedPayment.invoice} de ${savedPayment.client} por ${savedPayment.amount} ${savedPayment.currency}`,
-        savedPayment,
-        []
-    ).catch(err => console.error('Error en notificación:', err));
-
-    if (getCurrentDbEngine() === 'sqlite') {
-        syncPaymentToMongo(savedPayment);
-    }
-
-    await logEvent({
-        user: req.user ? req.user.email : 'system',
-        action: 'create',
-        resource: 'payment',
-        details: { paymentId: savedPayment.id, invoice: savedPayment.invoice, amount: savedPayment.amount },
-        ip: req.ip
-    });
-
-    res.status(201).json(savedPayment);
-}
-
-app.put('/api/payments/:id', async (req, res) => {
-    const engine = getCurrentDbEngine();
-    const id = req.params.id;
-
-    if (engine === 'mongodb') {
-        try {
-            const mongoDb = getMongoDb();
-            if (!mongoDb) return res.status(503).json({ message: 'MongoDB no está conectado.' });
-
-            const existing = await mongoDb.collection('payments').findOne({ id });
-            if (!existing) return res.status(404).json({ message: 'Payment not found' });
-
-            const updates = {
-                invoice: req.body.invoice ?? existing.invoice,
-                ticketId: req.body.ticketId ?? existing.ticketId,
-                ticketTitle: req.body.ticketTitle ?? existing.ticketTitle,
-                client: req.body.client ?? existing.client,
-                clientId: req.body.clientId ?? existing.clientId,
-                amount: req.body.amount !== undefined ? Number(req.body.amount) : existing.amount,
-                status: req.body.status ?? existing.status,
-                method: req.body.method ?? existing.method,
-                note: req.body.note ?? existing.note,
-                concept: req.body.concept ?? existing.concept,
-                currency: req.body.currency ?? existing.currency,
-                updatedAt: new Date()
-            };
-
-            await mongoDb.collection('payments').updateOne({ id }, { $set: updates });
-            const updated = await mongoDb.collection('payments').findOne({ id });
-
-            await logEvent({
-                user: req.user ? req.user.email : 'system',
-                action: 'update',
-                resource: 'payment',
-                details: { paymentId: id, invoice: updated.invoice, status: updated.status },
-                ip: req.ip
-            });
-
-            res.json(mapPaymentRow(updated));
-        } catch (error) {
-            res.status(500).json({ message: error.message });
-        }
-    } else {
-        db.get('SELECT * FROM payments WHERE id = ?', [req.params.id], (err, existing) => {
-            if (err) return res.status(500).json({ message: err.message });
-            if (!existing) return res.status(404).json({ message: 'Payment not found' });
-            const payload = {
-                invoice: req.body.invoice ?? existing.invoice,
-                ticket_id: req.body.ticketId ?? req.body.ticket_id ?? existing.ticket_id,
-                ticket_title: req.body.ticketTitle ?? req.body.ticket_title ?? existing.ticket_title,
-                client: req.body.client ?? existing.client,
-                client_id: req.body.clientId ?? req.body.client_id ?? existing.client_id,
-                amount: req.body.amount ?? existing.amount,
-                status: req.body.status ?? existing.status,
-                method: req.body.method ?? existing.method,
-                note: req.body.note ?? existing.note,
-                concept: req.body.concept ?? existing.concept,
-                currency: req.body.currency ?? existing.currency ?? 'UYU',
-                createdAt: req.body.createdAt ?? existing.createdAt,
-            };
-            if (!(payload.amount > 0)) {
-                return res.status(400).json({ message: 'amount must be greater than zero' });
-            }
-            const newTicketStatus =
-                payload.status === 'Pagado'
-                    ? 'Pagado'
-                    : payload.status === 'Facturar'
-                        ? 'Facturar'
-                        : undefined;
-            db.run(
-                `UPDATE payments
-               SET invoice = ?, ticket_id = ?, ticket_title = ?, client = ?, client_id = ?, amount = ?, status = ?, method = ?, note = ?, concept = ?, currency = ?, createdAt = ?
-               WHERE id = ?`,
-                [
-                    payload.invoice,
-                    payload.ticket_id,
-                    payload.ticket_title,
-                    payload.client,
-                    payload.client_id,
-                    payload.amount,
-                    payload.status,
-                    payload.method,
-                    payload.note,
-                    payload.concept,
-                    payload.currency,
-                    payload.createdAt,
-                    req.params.id,
-                ],
-                function (updateErr) {
-                    if (updateErr) return res.status(500).json({ message: updateErr.message });
-                    if (newTicketStatus && payload.ticket_id) {
-                        updateTicketStatus(payload.ticket_id, newTicketStatus);
-                    }
-                    db.get('SELECT * FROM payments WHERE id = ?', [req.params.id], async (selectErr, row) => {
-                        if (selectErr) return res.status(500).json({ message: selectErr.message });
-                        const updatedPayment = mapPaymentRow(row);
-
-                        await logEvent({
-                            user: req.user ? req.user.email : 'system',
-                            action: 'update',
-                            resource: 'payment',
-                            details: { paymentId: updatedPayment.id, invoice: updatedPayment.invoice, status: updatedPayment.status },
-                            ip: req.ip
-                        });
-
-                        res.json(updatedPayment);
-                    });
-                }
-            );
-        });
-    }
-});
-
-app.delete('/api/payments/:id', async (req, res) => {
-    const engine = getCurrentDbEngine();
-    const id = req.params.id;
-
-    if (engine === 'mongodb') {
-        try {
-            const mongoDb = getMongoDb();
-            if (!mongoDb) return res.status(503).json({ message: 'MongoDB no está conectado.' });
-
-            const result = await mongoDb.collection('payments').deleteOne({ id });
-            if (result.deletedCount === 0) return res.status(404).json({ message: 'Payment not found' });
-
-            await logEvent({
-                user: req.user ? req.user.email : 'system',
-                action: 'delete',
-                resource: 'payment',
-                details: { paymentId: id },
-                ip: req.ip
-            });
-
-            res.json({ message: 'Payment deleted' });
-        } catch (error) {
-            res.status(500).json({ message: error.message });
-        }
-    } else {
-        db.run('DELETE FROM payments WHERE id = ?', [req.params.id], async function (err) {
-            if (err) return res.status(500).json({ message: err.message });
-            if (this.changes === 0) return res.status(404).json({ message: 'Payment not found' });
-
-            await logEvent({
-                user: req.user ? req.user.email : 'system',
-                action: 'delete',
-                resource: 'payment',
-                details: { paymentId: req.params.id },
-                ip: req.ip
-            });
-
-            res.json({ message: 'Payment deleted' });
-        });
-    }
-});
-
-app.get('/api/contracts', async (req, res) => {
-    const engine = getCurrentDbEngine();
-
-    if (engine === 'mongodb') {
-        try {
-            const mongoDb = getMongoDb();
-            if (!mongoDb) return res.status(503).json({ message: 'MongoDB no está conectado.' });
-
-            const contracts = await mongoDb.collection('contracts')
-                .find()
-                .sort({ createdAt: -1 })
-                .toArray();
-
-            res.json(contracts.map(c => ({
-                ...c,
-                id: c.id || c._id.toString()
-            })));
-        } catch (error) {
-            res.status(500).json({ message: error.message });
-        }
-    } else {
-        db.all(`${CONTRACT_SELECT_BASE} ORDER BY contracts.createdAt DESC`, [], (err, rows) => {
-            if (err) return res.status(500).json({ message: err.message });
-            res.json(rows.map(mapContractRow));
-        });
-    }
-});
-
-// Consolidated with earlier definition at line 1772
-// app.get('/api/clients/:id/contracts', ...);
-
-app.post('/api/contracts', async (req, res) => {
-    const {
-        clientId,
-        title,
-        description,
-        startDate,
-        endDate,
-        status,
-        sla,
-        contractType,
-        amount,
-        currency = 'ARS',
-    } = req.body;
-
-    const finalClientId = !Number.isNaN(Number(clientId)) ? Number(clientId) : clientId;
-    if (!finalClientId || !title) {
-        return res.status(400).json({ message: 'clientId and title are required.' });
-    }
-
-    const engine = getCurrentDbEngine();
-
-    if (engine === 'mongodb') {
-        try {
-            const mongoDb = getMongoDb();
-            if (!mongoDb) return res.status(503).json({ message: 'MongoDB no está conectado.' });
-
-            const { getNextId } = require('./lib/mongoClient');
-            const contractId = await getNextId('contracts');
-
-            const newContract = {
-                id: contractId,
-                clientId: finalClientId,
-                title,
-                contractName: title,
-                description: description || '',
-                startDate: startDate || null,
-                endDate: endDate || null,
-                status: status || 'Pendiente',
-                sla: sla || null,
-                contractType: contractType || null,
-                amount: amount ?? null,
-                currency: currency || 'ARS',
-                filePath: '',
-                createdAt: new Date(),
-                updatedAt: new Date()
-            };
-
-            await mongoDb.collection('contracts').insertOne(newContract);
-
-            // Sync with calendar
-            await upsertCalendarEvent({
-                title: `Contrato: ${newContract.title}`.trim(),
-                start: newContract.startDate || newContract.createdAt || new Date().toISOString(),
-                end: newContract.endDate || null,
-                location: `Cliente ID: ${finalClientId}`, // We could fetch client name if needed
-                sourceType: 'contract',
-                sourceId: newContract.id,
-                locked: true,
-            }).catch((calendarErr) => {
-                console.error('No se pudo crear el evento de calendario para el contrato:', calendarErr?.message || calendarErr);
-            });
-
-            // Send notification
-            if (status === 'Firmado' || status === 'Activo') {
-                sendAutoNotification(
-                    'contract_signed',
-                    `Contrato firmado: ${newContract.title}`,
-                    newContract,
-                    []
-                ).catch(err => console.error('Error en notificación:', err));
-            }
-
-            await logEvent({
-                user: req.user ? req.user.email : 'system',
-                action: 'create',
-                resource: 'contract',
-                details: { contractId: newContract.id, title: newContract.title, clientId: finalClientId },
-                ip: req.ip
-            });
-
-            res.status(201).json(newContract);
-        } catch (error) {
-            res.status(500).json({ message: error.message });
-        }
-    } else {
-        const numericClientId = Number(clientId);
-        db.run(
-            `INSERT INTO contracts (client_id, contract_name, file_path, currency, title, description, startDate, endDate, status, sla, contractType, amount)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [
-                numericClientId,
-                title,
-                '',
-                currency || 'ARS',
-                title,
-                description || null,
-                startDate || null,
-                endDate || null,
-                status || null,
-                sla || null,
-                contractType || null,
-                amount ?? null,
-            ],
-            function (err) {
-                if (err) return res.status(500).json({ message: err.message });
-                const contractId = this.lastID;
-                db.get(`${CONTRACT_SELECT_BASE} WHERE contracts.id = ?`, [contractId], async (selectErr, row) => {
-                    if (selectErr) return res.status(500).json({ message: selectErr.message });
-                    const newContract = mapContractRow(row);
-
-                    await upsertCalendarEvent({
-                        title: `Contrato: ${newContract.title}`.trim(),
-                        start: newContract.startDate || newContract.createdAt || new Date().toISOString(),
-                        end: newContract.endDate || null,
-                        location: newContract.clientName ? `Cliente: ${newContract.clientName}` : null,
-                        sourceType: 'contract',
-                        sourceId: newContract.id,
-                        locked: true,
-                    }).catch((calendarErr) => {
-                        console.error('No se pudo crear el evento de calendario para el contrato:', calendarErr?.message || calendarErr);
-                    });
-
-                    if (status === 'Firmado' || status === 'Activo') {
-                        sendAutoNotification(
-                            'contract_signed',
-                            `Contrato firmado: ${newContract.title} - Cliente: ${newContract.clientName}`,
-                            newContract,
-                            []
-                        ).catch(err => console.error('Error en notificación:', err));
-                    }
-
-                    await logEvent({
-                        user: req.user ? req.user.email : 'system',
-                        action: 'create',
-                        resource: 'contract',
-                        details: { contractId: newContract.id, title: newContract.title, clientId: newContract.clientId },
-                        ip: req.ip
-                    });
-
-                    res.status(201).json(newContract);
-                });
-            }
-        );
-    }
-});
-
-app.put('/api/contracts/:id', async (req, res) => {
-    const engine = getCurrentDbEngine();
-    const contractId = req.params.id;
-
-    if (engine === 'mongodb') {
-        try {
-            const mongoDb = getMongoDb();
-            if (!mongoDb) return res.status(503).json({ message: 'MongoDB no está conectado.' });
-
-            const filter = !Number.isNaN(Number(contractId)) ? { id: Number(contractId) } : { _id: contractId };
-            const existing = await mongoDb.collection('contracts').findOne(filter);
-            if (!existing) return res.status(404).json({ message: 'Contract not found' });
-
-            const updates = {
-                contractName: req.body.title ?? existing.contractName ?? existing.title,
-                title: req.body.title ?? existing.title,
-                description: req.body.description ?? existing.description,
-                startDate: req.body.startDate ?? existing.startDate,
-                endDate: req.body.endDate ?? existing.endDate,
-                status: req.body.status ?? existing.status,
-                sla: req.body.sla ?? existing.sla,
-                contractType: req.body.contractType ?? existing.contractType,
-                amount: req.body.amount ?? existing.amount,
-                currency: req.body.currency ?? existing.currency ?? 'ARS',
-                updatedAt: new Date()
-            };
-
-            await mongoDb.collection('contracts').updateOne(filter, { $set: updates });
-            const updated = await mongoDb.collection('contracts').findOne(filter);
-
-            await logEvent({
-                user: req.user ? req.user.email : 'system',
-                action: 'update',
-                resource: 'contract',
-                details: { contractId: updated.id, title: updated.title },
-                ip: req.ip
-            });
-
-            res.json(mapContractRow(updated));
-        } catch (error) {
-            res.status(500).json({ message: error.message });
-        }
-    } else {
-        db.get('SELECT * FROM contracts WHERE id = ?', [contractId], (err, existing) => {
-            if (err) return res.status(500).json({ message: err.message });
-            if (!existing) return res.status(404).json({ message: 'Contract not found' });
-            const payload = {
-                contractName: req.body.title ?? existing.contract_name ?? existing.title,
-                title: req.body.title ?? existing.title,
-                description: req.body.description ?? existing.description,
-                startDate: req.body.startDate ?? existing.startDate,
-                endDate: req.body.endDate ?? existing.endDate,
-                status: req.body.status ?? existing.status,
-                sla: req.body.sla ?? existing.sla,
-                contractType: req.body.contractType ?? existing.contractType,
-                amount: req.body.amount ?? existing.amount,
-                currency: req.body.currency ?? existing.currency ?? 'ARS',
-            };
-            db.run(
-                `UPDATE contracts
-           SET contract_name = ?, title = ?, description = ?, startDate = ?, endDate = ?, status = ?, sla = ?, contractType = ?, amount = ?, currency = ?, updatedAt = CURRENT_TIMESTAMP
-           WHERE id = ?`,
-                [
-                    payload.contractName,
-                    payload.title,
-                    payload.description,
-                    payload.startDate,
-                    payload.endDate,
-                    payload.status,
-                    payload.sla,
-                    payload.contractType,
-                    payload.amount,
-                    payload.currency,
-                    contractId,
-                ],
-                function (updateErr) {
-                    if (updateErr) return res.status(500).json({ message: updateErr.message });
-                    db.get(`${CONTRACT_SELECT_BASE} WHERE contracts.id = ?`, [contractId], async (selectErr, row) => {
-                        if (selectErr) return res.status(500).json({ message: selectErr.message });
-
-                        await logEvent({
-                            user: req.user ? req.user.email : 'system',
-                            action: 'update',
-                            resource: 'contract',
-                            details: { contractId: row.id, title: row.title },
-                            ip: req.ip
-                        });
-
-                        res.json(mapContractRow(row));
-                    });
-                }
-            );
-        });
-    }
-});
-
-app.delete('/api/contracts/:id', async (req, res) => {
-    const engine = getCurrentDbEngine();
-    const contractId = req.params.id;
-
-    if (engine === 'mongodb') {
-        try {
-            const mongoDb = getMongoDb();
-            if (!mongoDb) return res.status(503).json({ message: 'MongoDB no está conectado.' });
-
-            const filter = !Number.isNaN(Number(contractId)) ? { id: Number(contractId) } : { _id: contractId };
-            const existing = await mongoDb.collection('contracts').findOne(filter);
-            if (!existing) return res.status(404).json({ message: 'Contract not found.' });
-
-            if (existing.filePath) {
-                const absolutePath = path.resolve(__dirname, existing.filePath.replace(/^\//, ''));
-                fs.unlink(absolutePath, () => { });
-            }
-
-            await mongoDb.collection('contracts').deleteOne(filter);
-
-            await logEvent({
-                user: req.user ? req.user.email : 'system',
-                action: 'delete',
-                resource: 'contract',
-                details: { contractId: contractId },
-                ip: req.ip
-            });
-
-            res.json({ message: 'Contract deleted successfully.' });
-        } catch (error) {
-            res.status(500).json({ message: error.message });
-        }
-    } else {
-        db.get('SELECT file_path FROM contracts WHERE id = ?', [contractId], (err, row) => {
-            if (err) return res.status(500).json({ message: err.message });
-            if (!row) return res.status(404).json({ message: 'Contract not found.' });
-            if (row.file_path) {
-                const absolutePath = path.resolve(__dirname, row.file_path.replace(/^\//, ''));
-                fs.unlink(absolutePath, () => { });
-            }
-            db.run('DELETE FROM contracts WHERE id = ?', [contractId], async (deleteErr) => {
-                if (deleteErr) return res.status(500).json({ message: deleteErr.message });
-
-                await logEvent({
-                    user: req.user ? req.user.email : 'system',
-                    action: 'delete',
-                    resource: 'contract',
-                    details: { contractId: contractId },
-                    ip: req.ip
-                });
-
-                res.json({ message: 'Contract deleted successfully.' });
-            });
-        });
-    }
-});
-
-app.post('/api/contracts/import', async (req, res) => {
-    const engine = getCurrentDbEngine();
-    const payload = Array.isArray(req.body) ? req.body : req.body?.contracts;
-    if (!Array.isArray(payload)) {
-        return res.status(400).json({ message: 'Payload must be an array of contracts.' });
-    }
-
-    let imported = 0;
-    let failed = 0;
-    const errors = [];
-
-    if (engine === 'mongodb') {
-        const mongoDb = getMongoDb();
-        if (!mongoDb) return res.status(503).json({ message: 'MongoDB no está conectado.' });
-
-        const { getNextId } = require('./lib/mongoClient');
-
-        for (const contract of payload) {
-            try {
-                const contractId = await getNextId('contracts');
-                const finalClientId = !Number.isNaN(Number(contract.clientId || contract.client_id))
-                    ? Number(contract.clientId || contract.client_id)
-                    : (contract.clientId || contract.client_id);
-
-                if (!finalClientId) {
-                    failed += 1;
-                    errors.push({ title: contract.title, message: 'Invalid clientId' });
-                    continue;
-                }
-
-                const newContract = {
-                    id: contractId,
-                    clientId: finalClientId,
-                    title: contract.title || '',
-                    contractName: contract.title || '',
-                    description: contract.description || '',
-                    startDate: contract.startDate || null,
-                    endDate: contract.endDate || null,
-                    status: contract.status || 'Pendiente',
-                    sla: contract.sla || null,
-                    contractType: contract.contractType || null,
-                    amount: contract.amount ?? null,
-                    currency: contract.currency || 'ARS',
-                    filePath: '',
-                    createdAt: new Date(),
-                    updatedAt: new Date()
-                };
-
-                await mongoDb.collection('contracts').insertOne(newContract);
-                imported += 1;
-            } catch (err) {
-                failed += 1;
-                errors.push({ title: contract.title, message: err.message });
-            }
-        }
-        res.json({ message: 'Contract import completed', stats: { total: payload.length, imported, failed, errors } });
-    } else {
-        const insertContract = (contract) =>
-            new Promise((resolve) => {
-                const numericClientId = Number(contract.clientId || contract.client_id);
-                if (!numericClientId) {
-                    failed += 1;
-                    errors.push({ title: contract.title, message: 'Invalid clientId' });
-                    return resolve();
-                }
-                db.run(
-                    `INSERT INTO contracts (client_id, title, description, startDate, endDate, status, sla, contractType, amount)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                    [
-                        numericClientId,
-                        contract.title,
-                        contract.description || null,
-                        contract.startDate || null,
-                        contract.endDate || null,
-                        contract.status || null,
-                        contract.sla || null,
-                        contract.contractType || null,
-                        contract.amount ?? null,
-                    ],
-                    (err) => {
-                        if (err) {
-                            failed += 1;
-                            errors.push({ title: contract.title, message: err.message });
-                        } else {
-                            imported += 1;
-                        }
-                        resolve();
-                    }
-                );
-            });
-        Promise.all(payload.map(insertContract)).then(() => {
-            res.json({ message: 'Contract import completed', stats: { total: payload.length, imported, failed, errors } });
-        });
-    }
-});
-
-app.post('/api/contracts/:id/upload', upload.single('contractFile'), async (req, res) => {
-    if (!req.file) {
-        return res.status(400).json({ message: 'File is required.' });
-    }
-    const engine = getCurrentDbEngine();
-    const contractId = req.params.id;
-    const relativePath = `/uploads/contracts/${path.basename(req.file.path)}`;
-
-    if (engine === 'mongodb') {
-        try {
-            const mongoDb = getMongoDb();
-            if (!mongoDb) return res.status(503).json({ message: 'MongoDB no está conectado.' });
-
-            const filter = !Number.isNaN(Number(contractId)) ? { id: Number(contractId) } : { _id: contractId };
-            await mongoDb.collection('contracts').updateOne(filter, {
-                $set: { filePath: relativePath, updatedAt: new Date() }
-            });
-
-            const updated = await mongoDb.collection('contracts').findOne(filter);
-            if (!updated) return res.status(404).json({ message: 'Contract not found' });
-
-            res.json(mapContractRow(updated));
-        } catch (error) {
-            res.status(500).json({ message: error.message });
-        }
-    } else {
-        db.run(
-            'UPDATE contracts SET file_path = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?',
-            [relativePath, contractId],
-            function (err) {
-                if (err) return res.status(500).json({ message: err.message });
-                if (this.changes === 0) return res.status(404).json({ message: 'Contract not found' });
-                db.get(`${CONTRACT_SELECT_BASE} WHERE contracts.id = ?`, [contractId], (selectErr, row) => {
-                    if (selectErr) return res.status(500).json({ message: selectErr.message });
-                    res.json(mapContractRow(row));
-                });
-            }
-        );
-    }
-});
-
-const mapBudgetRow = (row) => {
-    if (!row) return null;
-    return {
-        id: String(row.id || row._id || ''),
-        clientId: String(row.client_id || row.clientId || ''),
-        clientName: row.clientName || '',
-        clientPhone: row.clientPhone || '',
-        clientEmail: row.clientEmail || '',
-        title: row.title || '',
-        description: row.description || '',
-        amount: row.amount,
-        assignedTo: row.assigned_to || row.assignedTo || null,
-        assignedGroupId: row.assigned_group || row.assignedGroupId || null,
-        status: row.status || '',
-        filePath: row.file_path || row.filePath || null,
-        sections: Array.isArray(row.sections) ? row.sections : parseJsonColumn(row.sections, []),
-        createdAt: row.createdAt,
-        updatedAt: row.updatedAt,
-    };
-};
-
-const BUDGET_SELECT_BASE = `
-  SELECT
-    budgets.*,
-    clients.name as clientName,
-    clients.phone as clientPhone,
-    clients.email as clientEmail
-  FROM budgets
-  JOIN clients ON budgets.client_id = clients.id
-`;
-
-// Budget routes
-app.get('/api/budgets', async (req, res) => {
-    const engine = getCurrentDbEngine();
-
-    if (engine === 'mongodb') {
-        try {
-            const mongoDb = getMongoDb();
-            if (!mongoDb) return res.status(503).json({ message: 'MongoDB no está conectado.' });
-
-            const budgets = await mongoDb.collection('budgets')
-                .find()
-                .sort({ createdAt: -1 })
-                .toArray();
-
-            res.json(budgets.map(mapBudgetRow));
-        } catch (error) {
-            console.error('Error fetching budgets (mongo):', error);
-            res.status(500).json({ message: error.message, stack: error.stack });
-        }
-    } else {
-        db.all(`${BUDGET_SELECT_BASE} ORDER BY budgets.createdAt DESC`, [], (err, rows) => {
-            if (err) return res.status(500).json({ message: err.message });
-            res.json(rows.map(mapBudgetRow));
-        });
-    }
-});
-
-app.get('/api/budgets/:id', async (req, res) => {
-    const engine = getCurrentDbEngine();
-    const budgetId = req.params.id;
-
-    if (engine === 'mongodb') {
-        try {
-            const mongoDb = getMongoDb();
-            if (!mongoDb) return res.status(503).json({ message: 'MongoDB no está conectado.' });
-
-            const filter = !Number.isNaN(Number(budgetId)) ? { id: Number(budgetId) } : { _id: budgetId };
-            const budget = await mongoDb.collection('budgets').findOne(filter);
-            if (!budget) return res.status(404).json({ message: 'Budget not found' });
-            res.json(mapBudgetRow(budget));
-        } catch (error) {
-            res.status(500).json({ message: error.message });
-        }
-    } else {
-        db.get(`${BUDGET_SELECT_BASE} WHERE budgets.id = ?`, [budgetId], (err, row) => {
-            if (err) return res.status(500).json({ message: err.message });
-            if (!row) return res.status(404).json({ message: 'Budget not found' });
-            res.json(mapBudgetRow(row));
-        });
-    }
-});
-
-app.get('/api/clients/:id/budgets', async (req, res) => {
-    const engine = getCurrentDbEngine();
-    const clientId = req.params.id;
-
-    if (engine === 'mongodb') {
-        try {
-            const mongoDb = getMongoDb();
-            if (!mongoDb) return res.status(503).json({ message: 'MongoDB no está conectado.' });
-
-            const filter = getMongoClientFilter(clientId);
-            const budgets = await mongoDb.collection('budgets')
-                .find(filter)
-                .sort({ createdAt: -1 })
-                .toArray();
-
-            res.json(budgets.map(mapBudgetRow));
-        } catch (error) {
-            console.error('Error fetching budgets (mongo):', error);
-            res.status(500).json({ message: error.message, stack: error.stack });
-        }
-    } else {
-        db.all(`${BUDGET_SELECT_BASE} WHERE budgets.client_id = ?`, [clientId], (err, rows) => {
-            if (err) return res.status(500).json({ message: err.message });
-            res.json(rows.map(mapBudgetRow));
-        });
-    }
-});
-
-app.post('/api/budgets', async (req, res) => {
-    const {
-        clientId,
-        title,
-        description,
-        amount,
-        status,
-        sections,
-        assignedTo,
-        assignedGroupId,
-    } = req.body;
-
-    const finalClientId = !Number.isNaN(Number(clientId)) ? Number(clientId) : clientId;
-    if (!finalClientId || !title) {
-        return res.status(400).json({ message: 'clientId and title are required.' });
-    }
-
-    const engine = getCurrentDbEngine();
-
-    if (engine === 'mongodb') {
-        try {
-            const mongoDb = getMongoDb();
-            if (!mongoDb) return res.status(503).json({ message: 'MongoDB no está conectado.' });
-
-            const { getNextId } = require('./lib/mongoClient');
-            const budgetId = await getNextId('budgets');
-
-            const newBudget = {
-                id: budgetId,
-                clientId: finalClientId,
-                title,
-                description: description || '',
-                amount: amount ?? null,
-                status: status || 'Pendiente',
-                sections: Array.isArray(sections) ? sections : [],
-                assignedTo: assignedTo ?? null,
-                assignedGroupId: assignedGroupId ?? null,
-                filePath: '',
-                createdAt: new Date(),
-                updatedAt: new Date()
-            };
-
-            await mongoDb.collection('budgets').insertOne(newBudget);
-
-            // Enviar notificación automática
-            sendAutoNotification(
-                'budget_created',
-                `Nuevo presupuesto creado: ${newBudget.title} - Monto: ${newBudget.amount}`,
-                newBudget,
-                []
-            ).catch(err => console.error('Error en notificación:', err));
-
-            await logEvent({
-                user: req.user ? req.user.email : 'system',
-                action: 'create',
-                resource: 'budget',
-                details: { budgetId: newBudget.id, title: newBudget.title, clientId: finalClientId },
-                ip: req.ip
-            });
-
-            res.status(201).json(newBudget);
-        } catch (error) {
-            res.status(500).json({ message: error.message });
-        }
-    } else {
-        const numericClientId = Number(clientId);
-        db.run(
-            `INSERT INTO budgets (client_id, title, description, amount, status, sections, assigned_to, assigned_group)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [
-                numericClientId,
-                title,
-                description || null,
-                amount ?? null,
-                status || null,
-                JSON.stringify(Array.isArray(sections) ? sections : []),
-                assignedTo ?? null,
-                assignedGroupId ?? null,
-            ],
-            function (err) {
-                if (err) return res.status(500).json({ message: err.message });
-                const budgetId = this.lastID;
-                db.get(`${BUDGET_SELECT_BASE} WHERE budgets.id = ?`, [budgetId], async (selectErr, row) => {
-                    if (selectErr) return res.status(500).json({ message: selectErr.message });
-                    const newBudget = mapBudgetRow(row);
-
-                    // Enviar notificación automática
-                    sendAutoNotification(
-                        'budget_created',
-                        `Nuevo presupuesto creado: ${newBudget.title} - Cliente: ${newBudget.clientName} - Monto: ${newBudget.amount}`,
-                        newBudget,
-                        []
-                    ).catch(err => console.error('Error en notificación:', err));
-
-                    await logEvent({
-                        user: req.user ? req.user.email : 'system',
-                        action: 'create',
-                        resource: 'budget',
-                        details: { budgetId: newBudget.id, title: newBudget.title, clientId: newBudget.clientId },
-                        ip: req.ip
-                    });
-
-                    res.status(201).json(newBudget);
-                });
-            }
-        );
-    }
-});
-
-app.put('/api/budgets/:id', async (req, res) => {
-    const engine = getCurrentDbEngine();
-    const budgetId = req.params.id;
-
-    if (engine === 'mongodb') {
-        try {
-            const mongoDb = getMongoDb();
-            if (!mongoDb) return res.status(503).json({ message: 'MongoDB no está conectado.' });
-
-            const filter = !Number.isNaN(Number(budgetId)) ? { id: Number(budgetId) } : { _id: budgetId };
-            const existing = await mongoDb.collection('budgets').findOne(filter);
-            if (!existing) return res.status(404).json({ message: 'Budget not found' });
-
-            const updates = {
-                title: req.body.title ?? existing.title,
-                description: req.body.description ?? existing.description,
-                amount: req.body.amount ?? existing.amount,
-                status: req.body.status ?? existing.status,
-                clientId: req.body.clientId ?? existing.clientId,
-                sections: Array.isArray(req.body.sections) ? req.body.sections : existing.sections,
-                assignedTo: req.body.assignedTo ?? existing.assignedTo,
-                assignedGroupId: req.body.assignedGroupId ?? existing.assignedGroupId,
-                updatedAt: new Date()
-            };
-
-            await mongoDb.collection('budgets').updateOne(filter, { $set: updates });
-            const updatedBudget = await mongoDb.collection('budgets').findOne(filter);
-
-            // Enviar notificación si cambió el estado
-            if (existing.status !== updates.status) {
-                let eventId = null;
-                if (updates.status === 'Aprobado' || updates.status === 'Confirmado') {
-                    eventId = 'budget_approved';
-                } else if (updates.status === 'Rechazado' || updates.status === 'Cancelado') {
-                    eventId = 'budget_rejected';
-                }
-
-                if (eventId) {
-                    sendAutoNotification(
-                        eventId,
-                        `Presupuesto ${updates.status.toLowerCase()}: ${updatedBudget.title}`,
-                        updatedBudget,
-                        []
-                    ).catch(err => console.error('Error en notificación:', err));
-                }
-            }
-
-            await logEvent({
-                user: req.user ? req.user.email : 'system',
-                action: 'update',
-                resource: 'budget',
-                details: { budgetId: updatedBudget.id, title: updatedBudget.title, status: updatedBudget.status },
-                ip: req.ip
-            });
-
-            res.json(mapBudgetRow(updatedBudget));
-        } catch (error) {
-            res.status(500).json({ message: error.message });
-        }
-    } else {
-        db.get('SELECT * FROM budgets WHERE id = ?', [budgetId], (err, existing) => {
-            if (err) return res.status(500).json({ message: err.message });
-            if (!existing) return res.status(404).json({ message: 'Budget not found' });
-            const parsedClientId = Number(req.body.clientId ?? existing.client_id);
-            const clientId = Number.isNaN(parsedClientId) ? existing.client_id : parsedClientId;
-            const sectionsPayload = Array.isArray(req.body.sections)
-                ? JSON.stringify(req.body.sections)
-                : existing.sections;
-            const assignedTo =
-                req.body.assignedTo !== undefined ? req.body.assignedTo : existing.assigned_to;
-            const assignedGroupId =
-                req.body.assignedGroupId !== undefined ? req.body.assignedGroupId : existing.assigned_group;
-            const payload = {
-                title: req.body.title ?? existing.title,
-                description: req.body.description ?? existing.description,
-                amount: req.body.amount ?? existing.amount,
-                status: req.body.status ?? existing.status,
-                clientId,
-                sections: sectionsPayload,
-                assignedTo,
-                assignedGroupId,
-            };
-            db.run(
-                `UPDATE budgets
-           SET title = ?, description = ?, amount = ?, status = ?, client_id = ?, sections = ?, assigned_to = ?, assigned_group = ?, updatedAt = CURRENT_TIMESTAMP
-           WHERE id = ?`,
-                [
-                    payload.title,
-                    payload.description,
-                    payload.amount,
-                    payload.status,
-                    payload.clientId,
-                    payload.sections,
-                    payload.assignedTo,
-                    payload.assignedGroupId,
-                    budgetId,
-                ],
-                function (updateErr) {
-                    if (updateErr) return res.status(500).json({ message: updateErr.message });
-                    db.get(`${BUDGET_SELECT_BASE} WHERE budgets.id = ?`, [budgetId], async (selectErr, row) => {
-                        if (selectErr) return res.status(500).json({ message: selectErr.message });
-                        const updatedBudget = mapBudgetRow(row);
-
-                        if (existing.status !== payload.status) {
-                            let eventId = null;
-                            if (payload.status === 'Aprobado' || payload.status === 'Confirmado') {
-                                eventId = 'budget_approved';
-                            } else if (payload.status === 'Rechazado' || payload.status === 'Cancelado') {
-                                eventId = 'budget_rejected';
-                            }
-
-                            if (eventId) {
-                                sendAutoNotification(
-                                    eventId,
-                                    `Presupuesto ${payload.status.toLowerCase()}: ${updatedBudget.title} - Cliente: ${updatedBudget.clientName}`,
-                                    updatedBudget,
-                                    []
-                                ).catch(err => console.error('Error en notificación:', err));
-                            }
-                        }
-
-                        res.json(updatedBudget);
-
-                        await logEvent({
-                            user: req.user ? req.user.email : 'system',
-                            action: 'update',
-                            resource: 'budget',
-                            details: { budgetId: updatedBudget.id, title: updatedBudget.title, status: updatedBudget.status },
-                            ip: req.ip
-                        });
-                    });
-                }
-            );
-        });
-    }
-});
-
-app.patch('/api/budgets/:id/assignment', async (req, res) => {
-    const engine = getCurrentDbEngine();
-    const budgetId = req.params.id;
-
-    if (engine === 'mongodb') {
-        try {
-            const mongoDb = getMongoDb();
-            if (!mongoDb) return res.status(503).json({ message: 'MongoDB no está conectado.' });
-
-            const filter = !Number.isNaN(Number(budgetId)) ? { id: Number(budgetId) } : { _id: budgetId };
-            const existing = await mongoDb.collection('budgets').findOne(filter);
-            if (!existing) return res.status(404).json({ message: 'Budget not found' });
-
-            const assignedTo = req.body.assignedTo !== undefined ? req.body.assignedTo : existing.assignedTo;
-            const assignedGroupId = req.body.assignedGroupId !== undefined ? req.body.assignedGroupId : existing.assignedGroupId;
-
-            await mongoDb.collection('budgets').updateOne(filter, {
-                $set: { assignedTo, assignedGroupId, updatedAt: new Date() }
-            });
-
-            const updatedBudget = await mongoDb.collection('budgets').findOne(filter);
-
-            await logEvent({
-                user: req.user ? req.user.email : 'system',
-                action: 'update',
-                resource: 'budget_assignment',
-                details: {
-                    budgetId: updatedBudget.id,
-                    assignedTo: updatedBudget.assignedTo,
-                    assignedGroupId: updatedBudget.assignedGroupId,
-                },
-                ip: req.ip
-            });
-
-            res.json(mapBudgetRow(updatedBudget));
-        } catch (error) {
-            res.status(500).json({ message: error.message });
-        }
-    } else {
-        db.get('SELECT * FROM budgets WHERE id = ?', [budgetId], (err, existing) => {
-            if (err) return res.status(500).json({ message: err.message });
-            if (!existing) return res.status(404).json({ message: 'Budget not found' });
-            const assignedTo = req.body.assignedTo !== undefined ? req.body.assignedTo : existing.assigned_to;
-            const assignedGroupId =
-                req.body.assignedGroupId !== undefined ? req.body.assignedGroupId : existing.assigned_group;
-            db.run(
-                `UPDATE budgets
-           SET assigned_to = ?, assigned_group = ?, updatedAt = CURRENT_TIMESTAMP
-           WHERE id = ?`,
-                [
-                    assignedTo ?? null,
-                    assignedGroupId ?? null,
-                    budgetId,
-                ],
-                function (updateErr) {
-                    if (updateErr) return res.status(500).json({ message: updateErr.message });
-                    db.get(`${BUDGET_SELECT_BASE} WHERE budgets.id = ?`, [budgetId], async (selectErr, row) => {
-                        if (selectErr) return res.status(500).json({ message: selectErr.message });
-                        const updatedBudget = mapBudgetRow(row);
-
-                        await logEvent({
-                            user: req.user ? req.user.email : 'system',
-                            action: 'update',
-                            resource: 'budget_assignment',
-                            details: {
-                                budgetId: updatedBudget.id,
-                                assignedTo: updatedBudget.assignedTo,
-                                assignedGroupId: updatedBudget.assignedGroupId,
-                            },
-                            ip: req.ip
-                        });
-
-                        res.json(updatedBudget);
-                    });
-                }
-            );
-        });
-    }
-});
-
-app.delete('/api/budgets/:id', async (req, res) => {
-    const engine = getCurrentDbEngine();
-    const budgetId = req.params.id;
-
-    if (engine === 'mongodb') {
-        try {
-            const mongoDb = getMongoDb();
-            if (!mongoDb) return res.status(503).json({ message: 'MongoDB no está conectado.' });
-
-            const filter = !Number.isNaN(Number(budgetId)) ? { id: Number(budgetId) } : { _id: budgetId };
-            const existing = await mongoDb.collection('budgets').findOne(filter);
-            if (!existing) return res.status(404).json({ message: 'Budget not found.' });
-
-            if (existing.filePath) {
-                const absolutePath = path.resolve(__dirname, existing.filePath.replace(/^\//, ''));
-                fs.unlink(absolutePath, () => { });
-            }
-
-            await mongoDb.collection('budgets').deleteOne(filter);
-
-            await logEvent({
-                user: req.user ? req.user.email : 'system',
-                action: 'delete',
-                resource: 'budget',
-                details: { budgetId: budgetId },
-                ip: req.ip
-            });
-
-            res.json({ message: 'Budget deleted successfully.' });
-        } catch (error) {
-            res.status(500).json({ message: error.message });
-        }
-    } else {
-        const numericId = Number(budgetId);
-        if (Number.isNaN(numericId)) {
-            return res.status(400).json({ message: 'Identificador de presupuesto inválido.' });
-        }
-
-        db.get('SELECT file_path FROM budgets WHERE id = ?', [numericId], (err, row) => {
-            if (err) return res.status(500).json({ message: err.message });
-            if (!row) return res.status(404).json({ message: 'Budget not found.' });
-
-            if (row.file_path) {
-                const absolutePath = path.resolve(__dirname, row.file_path.replace(/^\//, ''));
-                fs.unlink(absolutePath, () => { });
-            }
-
-            db.run('DELETE FROM budget_items WHERE budget_id = ?', [numericId], (itemsErr) => {
-                if (itemsErr) {
-                    console.error('Failed to remove related budget items:', itemsErr);
-                }
-                db.run('DELETE FROM budgets WHERE id = ?', [numericId], async (deleteErr) => {
-                    if (deleteErr) return res.status(500).json({ message: deleteErr.message });
-
-                    await logEvent({
-                        user: req.user ? req.user.email : 'system',
-                        action: 'delete',
-                        resource: 'budget',
-                        details: { budgetId: budgetId },
-                        ip: req.ip
-                    });
-
-                    res.json({ message: 'Budget deleted successfully.' });
-                });
-            });
-        });
-    }
-});
-
-app.post('/api/budgets/:id/cover', budgetShareUpload.single('cover'), async (req, res) => {
-    if (!req.file) {
-        return res.status(400).json({ message: 'Cover file is required.' });
-    }
-    const engine = getCurrentDbEngine();
-    const budgetId = req.params.id;
-    const relativePath = `/uploads/budgets/${path.basename(req.file.path)}`;
-
-    if (engine === 'mongodb') {
-        try {
-            const mongoDb = getMongoDb();
-            if (!mongoDb) return res.status(503).json({ message: 'MongoDB no está conectado.' });
-
-            const filter = !Number.isNaN(Number(budgetId)) ? { id: Number(budgetId) } : { _id: budgetId };
-            await mongoDb.collection('budgets').updateOne(filter, {
-                $set: { filePath: relativePath, updatedAt: new Date() }
-            });
-
-            res.json({ url: relativePath });
-        } catch (error) {
-            res.status(500).json({ message: error.message });
-        }
-    } else {
-        db.run(
-            'UPDATE budgets SET file_path = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?',
-            [relativePath, budgetId],
-            function (err) {
-                if (err) {
-                    return res.status(500).json({ message: err.message });
-                }
-                res.json({ url: relativePath });
-            }
-        );
-    }
-});
-
-app.post('/api/budgets/:id/share', budgetShareUpload.single('file'), (req, res) => {
-    if (!req.file) {
-        return res.status(400).json({ message: 'File is required.' });
-    }
-    const relativePath = `/uploads/budgets/${path.basename(req.file.path)}`;
-    res.json({ url: relativePath });
-});
-const mapBudgetItemRow = (row) => {
-    if (!row) return null;
-    return {
-        id: String(row.id || row._id || ''),
-        budgetId: String(row.budget_id || row.budgetId || ''),
-        productId: String(row.product_id || row.productId || ''),
-        description: row.description || '',
-        quantity: Number(row.quantity) || 0,
-        unitPrice: Number(row.unit_price || row.unitPrice) || 0,
-        total: (Number(row.quantity) || 0) * (Number(row.unit_price || row.unitPrice) || 0),
-    };
-};
-
-const mapProductRow = (row) => ({
-    id: String(row.id),
-    name: row.name,
-    description: row.description || "",
-    manufacturer: row.manufacturer || "",
-    category: row.category || "",
-    priceUYU: row.price_uyu ?? 0,
-    priceUSD: row.price_usd ?? 0,
-    badge: row.badge || "Servicio",
-    imageUrl: row.image_url || "",
-    stock: row.stock ?? 0,
-    manufacturerLogoUrl: row.manufacturer_logo_url || row.manufacturerLogo || "",
-    quotedAt: row.quoted_at || null,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
-    suppliers: (() => {
-        if (!row.suppliers) return [];
-        try {
-            const parsed = JSON.parse(row.suppliers);
-            return Array.isArray(parsed) ? parsed : [];
-        } catch {
-            return [];
-        }
-    })(),
-});
-
-const mapSupplierCatalogRow = (row) => ({
-    id: String(row.id),
-    name: row.name,
-    priceUYU: row.price_uyu ?? 0,
-    priceUSD: row.price_usd ?? 0,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
-});
-
-// Budget Items routes
-app.get('/api/budgets/:id/items', async (req, res) => {
-    const engine = getCurrentDbEngine();
-    const budgetId = req.params.id;
-    const finalBudgetId = !Number.isNaN(Number(budgetId)) ? Number(budgetId) : budgetId;
-
-    if (engine === 'mongodb') {
-        try {
-            const mongoDb = getMongoDb();
-            if (!mongoDb) return res.status(503).json({ message: 'MongoDB no está conectado.' });
-
-            const items = await mongoDb.collection('budget_items')
-                .find({ budgetId: finalBudgetId })
-                .toArray();
-
-            res.json(items.map(mapBudgetItemRow));
-        } catch (error) {
-            res.status(500).json({ message: error.message });
-        }
-    } else {
-        db.all('SELECT * FROM budget_items WHERE budget_id = ?', [finalBudgetId], (err, rows) => {
-            if (err) return res.status(500).json({ message: err.message });
-            res.json((rows || []).map(mapBudgetItemRow));
-        });
-    }
-});
-
-app.post('/api/budgets/:id/items', async (req, res) => {
-    const { description, quantity, unitPrice, productId } = req.body;
-    const budgetId = req.params.id;
-    const finalBudgetId = !Number.isNaN(Number(budgetId)) ? Number(budgetId) : budgetId;
-
-    if (!description || quantity === undefined || unitPrice === undefined) {
-        return res.status(400).json({ message: 'Description, quantity, and unitPrice are required.' });
-    }
-
-    const engine = getCurrentDbEngine();
-
-    if (engine === 'mongodb') {
-        try {
-            const mongoDb = getMongoDb();
-            if (!mongoDb) return res.status(503).json({ message: 'MongoDB no está conectado.' });
-
-            const newItem = {
-                budgetId: finalBudgetId,
-                productId: productId || null,
-                description,
-                quantity: Number(quantity),
-                unitPrice: Number(unitPrice),
-                createdAt: new Date(),
-                updatedAt: new Date()
-            };
-
-            const result = await mongoDb.collection('budget_items').insertOne(newItem);
-            res.status(201).json({ ...newItem, id: result.insertedId.toString() });
-        } catch (error) {
-            res.status(500).json({ message: error.message });
-        }
-    } else {
-        db.run(
-            'INSERT INTO budget_items (budget_id, product_id, description, quantity, unit_price) VALUES (?, ?, ?, ?, ?)',
-            [finalBudgetId, productId ?? null, description, quantity, unitPrice],
-            function (err) {
-                if (err) return res.status(500).json({ message: err.message });
-                db.get('SELECT * FROM budget_items WHERE id = ?', [this.lastID], (selectErr, row) => {
-                    if (selectErr) return res.status(500).json({ message: selectErr.message });
-                    res.status(201).json(mapBudgetItemRow(row));
-                });
-            }
-        );
-    }
-});
-
-app.put('/api/items/:itemId', async (req, res) => {
-    const { description, quantity, unitPrice, productId } = req.body;
-    const { itemId } = req.params;
-
-    if (!description || quantity === undefined || unitPrice === undefined) {
-        return res.status(400).json({ message: 'Description, quantity, and unitPrice are required.' });
-    }
-
-    const engine = getCurrentDbEngine();
-
-    if (engine === 'mongodb') {
-        try {
-            const mongoDb = getMongoDb();
-            if (!mongoDb) return res.status(503).json({ message: 'MongoDB no está conectado.' });
-
-            const { ObjectId } = require('mongodb');
-            const filter = ObjectId.isValid(itemId) ? { _id: new ObjectId(itemId) } : { id: itemId };
-
-            const updates = {
-                description,
-                quantity: Number(quantity),
-                unitPrice: Number(unitPrice),
-                productId: productId || null,
-                updatedAt: new Date()
-            };
-
-            const result = await mongoDb.collection('budget_items').updateOne(filter, { $set: updates });
-            if (result.matchedCount === 0) return res.status(404).json({ message: 'Budget item not found.' });
-
-            const updated = await mongoDb.collection('budget_items').findOne(filter);
-            res.json(mapBudgetItemRow(updated));
-        } catch (error) {
-            res.status(500).json({ message: error.message });
-        }
-    } else {
-        db.run(
-            'UPDATE budget_items SET description = ?, quantity = ?, unit_price = ?, product_id = ? WHERE id = ?',
-            [description, quantity, unitPrice, productId ?? null, itemId],
-            function (err) {
-                if (err) return res.status(500).json({ message: err.message });
-                if (this.changes === 0) {
-                    return res.status(404).json({ message: 'Budget item not found.' });
-                }
-                db.get('SELECT * FROM budget_items WHERE id = ?', [itemId], (selectErr, row) => {
-                    if (selectErr) return res.status(500).json({ message: selectErr.message });
-                    res.json(mapBudgetItemRow(row));
-                });
-            }
-        );
-    }
-});
-
-app.delete('/api/items/:itemId', async (req, res) => {
-    const { itemId } = req.params;
-    const engine = getCurrentDbEngine();
-
-    if (engine === 'mongodb') {
-        try {
-            const mongoDb = getMongoDb();
-            if (!mongoDb) return res.status(503).json({ message: 'MongoDB no está conectado.' });
-
-            const { ObjectId } = require('mongodb');
-            const filter = ObjectId.isValid(itemId) ? { _id: new ObjectId(itemId) } : { id: itemId };
-
-            const result = await mongoDb.collection('budget_items').deleteOne(filter);
-            if (result.deletedCount === 0) return res.status(404).json({ message: 'Budget item not found.' });
-
-            res.json({ message: 'Budget item deleted successfully.' });
-        } catch (error) {
-            res.status(500).json({ message: error.message });
-        }
-    } else {
-        db.run('DELETE FROM budget_items WHERE id = ?', [itemId], function (err) {
-            if (err) return res.status(500).json({ message: err.message });
-            if (this.changes === 0) return res.status(404).json({ message: 'Budget item not found.' });
-            res.json({ message: 'Budget item deleted successfully.' });
-        });
-    }
-});
-
-// Product routes
-app.get('/api/products', (req, res) => {
-    const engine = getCurrentDbEngine();
-    if (engine !== 'mongodb') {
-        return res.status(503).json({ message: 'Only MongoDB is supported. Please configure MongoDB in settings.' });
-    }
-
-    const mongoDb = getMongoDb();
-    if (!mongoDb) {
-        return res.status(503).json({ message: 'MongoDB no está conectado.' });
-    }
-
-    return mongoDb
-        .collection('products')
-        .find({})
-        .sort({ createdAt: -1 })
-        .toArray()
-        .then((docs) =>
-            res.json(
-                docs.map((d) => ({
-                    ...d,
-                    id: d.id || String(d._id),
-                }))
-            )
-        )
-        .catch((error) => res.status(500).json({ message: error.message }));
-});
-
-// Supplier catalog routes (standalone list)
-app.get('/api/suppliers-catalog', (req, res) => {
-    const engine = getCurrentDbEngine();
-    if (engine !== 'mongodb') {
-        return res.status(503).json({ message: 'Only MongoDB is supported. Please configure MongoDB in settings.' });
-    }
-
-    const mongoDb = getMongoDb();
-    if (!mongoDb) {
-        return res.status(503).json({ message: 'MongoDB no está conectado.' });
-    }
-
-    const pickCollection = async () => {
-        const candidates = ['suppliers_catalog', 'suppliersCatalog', 'suppliers', 'proveedores', 'providers'];
-        for (const name of candidates) {
-            try {
-                const exists = await mongoDb.listCollections({ name }).hasNext();
-                if (exists) return name;
-            } catch (_) {
-                // ignore and continue
-            }
-        }
-        return 'suppliers_catalog';
-    };
-
-    return mongoDb
-        .listCollections()
-        .toArray()
-        .then(() => pickCollection())
-        .then((collectionName) =>
-            mongoDb
-                .collection(collectionName)
-                .find({})
-                .sort({ name: 1 })
-                .toArray()
-                .then((docs) => res.json(docs.map((d) => ({ ...d, id: d.id || String(d._id) }))))
-        )
-        .catch((error) => res.status(500).json({ message: error.message }));
-});
-
-app.post('/api/suppliers-catalog', (req, res) => {
-    const { name, priceUYU = 0, priceUSD = 0, logoUrl = '' } = req.body;
-    if (!name || !name.trim()) {
-        return res.status(400).json({ message: 'Supplier name is required.' });
-    }
-
-    const engine = getCurrentDbEngine();
-    if (engine !== 'mongodb') {
-        return res.status(503).json({ message: 'Only MongoDB is supported. Please configure MongoDB in settings.' });
-    }
-
-    const mongoDb = getMongoDb();
-    if (!mongoDb) {
-        return res.status(503).json({ message: 'MongoDB no está conectado.' });
-    }
-
-    const doc = {
-        name: name.trim(),
-        priceUYU: Number(priceUYU) || 0,
-        priceUSD: Number(priceUSD) || 0,
-        logoUrl: logoUrl?.trim() || '',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-    };
-
-    return mongoDb
-        .collection('suppliers_catalog')
-        .insertOne(doc)
-        .then((result) => res.status(201).json({ ...doc, id: String(result.insertedId), _id: result.insertedId }))
-        .catch((error) => {
-            if (error?.code === 11000) {
-                return res.status(409).json({ message: 'Supplier name already exists.' });
-            }
-            return res.status(500).json({ message: error.message });
-        });
-});
-
-app.put('/api/suppliers-catalog/:id', (req, res) => {
-    const { name, priceUYU = 0, priceUSD = 0, logoUrl = '' } = req.body;
-    if (!name || !name.trim()) {
-        return res.status(400).json({ message: 'Supplier name is required.' });
-    }
-
-    const engine = getCurrentDbEngine();
-    if (engine !== 'mongodb') {
-        return res.status(503).json({ message: 'Only MongoDB is supported. Please configure MongoDB in settings.' });
-    }
-
-    const mongoDb = getMongoDb();
-    if (!mongoDb) {
-        return res.status(503).json({ message: 'MongoDB no está conectado.' });
-    }
-
-    const { ObjectId } = require('mongodb');
-    const filter = ObjectId.isValid(req.params.id)
-        ? { _id: new ObjectId(req.params.id) }
-        : { id: req.params.id };
-
-    const updates = {
-        name: name.trim(),
-        priceUYU: Number(priceUYU) || 0,
-        priceUSD: Number(priceUSD) || 0,
-        logoUrl: logoUrl?.trim() || '',
-        updatedAt: new Date(),
-    };
-
-    return mongoDb
-        .collection('suppliers_catalog')
-        .findOneAndUpdate(filter, { $set: updates }, { returnDocument: 'after' })
-        .then((result) => {
-            if (!result.value) {
-                return res.status(404).json({ message: 'Supplier not found.' });
-            }
-            res.json({ ...result.value, id: String(result.value._id) });
-        })
-        .catch((error) => {
-            if (error?.code === 11000) {
-                return res.status(409).json({ message: 'Supplier name already exists.' });
-            }
-            return res.status(500).json({ message: error.message });
-        });
-});
-
-app.delete('/api/suppliers-catalog/:id', (req, res) => {
-    const supplierId = req.params.id;
-    const engine = getCurrentDbEngine();
-    if (engine !== 'mongodb') {
-        return res.status(503).json({ message: 'Only MongoDB is supported. Please configure MongoDB in settings.' });
-    }
-
-    const mongoDb = getMongoDb();
-    if (!mongoDb) {
-        return res.status(503).json({ message: 'MongoDB no está conectado.' });
-    }
-
-    const { ObjectId } = require('mongodb');
-    const filter = ObjectId.isValid(supplierId) ? { _id: new ObjectId(supplierId) } : { id: supplierId };
-
-    return mongoDb
-        .collection('suppliers_catalog')
-        .findOne(filter)
-        .then(async (supplierDoc) => {
-            if (!supplierDoc) {
-                return res.status(404).json({ message: 'Supplier not found.' });
-            }
-            const supplierName = supplierDoc.name;
-            const linked = await mongoDb
-                .collection('products')
-                .countDocuments({ suppliers: { $elemMatch: { name: supplierName } } });
-            if (linked > 0) {
-                return res.status(409).json({ message: 'Supplier is linked to existing products.' });
-            }
-            await mongoDb.collection('suppliers_catalog').deleteOne(filter);
-            res.json({ message: 'Supplier deleted.' });
-        })
-        .catch((error) => res.status(500).json({ message: error.message }));
-});
-
-app.get('/api/manufacturers', async (req, res) => {
-    const mongoDb = ensureMongoDb(res);
-    if (!mongoDb) return;
-
     try {
-        const productManufacturers = await mongoDb
-            .collection('products')
-            .distinct('manufacturer', { manufacturer: { $exists: true, $ne: '' } });
-        const normalized = Array.from(
-            new Set(
-                productManufacturers
-                    .map((name) => (typeof name === 'string' ? name.trim() : ''))
-                    .filter((name) => Boolean(name))
-            )
-        );
-        if (normalized.length) {
-            const existing = await mongoDb
-                .collection('manufacturers')
-                .find({ name: { $in: normalized } })
-                .project({ name: 1 })
-                .toArray();
-            const existingNames = new Set(existing.map((doc) => doc.name));
-            const toInsert = normalized.filter((name) => !existingNames.has(name));
-            if (toInsert.length) {
-                const now = new Date();
-                await mongoDb.collection('manufacturers').insertMany(
-                    toInsert.map((name) => ({
-                        name,
-                        logoUrl: '',
-                        createdAt: now,
-                        updatedAt: now,
-                    }))
-                );
-            }
-        }
-        const docs = await mongoDb
-            .collection('manufacturers')
-            .find({})
-            .sort({ name: 1 })
-            .toArray();
-        res.json(docs.map(withMappedId));
-    } catch (error) {
-        res.status(500).json({ message: error.message });
-    }
-});
-
-app.post('/api/manufacturers', async (req, res) => {
-    const { name, logoUrl = '' } = req.body;
-    if (!name || !name.trim()) {
-        return res.status(400).json({ message: 'El nombre del fabricante es requerido.' });
-    }
-
-    const mongoDb = ensureMongoDb(res);
-    if (!mongoDb) return;
-
-    try {
-        const trimmed = name.trim();
-        const existing = await mongoDb.collection('manufacturers').findOne({ name: trimmed });
-        if (existing) {
-            return res.status(409).json({ message: 'Ese fabricante ya existe.' });
-        }
-
-        const now = new Date();
-        const doc = {
-            name: trimmed,
-            logoUrl: logoUrl?.trim() || '',
-            createdAt: now,
-            updatedAt: now,
-        };
-        const result = await mongoDb.collection('manufacturers').insertOne(doc);
-        res.status(201).json({ ...doc, id: String(result.insertedId), _id: result.insertedId });
-    } catch (error) {
-        res.status(500).json({ message: error.message });
-    }
-});
-
-app.put('/api/manufacturers/:id', async (req, res) => {
-    const { name, logoUrl = '' } = req.body;
-    if (!name || !name.trim()) {
-        return res.status(400).json({ message: 'El nombre del fabricante es requerido.' });
-    }
-
-    const mongoDb = ensureMongoDb(res);
-    if (!mongoDb) return;
-
-    const { ObjectId } = require('mongodb');
-    const filter = ObjectId.isValid(req.params.id)
-        ? { _id: new ObjectId(req.params.id) }
-        : { id: req.params.id };
-    try {
-        const existing = await mongoDb.collection('manufacturers').findOne(filter);
-        if (!existing) {
-            return res.status(404).json({ message: 'Fabricante no encontrado.' });
-        }
-        const trimmed = name.trim();
-        if (trimmed !== existing.name) {
-            const duplicate = await mongoDb
-                .collection('manufacturers')
-                .findOne({ name: trimmed, _id: { $ne: existing._id } });
-            if (duplicate) {
-                return res.status(409).json({ message: 'Ese fabricante ya existe.' });
-            }
-        }
-
-        const updates = {
-            name: trimmed,
-            logoUrl: logoUrl?.trim() || '',
-            updatedAt: new Date(),
-        };
-
-        const result = await mongoDb
-            .collection('manufacturers')
-            .findOneAndUpdate(filter, { $set: updates }, { returnDocument: 'after' });
-        if (!result.value) {
-            return res.status(404).json({ message: 'Fabricante no encontrado.' });
-        }
-
-        if (trimmed !== existing.name) {
-            await mongoDb
-                .collection('products')
-                .updateMany({ manufacturer: existing.name }, { $set: { manufacturer: trimmed } });
-        }
-
-        res.json(withMappedId(result.value));
-    } catch (error) {
-        res.status(500).json({ message: error.message });
-    }
-});
-
-app.delete('/api/manufacturers/:id', async (req, res) => {
-    const mongoDb = ensureMongoDb(res);
-    if (!mongoDb) return;
-
-    const { ObjectId } = require('mongodb');
-    const filter = ObjectId.isValid(req.params.id)
-        ? { _id: new ObjectId(req.params.id) }
-        : { id: req.params.id };
-    try {
-        const existing = await mongoDb.collection('manufacturers').findOne(filter);
-        if (!existing) {
-            return res.status(404).json({ message: 'Fabricante no encontrado.' });
-        }
-        const linked = await mongoDb.collection('products').countDocuments({ manufacturer: existing.name });
-        if (linked > 0) {
-            return res.status(409).json({ message: 'No se puede eliminar un fabricante con productos asociados.' });
-        }
-        await mongoDb.collection('manufacturers').deleteOne(filter);
-        res.json({ message: 'Fabricante eliminado.' });
-    } catch (error) {
-        res.status(500).json({ message: error.message });
-    }
-});
-
-app.get('/api/categories', async (req, res) => {
-    const mongoDb = ensureMongoDb(res);
-    if (!mongoDb) return;
-
-    try {
-        const productCategories = await mongoDb
-            .collection('products')
-            .distinct('category', { category: { $exists: true, $ne: '' } });
-        const normalized = Array.from(
-            new Set(
-                productCategories
-                    .map((name) => (typeof name === 'string' ? name.trim() : ''))
-                    .filter((name) => Boolean(name))
-            )
-        );
-        if (normalized.length) {
-            const categoriesColl = mongoDb.collection('categories');
-            const existing = await categoriesColl.find({ name: { $in: normalized } }).project({ name: 1 }).toArray();
-            const existingNames = new Set(existing.map((doc) => doc.name));
-            const toInsert = normalized.filter((name) => !existingNames.has(name));
-            if (toInsert.length) {
-                const now = new Date();
-                await categoriesColl.insertMany(
-                    toInsert.map((name) => ({
-                        name,
-                        createdAt: now,
-                        updatedAt: now,
-                    }))
-                );
-            }
-        }
-        const docs = await mongoDb
-            .collection('categories')
-            .find({})
-            .sort({ name: 1 })
-            .toArray();
-        res.json(docs.map(withMappedId));
-    } catch (error) {
-        res.status(500).json({ message: error.message });
-    }
-});
-
-app.post('/api/categories', async (req, res) => {
-    const { name } = req.body;
-    if (!name || !name.trim()) {
-        return res.status(400).json({ message: 'El nombre de la categoría es requerido.' });
-    }
-
-    const mongoDb = ensureMongoDb(res);
-    if (!mongoDb) return;
-
-    try {
-        const trimmed = name.trim();
-        const existing = await mongoDb.collection('categories').findOne({ name: trimmed });
-        if (existing) {
-            return res.status(409).json({ message: 'Esa categoría ya existe.' });
-        }
-        const now = new Date();
-        const doc = { name: trimmed, createdAt: now, updatedAt: now };
-        const result = await mongoDb.collection('categories').insertOne(doc);
-        res.status(201).json({ ...doc, id: String(result.insertedId), _id: result.insertedId });
-    } catch (error) {
-        res.status(500).json({ message: error.message });
-    }
-});
-
-app.put('/api/categories/:id', async (req, res) => {
-    const { name } = req.body;
-    if (!name || !name.trim()) {
-        return res.status(400).json({ message: 'El nombre de la categoría es requerido.' });
-    }
-
-    const mongoDb = ensureMongoDb(res);
-    if (!mongoDb) return;
-
-    const { ObjectId } = require('mongodb');
-    const filter = ObjectId.isValid(req.params.id)
-        ? { _id: new ObjectId(req.params.id) }
-        : { id: req.params.id };
-    try {
-        const existing = await mongoDb.collection('categories').findOne(filter);
-        if (!existing) {
-            return res.status(404).json({ message: 'Categoría no encontrada.' });
-        }
-        const trimmed = name.trim();
-        if (trimmed !== existing.name) {
-            const duplicate = await mongoDb
-                .collection('categories')
-                .findOne({ name: trimmed, _id: { $ne: existing._id } });
-            if (duplicate) {
-                return res.status(409).json({ message: 'Esa categoría ya existe.' });
-            }
-        }
-
-        const updates = { name: trimmed, updatedAt: new Date() };
-        const result = await mongoDb
-            .collection('categories')
-            .findOneAndUpdate(filter, { $set: updates }, { returnDocument: 'after' });
-        if (!result.value) {
-            return res.status(404).json({ message: 'Categoría no encontrada.' });
-        }
-
-        if (trimmed !== existing.name) {
-            await mongoDb
-                .collection('products')
-                .updateMany({ category: existing.name }, { $set: { category: trimmed } });
-        }
-
-        res.json(withMappedId(result.value));
-    } catch (error) {
-        res.status(500).json({ message: error.message });
-    }
-});
-
-app.delete('/api/categories/:id', async (req, res) => {
-    const mongoDb = ensureMongoDb(res);
-    if (!mongoDb) return;
-
-    const { ObjectId } = require('mongodb');
-    const filter = ObjectId.isValid(req.params.id)
-        ? { _id: new ObjectId(req.params.id) }
-        : { id: req.params.id };
-    try {
-        const existing = await mongoDb.collection('categories').findOne(filter);
-        if (!existing) {
-            return res.status(404).json({ message: 'Categoría no encontrada.' });
-        }
-        const linked = await mongoDb.collection('products').countDocuments({ category: existing.name });
-        if (linked > 0) {
-            return res.status(409).json({ message: 'No se puede eliminar una categoría utilizada por productos.' });
-        }
-        await mongoDb.collection('categories').deleteOne(filter);
-        res.json({ message: 'Categoría eliminada.' });
-    } catch (error) {
-        res.status(500).json({ message: error.message });
-    }
-});
-
-app.post('/api/products', (req, res) => {
-    const {
-        name,
-        description,
-        manufacturer,
-        category,
-        badge = 'Servicio',
-        priceUYU = 0,
-        priceUSD = 0,
-        imageUrl,
-        stock = 0,
-        manufacturerLogoUrl = "",
-        quotedAt,
-        suppliers = [],
-    } = req.body;
-
-    if (!name || !manufacturer) {
-        return res.status(400).json({ message: 'Name and manufacturer are required.' });
-    }
-
-    const engine = getCurrentDbEngine();
-    if (engine !== 'mongodb') {
-        return res.status(503).json({ message: 'Only MongoDB is supported. Please configure MongoDB in settings.' });
-    }
-
-    const mongoDb = getMongoDb();
-    if (!mongoDb) {
-        return res.status(503).json({ message: 'MongoDB no está conectado.' });
-    }
-
-    const document = {
-        name,
-        description: description || '',
-        manufacturer,
-        category: category || '',
-        badge,
-        priceUYU: Number(priceUYU) || 0,
-        priceUSD: Number(priceUSD) || 0,
-        imageUrl: imageUrl || '',
-        stock: Number.isNaN(Number(stock)) ? 0 : Number(stock),
-        manufacturerLogoUrl: manufacturerLogoUrl || '',
-        quotedAt: quotedAt || null,
-        suppliers: Array.isArray(suppliers) ? suppliers : [],
-        createdAt: new Date(),
-        updatedAt: new Date(),
-    };
-
-    return mongoDb
-        .collection('products')
-        .insertOne(document)
-        .then(async (result) => {
-            const created = { ...document, id: String(result.insertedId), _id: result.insertedId };
-            await logEvent({
-                user: req.user ? req.user.email : 'system',
-                action: 'create',
-                resource: 'product',
-                details: { productId: created.id, name: created.name },
-                ip: req.ip,
-            });
-            res.status(201).json(created);
-        })
-        .catch((error) => res.status(500).json({ message: error.message }));
-});
-
-app.put('/api/products/:id', (req, res) => {
-    const engine = getCurrentDbEngine();
-    if (engine !== 'mongodb') {
-        return res.status(503).json({ message: 'Only MongoDB is supported. Please configure MongoDB in settings.' });
-    }
-
-    const mongoDb = getMongoDb();
-    if (!mongoDb) {
-        return res.status(503).json({ message: 'MongoDB no está conectado.' });
-    }
-
-    const id = req.params.id;
-    const { ObjectId } = require('mongodb');
-    const filter = ObjectId.isValid(id) ? { _id: new ObjectId(id) } : { id };
-
-    const updates = { ...req.body };
-    // Normalize numeric fields when present
-    if (updates.priceUYU !== undefined) updates.priceUYU = Number(updates.priceUYU) || 0;
-    if (updates.priceUSD !== undefined) updates.priceUSD = Number(updates.priceUSD) || 0;
-    if (updates.stock !== undefined) updates.stock = Number.isNaN(Number(updates.stock)) ? 0 : Number(updates.stock);
-    if (updates.suppliers !== undefined) updates.suppliers = Array.isArray(updates.suppliers) ? updates.suppliers : [];
-    if (updates.quotedAt === undefined && updates.quoted_at !== undefined) updates.quotedAt = updates.quoted_at;
-    updates.updatedAt = new Date();
-
-    return mongoDb
-        .collection('products')
-        .findOneAndUpdate(filter, { $set: updates }, { returnDocument: 'after' })
-        .then(async (result) => {
-            if (!result.value) {
-                return res.status(404).json({ message: 'Product not found' });
-            }
-            const updated = { ...result.value, id: String(result.value._id) };
-            await logEvent({
-                user: req.user ? req.user.email : 'system',
-                action: 'update',
-                resource: 'product',
-                details: { productId: updated.id, name: updated.name },
-                ip: req.ip,
-            });
-            res.json(updated);
-        })
-        .catch((error) => res.status(500).json({ message: error.message }));
-});
-
-app.delete('/api/products/:id', (req, res) => {
-    const engine = getCurrentDbEngine();
-    if (engine !== 'mongodb') {
-        return res.status(503).json({ message: 'Only MongoDB is supported. Please configure MongoDB in settings.' });
-    }
-
-    const mongoDb = getMongoDb();
-    if (!mongoDb) {
-        return res.status(503).json({ message: 'MongoDB no está conectado.' });
-    }
-
-    const id = req.params.id;
-    const { ObjectId } = require('mongodb');
-    const filter = ObjectId.isValid(id) ? { _id: new ObjectId(id) } : { id };
-
-    return mongoDb
-        .collection('products')
-        .deleteOne(filter)
-        .then(async (result) => {
-            if (!result.deletedCount) {
-                return res.status(404).json({ message: 'Product not found' });
-            }
-            await logEvent({
-                user: req.user ? req.user.email : 'system',
-                action: 'delete',
-                resource: 'product',
-                details: { productId: id },
-                ip: req.ip,
-            });
-            res.json({ message: 'Product deleted successfully.' });
-        })
-        .catch((error) => res.status(500).json({ message: error.message }));
-});
-
-// Ticket routes
-app.get('/api/tickets', async (req, res) => {
-    const engine = getCurrentDbEngine();
-
-    if (engine === 'mongodb') {
-        try {
-            const mongoDb = getMongoDb();
-            if (!mongoDb) return res.status(503).json({ message: 'MongoDB no está conectado.' });
-
-            const tickets = await mongoDb.collection('tickets')
-                .find()
-                .sort({ createdAt: -1 })
-                .toArray();
-
-            res.json(tickets.map(mapTicketRow));
-        } catch (error) {
-            res.status(500).json({ message: error.message });
-        }
-    } else {
-        db.all(`${TICKET_SELECT_BASE} ORDER BY t.createdAt DESC`, [], (err, rows) => {
-            if (err) return res.status(500).json({ message: err.message });
-            res.json(rows.map(mapTicketRow));
-        });
-    }
-});
-
-app.get('/api/tickets/:id', async (req, res) => {
-    const engine = getCurrentDbEngine();
-    const id = req.params.id;
-
-    if (engine === 'mongodb') {
-        try {
-            const mongoDb = getMongoDb();
-            if (!mongoDb) return res.status(503).json({ message: 'MongoDB no está conectado.' });
-
-            const filter = getMongoFilter(id);
-            const ticket = await mongoDb.collection('tickets').findOne(filter);
-
-            if (!ticket) {
-                console.warn(`[Mongo] Ticket not found with ID: ${id}`);
-                return res.status(404).json({ message: 'Ticket not found' });
-            }
-
-            // Fetch client details if missing (for MongoDB documents that don't denormalize client name)
-            const cid = ticket.clientId || ticket.client_id;
-            if (cid && !ticket.clientName) {
-                const clientFilter = getMongoFilter(cid);
-                const client = await mongoDb.collection('clients').findOne(clientFilter);
-                if (client) {
-                    ticket.clientName = client.name;
-                    ticket.clientEmail = client.email;
-                    ticket.clientNotificationsEnabled = !!client.notifications_enabled;
-                }
-            }
-
-            res.json(mapTicketRow(ticket));
-        } catch (error) {
-            console.error('Error fetching ticket (mongo):', error);
-            res.status(500).json({ message: error.message, stack: error.stack });
-        }
-    } else {
-        db.get(`${TICKET_SELECT_BASE} WHERE t.id = ?`, [id], (err, row) => {
-            if (err) return res.status(500).json({ message: err.message });
-            if (!row) return res.status(404).json({ message: 'Ticket not found' });
-            res.json(mapTicketRow(row));
-        });
-    }
-});
-
-app.get('/api/groups', async (req, res) => {
-    const mongoDb = getMongoDb();
-    if (!mongoDb) {
-        return res.status(503).json({ message: 'MongoDB no está disponible.' });
-    }
-
-    try {
-        const groups = await listGroups();
-        res.json(groups);
-    } catch (error) {
-        res.status(500).json({ message: 'No se pudieron cargar los grupos.', detail: error.message });
-    }
-});
-
-app.post('/api/groups', async (req, res) => {
-    if (!getMongoDb()) {
-        return res.status(503).json({ message: 'MongoDB no está conectado.' });
-    }
-    const { name, slug, description } = req.body || {};
-    if (!name) {
-        return res.status(400).json({ message: 'El nombre del grupo es requerido.' });
-    }
-    try {
-        const newGroup = await createGroup({ name, slug, description });
-        res.status(201).json(newGroup);
-    } catch (error) {
-        res.status(500).json({ message: error.message || 'No se pudo crear el grupo.' });
-    }
-});
-
-app.patch('/api/groups/:id', async (req, res) => {
-    if (!getMongoDb()) {
-        return res.status(503).json({ message: 'MongoDB no está conectado.' });
-    }
-    const updates = req.body || {};
-    try {
-        const updated = await updateGroup(req.params.id, updates);
-        if (!updated) {
-            return res.status(404).json({ message: 'Grupo no encontrado.' });
-        }
-        res.json(updated);
-    } catch (error) {
-        res.status(500).json({ message: error.message || 'No se pudo actualizar el grupo.' });
-    }
-});
-
-app.delete('/api/groups/:id', async (req, res) => {
-    if (!getMongoDb()) {
-        return res.status(503).json({ message: 'MongoDB no está conectado.' });
-    }
-    try {
-        const removed = await deleteGroup(req.params.id);
-        if (!removed) {
-            return res.status(404).json({ message: 'Grupo no encontrado.' });
-        }
-        res.json({ message: 'Grupo eliminado.' });
-    } catch (error) {
-        res.status(500).json({ message: error.message || 'No se pudo eliminar el grupo.' });
-    }
-});
-
-app.post('/api/tickets', async (req, res) => {
-    const {
-        clientId,
-        title,
-        priority,
-        annotations = [],
-        status = 'Nuevo',
-        amount = null,
-        visit = false,
-        description = '',
-        attachments = [],
-        audioNotes = [],
-        assignedTo = null,
-        assignedGroupId = null,
-        visitData = null,
-    } = req.body;
-    const skipCalendarSync = req.body?.skipCalendarSync === true;
-    if (!clientId || !title || !priority) {
-        return res.status(400).json({ message: 'Client, title, and priority are required.' });
-    }
-    const finalClientId = !Number.isNaN(Number(clientId)) ? Number(clientId) : clientId;
-
-    const engine = getCurrentDbEngine();
-
-    if (engine === 'mongodb') {
-        try {
-            const mongoDb = getMongoDb();
-            if (!mongoDb) return res.status(503).json({ message: 'MongoDB no está conectado.' });
-
-            // Get next numeric ID
-            const { getNextId } = require('./lib/mongoClient');
-            const ticketId = await getNextId('tickets');
-
-            // Fetch client details to denormalize
-            let clientName = '';
-            let clientEmail = '';
-            let clientNotificationsEnabled = false;
-
-            const clientFilter = getMongoFilter(finalClientId);
-            const client = await mongoDb.collection('clients').findOne(clientFilter);
-            if (client) {
-                clientName = client.name;
-                clientEmail = client.email || '';
-                clientNotificationsEnabled = !!client.notifications_enabled;
-            }
-
-            const newTicket = {
-                id: ticketId,
-                clientId: finalClientId,
-                clientName,
-                clientEmail,
-                clientNotificationsEnabled,
-                title,
-                priority,
-                status,
-                annotations: Array.isArray(annotations) ? annotations : [],
-                amount,
-                visit: !!visit,
-                description: description || '',
-                attachments: Array.isArray(attachments) ? attachments : [],
-                audioNotes: Array.isArray(audioNotes) ? audioNotes : [],
-                assignedTo,
-                assignedGroupId,
-                visitData: visitData || null,
-                createdAt: new Date(),
-                updatedAt: new Date()
-            };
-
-            await mongoDb.collection('tickets').insertOne(newTicket);
-
-            const createdTicket = {
-                ...newTicket,
-                _id: newTicket.id
-            };
-
-            // Post-insertion logic
-            await finalizeTicketCreation(createdTicket, req, res, skipCalendarSync);
-        } catch (error) {
-            res.status(500).json({ message: error.message });
-        }
-    } else {
-        const annotationsText = JSON.stringify(Array.isArray(annotations) ? annotations : []);
-        const attachmentsText = JSON.stringify(Array.isArray(attachments) ? attachments : []);
-        const audioNotesText = JSON.stringify(Array.isArray(audioNotes) ? audioNotes : []);
-        const visitDataText = visitData ? JSON.stringify(visitData) : null;
-
-        db.run(
-            'INSERT INTO tickets (client_id, title, priority, status, annotations, amount, visit, description, attachments, audioNotes, assigned_to, assigned_group, visit_data) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-            [finalClientId, title, priority, status, annotationsText, amount, visit ? 1 : 0, description || null, attachmentsText, audioNotesText, assignedTo || null, assignedGroupId || null, visitDataText],
-            function (err) {
-                if (err) return res.status(500).json({ message: err.message });
-                const ticketId = this.lastID;
-                db.get(`${TICKET_SELECT_BASE} WHERE t.id = ?`, [ticketId], async (selectErr, row) => {
-                    if (selectErr) return res.status(500).json({ message: selectErr.message });
-                    if (!row) return res.status(500).json({ message: "Ticket creado pero no se pudo recuperar de inmediato. Refresca la lista." });
-                    const newTicket = mapTicketRow(row);
-                    await finalizeTicketCreation(newTicket, req, res, skipCalendarSync);
-                });
-            }
-        );
-    }
-});
-
-/**
- * Common logic after ticket created (notifications, calendar, audit, response)
- */
-async function finalizeTicketCreation(newTicket, req, res, skipCalendarSync) {
-    try {
-
-        const recipients = [];
-        if (newTicket.clientNotificationsEnabled && newTicket.clientEmail) {
-            recipients.push(newTicket.clientEmail);
-        }
-
-        // Determinar fechas para el calendario
-        let calStart = newTicket.createdAt || new Date().toISOString();
-        let calEnd = calStart;
-
-        if (newTicket.visitData) {
-            const vd = newTicket.visitData;
-            if (vd.visitDate) {
-                if (vd.visitStart) {
-                    calStart = `${vd.visitDate}T${vd.visitStart}`;
-                } else {
-                    calStart = `${vd.visitDate}T08:00:00`;
-                }
-
-                if (vd.visitEnd) {
-                    calEnd = `${vd.visitDate}T${vd.visitEnd}`;
-                } else {
-                    calEnd = calStart;
-                }
-            }
-        }
-
-        if (!skipCalendarSync) {
-            try {
-                await upsertCalendarEvent({
-                    title: `Ticket #${newTicket.id}: ${newTicket.title}`,
-                    start: calStart,
-                    end: calEnd,
-                    location: newTicket.clientName ? `Cliente: ${newTicket.clientName}` : null,
-                    sourceType: 'ticket',
-                    sourceId: newTicket.id,
-                    locked: false,
-                });
-            } catch (calendarErr) {
-                console.error('No se pudo crear el evento de calendario para el ticket:', calendarErr?.message || calendarErr);
-            }
-        }
-
-        // Enviar notificación automática
-        sendAutoNotification(
-            'ticket_created',
-            `Nuevo ticket creado: ${newTicket.title} - Cliente: ${newTicket.clientName}`,
-            newTicket,
-            recipients
-        ).catch(err => console.error('Error en notificación:', err));
-
-        // Registrar auditoría
-        logEvent({
-            user: 'system', // Idealmente req.user.email si hubiera auth middleware aquí
-            action: 'Crear Ticket',
-            resource: 'ticket',
-            details: `Ticket creado: ${newTicket.title} (ID: ${newTicket.id})`,
-            status: 'success',
+        const { getMongoFilter } = require('./lib/clientFilters');
+        const filter = getMongoFilter(clientId);
+        const result = await mongoDb.collection('clients').deleteOne(filter);
+        if (result.deletedCount === 0) return res.status(404).json({ message: 'Client not found.' });
+
+        await logEvent({
+            user: req.user ? req.user.email : 'system',
+            action: 'delete',
+            resource: 'client',
+            details: { clientId },
             ip: req.ip
         });
 
-        res.status(201).json(newTicket);
-    } catch (error) {
-        console.error('Error in finalizeTicketCreation:', error);
-        res.status(201).json(newTicket); // Still return 201 as ticket was created
-    }
-}
-
-app.put('/api/tickets/:id', async (req, res) => {
-    const engine = getCurrentDbEngine();
-    const ticketId = req.params.id;
-
-    if (engine === 'mongodb') {
-        try {
-            const mongoDb = getMongoDb();
-            if (!mongoDb) return res.status(503).json({ message: 'MongoDB no está conectado.' });
-
-            const { ObjectId } = require('mongodb');
-            const filter = !Number.isNaN(Number(ticketId)) ? { id: Number(ticketId) } : (ObjectId.isValid(ticketId) ? { _id: new ObjectId(ticketId) } : { id: ticketId });
-
-            // Find existing ticket
-            const existing = await mongoDb.collection('tickets').findOne(filter);
-            if (!existing) return res.status(404).json({ message: 'Ticket not found' });
-
-            // Build update payload
-            const updates = {
-                title: req.body.title ?? existing.title,
-                status: req.body.status ?? existing.status,
-                priority: req.body.priority ?? existing.priority,
-                amount: req.body.amount ?? existing.amount,
-                visit: req.body.visit !== undefined ? req.body.visit : existing.visit,
-                annotations: Array.isArray(req.body.annotations) ? req.body.annotations : existing.annotations,
-                description: req.body.description ?? existing.description,
-                attachments: Array.isArray(req.body.attachments) ? req.body.attachments : existing.attachments,
-                audioNotes: Array.isArray(req.body.audioNotes) ? req.body.audioNotes : existing.audioNotes,
-                visitData: req.body.visitData ?? existing.visitData,
-                assignedTo: req.body.assignedTo !== undefined ? req.body.assignedTo : existing.assignedTo,
-                assignedGroupId: req.body.assignedGroupId !== undefined ? req.body.assignedGroupId : existing.assignedGroupId,
-                updatedAt: new Date()
-            };
-
-            // Update ticket
-            await mongoDb.collection('tickets').updateOne(
-                filter,
-                { $set: updates }
-            );
-
-            // Get updated ticket
-            const updatedTicket = await mongoDb.collection('tickets').findOne(filter);
-
-            // Handle payment creation if status is 'Facturar'
-            if (updatedTicket.status === 'Facturar') {
-                await ensurePendingPaymentForTicket(updatedTicket);
-            }
-
-            // Sync with calendar
-            let calStart = updatedTicket.createdAt || new Date().toISOString();
-            let calEnd = calStart;
-            if (updatedTicket.visitData) {
-                const vd = updatedTicket.visitData;
-                if (vd.visitDate) {
-                    if (vd.visitStart) calStart = `${vd.visitDate}T${vd.visitStart}`;
-                    else calStart = `${vd.visitDate}T08:00:00`;
-                    if (vd.visitEnd) calEnd = `${vd.visitDate}T${vd.visitEnd}`;
-                    else calEnd = calStart;
-                }
-            }
-
-            try {
-                await upsertCalendarEvent({
-                    title: `Ticket #${updatedTicket.id}: ${updatedTicket.title}`,
-                    start: calStart,
-                    end: calEnd,
-                    location: updatedTicket.clientName ? `Cliente: ${updatedTicket.clientName}` : null,
-                    sourceType: 'ticket',
-                    sourceId: updatedTicket.id,
-                    locked: false,
-                });
-            } catch (err) {
-                console.error('Error actualizando calendario desde ticket:', err);
-            }
-
-            // Send notification if status changed
-            const notifyClient = req.body.notifyClient === true;
-            if (existing.status !== updates.status || notifyClient) {
-                const eventId = updates.status === 'Cerrado' ? 'ticket_closed' : 'ticket_updated';
-                const recipients = [];
-                if ((updatedTicket.clientNotificationsEnabled || notifyClient) && updatedTicket.clientEmail) {
-                    recipients.push(updatedTicket.clientEmail);
-                }
-
-                sendAutoNotification(
-                    eventId,
-                    `Ticket actualizado: ${updatedTicket.title} - Estado: ${updates.status}`,
-                    updatedTicket,
-                    recipients
-                ).catch(err => console.error('Error en notificación:', err));
-            }
-
-            // Audit log
-            logEvent({
-                user: 'system',
-                action: 'Actualizar Ticket',
-                resource: 'ticket',
-                details: `Ticket actualizado: ${updatedTicket.title} (ID: ${updatedTicket.id})`,
-                status: 'success',
-                ip: req.ip
-            });
-
-            res.json(updatedTicket);
-        } catch (error) {
-            console.error('Error updating ticket:', error);
-            res.status(500).json({ message: error.message });
-        }
-    } else {
-        // SQLite version (original code)
-        db.get('SELECT * FROM tickets WHERE id = ?', [ticketId], (err, existing) => {
-            if (err) return res.status(500).json({ message: err.message });
-            if (!existing) return res.status(404).json({ message: 'Ticket not found' });
-            const payload = {
-                title: req.body.title ?? existing.title,
-                status: req.body.status ?? existing.status,
-                priority: req.body.priority ?? existing.priority,
-                amount: req.body.amount ?? existing.amount,
-                visit: req.body.visit !== undefined ? (req.body.visit ? 1 : 0) : existing.visit,
-                annotations: JSON.stringify(
-                    Array.isArray(req.body.annotations)
-                        ? req.body.annotations
-                        : parseJsonColumn(existing.annotations, [])
-                ),
-                description: req.body.description ?? existing.description,
-                attachments: JSON.stringify(
-                    Array.isArray(req.body.attachments)
-                        ? req.body.attachments
-                        : parseJsonColumn(existing.attachments, [])
-                ),
-                audioNotes: JSON.stringify(
-                    Array.isArray(req.body.audioNotes)
-                        ? req.body.audioNotes
-                        : parseJsonColumn(existing.audioNotes, [])
-                ),
-                visit_data: req.body.visitData ? JSON.stringify(req.body.visitData) : existing.visit_data,
-                assignedTo: req.body.assignedTo !== undefined ? req.body.assignedTo : existing.assigned_to,
-                assignedGroupId:
-                    req.body.assignedGroupId !== undefined
-                        ? req.body.assignedGroupId
-                        : existing.assigned_group,
-            };
-            db.run(
-                `UPDATE tickets
-    SET title = ?, status = ?, priority = ?, amount = ?, visit = ?, annotations = ?, description = ?, attachments = ?, audioNotes = ?, visit_data = ?, assigned_to = ?, assigned_group = ?, updatedAt = CURRENT_TIMESTAMP
-       WHERE id = ?`,
-                [
-                    payload.title,
-                    payload.status,
-                    payload.priority,
-                    payload.amount,
-                    payload.visit,
-                    payload.annotations,
-                    payload.description,
-                    payload.attachments,
-                    payload.audioNotes,
-                    payload.visit_data,
-                    payload.assignedTo,
-                    payload.assignedGroupId,
-                    ticketId,
-                ],
-                function (updateErr) {
-                    if (updateErr) return res.status(500).json({ message: updateErr.message });
-                    db.get(`${TICKET_SELECT_BASE} WHERE t.id = ?`, [ticketId], async (selectErr, row) => {
-                        if (selectErr) return res.status(500).json({ message: selectErr.message });
-                        const updatedTicket = mapTicketRow(row);
-
-                        if (row?.status === 'Facturar') {
-                            ensurePendingPaymentForTicket(row);
-                        }
-
-                        // Sincronizar con calendario
-                        let calStart = updatedTicket.createdAt || new Date().toISOString();
-                        let calEnd = calStart;
-                        if (updatedTicket.visitData) {
-                            const vd = updatedTicket.visitData;
-                            if (vd.visitDate) {
-                                if (vd.visitStart) calStart = `${vd.visitDate}T${vd.visitStart}`;
-                                else calStart = `${vd.visitDate}T08:00:00`;
-                                if (vd.visitEnd) calEnd = `${vd.visitDate}T${vd.visitEnd}`;
-                                else calEnd = calStart;
-                            }
-                        }
-
-                        try {
-                            await upsertCalendarEvent({
-                                title: `Ticket #${updatedTicket.id}: ${updatedTicket.title}`,
-                                start: calStart,
-                                end: calEnd,
-                                location: updatedTicket.clientName ? `Cliente: ${updatedTicket.clientName}` : null,
-                                sourceType: 'ticket',
-                                sourceId: updatedTicket.id,
-                                locked: false,
-                            });
-                        } catch (err) {
-                            console.error('Error actualizando calendario desde ticket:', err);
-                        }
-
-                        // Enviar notificación si cambió el estado o si se solicitó explícitamente
-                        const notifyClient = req.body.notifyClient === true;
-                        if (existing.status !== payload.status || notifyClient) {
-                            const eventId = payload.status === 'Cerrado' ? 'ticket_closed' : 'ticket_updated';
-
-                            const recipients = [];
-                            if ((updatedTicket.clientNotificationsEnabled || notifyClient) && updatedTicket.clientEmail) {
-                                recipients.push(updatedTicket.clientEmail);
-                            }
-
-                            sendAutoNotification(
-                                eventId,
-                                `Ticket actualizado: ${updatedTicket.title} - Estado: ${payload.status} - Cliente: ${updatedTicket.clientName}`,
-                                updatedTicket,
-                                recipients
-                            ).catch(err => console.error('Error en notificación:', err));
-                        }
-
-                        // Registrar auditoría
-                        logEvent({
-                            user: 'system',
-                            action: 'Actualizar Ticket',
-                            resource: 'ticket',
-                            details: `Ticket actualizado: ${updatedTicket.title} (ID: ${updatedTicket.id}). Cambios: ${JSON.stringify(payload)}`,
-                            status: 'success',
-                            ip: req.ip
-                        });
-
-                        res.json(updatedTicket);
-                    });
-                }
-            );
-        });
+        res.json({ message: 'Client deleted successfully.' });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
     }
 });
 
-app.delete('/api/tickets/:id', async (req, res) => {
-    const engine = getCurrentDbEngine();
-    const ticketId = req.params.id;
-    const finalId = !Number.isNaN(Number(ticketId)) ? Number(ticketId) : ticketId;
 
-    if (engine === 'mongodb') {
-        try {
-            const mongoDb = getMongoDb();
-            if (!mongoDb) return res.status(503).json({ message: 'MongoDB no está conectado.' });
-
-            const { ObjectId } = require('mongodb');
-            const filter = [];
-
-            if (!Number.isNaN(Number(ticketId))) {
-                filter.push({ id: Number(ticketId) });
-            }
-            if (ObjectId.isValid(ticketId)) {
-                try { filter.push({ _id: new ObjectId(ticketId) }); } catch (e) { }
-            }
-            filter.push({ id: ticketId });
-
-            const ticketToDelete = await mongoDb.collection('tickets').findOne({ $or: filter });
-            if (!ticketToDelete) return res.status(404).json({ message: 'Ticket not found' });
-
-            const result = await mongoDb.collection('tickets').deleteOne({ _id: ticketToDelete._id });
-
-            // Remove linked calendar events
-            const deleteId = ticketToDelete.id || ticketToDelete._id.toString();
-            await mongoDb.collection('calendar_events').deleteMany({
-                sourceType: 'ticket',
-                sourceId: { $in: [deleteId, String(deleteId), Number(deleteId)] }
-            });
-
-            logEvent({
-                user: req.user ? req.user.email : 'system',
-                action: 'delete',
-                resource: 'ticket',
-                details: `Ticket eliminado manualmente (ID: ${ticketId})`,
-                status: 'success',
-                ip: req.ip,
-            }).catch(() => { });
-
-            res.json({ message: 'Ticket deleted successfully.' });
-        } catch (error) {
-            res.status(500).json({ message: error.message });
-        }
-    } else {
-        db.run('DELETE FROM tickets WHERE id = ?', [ticketId], function (err) {
-            if (err) return res.status(500).json({ message: err.message });
-            if (this.changes === 0) return res.status(404).json({ message: 'Ticket not found' });
-
-            db.run(
-                'DELETE FROM calendar_events WHERE source_type = ? AND source_id = ?',
-                ['ticket', ticketId],
-                function (eventErr) {
-                    if (eventErr) {
-                        console.error('Error removing calendar event for deleted ticket:', eventErr);
-                    } else if (this.changes > 0) {
-                        logEvent({
-                            user: req.user ? req.user.email : 'system',
-                            action: 'delete',
-                            resource: 'calendar_event',
-                            details: `Evento vinculado eliminado para ticket ${ticketId}`,
-                            status: 'success',
-                            ip: req.ip,
-                        }).catch(() => { });
-                    }
-                }
-            );
-
-            logEvent({
-                user: req.user ? req.user.email : 'system',
-                action: 'delete',
-                resource: 'ticket',
-                details: `Ticket eliminado manualmente (ID: ${ticketId})`,
-                status: 'success',
-                ip: req.ip,
-            }).catch(() => { });
-
-            res.json({ message: 'Ticket deleted successfully.' });
-        });
-    }
-});
-
-app.get('/api/clients/:id/tickets', async (req, res) => {
-    const engine = getCurrentDbEngine();
-    const clientId = req.params.id;
-
-    if (engine === 'mongodb') {
-        try {
-            const mongoDb = getMongoDb();
-            if (!mongoDb) return res.status(503).json({ message: 'MongoDB no está conectado.' });
-
-            const filter = getMongoClientFilter(clientId);
-            const tickets = await mongoDb.collection('tickets')
-                .find(filter)
-                .sort({ createdAt: -1 })
-                .toArray();
-
-            res.json(tickets.map(mapTicketRow));
-        } catch (error) {
-            console.error('Error fetching tickets (mongo):', error);
-            res.status(500).json({ message: error.message, stack: error.stack });
-        }
-    } else {
-        db.all(`${TICKET_SELECT_BASE} WHERE t.client_id = ? ORDER BY t.createdAt DESC`, [clientId], (err, rows) => {
-            if (err) return res.status(500).json({ message: err.message });
-            res.json(rows.map(mapTicketRow));
-        });
-    }
-});
-
-app.get('/api/calendar-events', (req, res) => {
-    const query = `
-        SELECT 
-            ce.*, 
-            t.client_id as ticket_client_id, 
-            t.assigned_to as ticket_assigned_to,
-            t.assigned_group as ticket_assigned_group,
-            p.client_id as payment_client_id, 
-            c.client_id as contract_client_id 
-        FROM calendar_events ce 
-        LEFT JOIN tickets t ON ce.source_id = t.id AND ce.source_type = 'ticket' 
-        LEFT JOIN payments p ON ce.source_id = p.id AND ce.source_type = 'payment' 
-        LEFT JOIN contracts c ON ce.source_id = c.id AND ce.source_type = 'contract' 
-        ORDER BY ce.start ASC
-    `;
-    db.all(query, (err, rows) => {
-        if (err) return res.status(500).json({ message: err.message });
-        res.json(rows.map(mapCalendarEventRow));
-    });
-});
-
-app.post('/api/calendar-events', (req, res) => {
-    const {
-        title,
-        start,
-        end = null,
-        location = null,
-        sourceType = 'manual',
-        sourceId = null,
-        locked = false,
-    } = req.body;
-    if (!title) {
-        return res.status(400).json({ message: 'Title is required.' });
-    }
-    upsertCalendarEvent({
-        title,
-        start: start || new Date().toISOString(),
-        end,
-        location,
-        sourceType,
-        sourceId,
-        locked,
-    })
-        .then(async (newEvent) => {
-            sendAutoNotification(
-                'event_created',
-                `Nuevo evento creado: ${newEvent.title} - Fecha: ${newEvent.start}${newEvent.location ? ` - Lugar: ${newEvent.location}` : ''}`,
-                newEvent,
-                []
-            ).catch(err => console.error('Error en notificacion:', err));
-
-            await logEvent({
-                user: req.user ? req.user.email : 'system',
-                action: 'create',
-                resource: 'calendar_event',
-                details: {
-                    eventId: newEvent.id,
-                    title: newEvent.title,
-                    start: newEvent.start,
-                    sourceType: newEvent.sourceType,
-                    sourceId: newEvent.sourceId,
-                    locked: newEvent.locked,
-                },
-                ip: req.ip
-            });
-
-            res.status(201).json(newEvent);
-        })
-        .catch((error) => res.status(500).json({ message: error.message }));
-});
-
-app.put('/api/calendar-events/:id', (req, res) => {
-    db.get('SELECT * FROM calendar_events WHERE id = ?', [req.params.id], (getErr, existing) => {
-        if (getErr) return res.status(500).json({ message: getErr.message });
-        if (!existing) return res.status(404).json({ message: 'Evento no encontrado.' });
-        if (existing.locked && req.body?.force !== true && existing.source_type !== 'ticket') {
-            return res.status(403).json({ message: 'Evento bloqueado. Modificalo desde su origen.' });
-        }
-        const payload = {
-            title: req.body.title ?? existing.title,
-            location: req.body.location ?? existing.location,
-            start: req.body.start ?? existing.start,
-            end: req.body.end ?? existing.end,
-            sourceType: req.body.sourceType ?? existing.source_type ?? 'manual',
-            sourceId: req.body.sourceId ?? existing.source_id ?? null,
-            locked: req.body.locked ?? existing.locked ?? 0,
-            clientId: req.body.clientId ?? existing.client_id ?? null,
-            assignedTo: req.body.assignedTo ?? existing.assigned_to ?? null,
-            assignedGroup: req.body.assignedGroup ?? existing.assigned_group ?? null,
-        };
-        db.run(
-            `UPDATE calendar_events SET title = ?, location = ?, start = ?, end = ?, source_type = ?, source_id = ?, locked = ?, client_id = ?, assigned_to = ?, assigned_group = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?`,
-            [
-                payload.title,
-                payload.location,
-                payload.start,
-                payload.end,
-                payload.sourceType,
-                payload.sourceId,
-                payload.locked ? 1 : 0,
-                payload.clientId,
-                payload.assignedTo,
-                payload.assignedGroup,
-                req.params.id,
-            ],
-            function (updateErr) {
-                if (updateErr) return res.status(500).json({ message: updateErr.message });
-                getCalendarEventWithDetails(req.params.id, async (selectErr, row) => {
-                    if (selectErr) return res.status(500).json({ message: selectErr.message });
-                    if (!row) return res.status(404).json({ message: 'Evento no encontrado.' });
-                    const updatedEvent = mapCalendarEventRow(row);
-
-                    await logEvent({
-                        user: req.user ? req.user.email : 'system',
-                        action: 'update',
-                        resource: 'calendar_event',
-                        details: { eventId: updatedEvent.id, title: updatedEvent.title, locked: updatedEvent.locked },
-                        ip: req.ip
-                    });
-
-                    res.json(updatedEvent);
-                });
-            }
-        );
-    });
-});
-
-app.delete('/api/calendar-events/:id', (req, res) => {
-    db.get('SELECT * FROM calendar_events WHERE id = ?', [req.params.id], (getErr, existing) => {
-        if (getErr) return res.status(500).json({ message: getErr.message });
-        if (!existing) return res.status(404).json({ message: 'Evento no encontrado.' });
-        if (existing.locked) {
-            return res.status(403).json({ message: 'Evento bloqueado. Modificalo desde su origen.' });
-        }
-        const deleteAssociatedTicket = () => {
-            return new Promise((resolve, reject) => {
-                if (existing.source_type === 'ticket' && existing.source_id) {
-                    db.run('DELETE FROM tickets WHERE id = ?', [existing.source_id], function (ticketErr) {
-                        if (ticketErr) {
-                            return reject(ticketErr);
-                        }
-                        if (this.changes > 0) {
-                            logEvent({
-                                user: req.user ? req.user.email : 'system',
-                                action: 'delete',
-                                resource: 'ticket',
-                                details: `Ticket eliminado vía calendario (ID: ${existing.source_id})`,
-                                status: 'success',
-                                ip: req.ip
-                            }).catch(() => { });
-                        } else {
-                            console.warn(`Calendar event ${existing.id} referenced ticket ${existing.source_id} that was already gone.`);
-                        }
-                        resolve();
-                    });
-                } else {
-                    resolve();
-                }
-            });
-        };
-
-        const deleteEvent = () => {
-            db.run('DELETE FROM calendar_events WHERE id = ?', [req.params.id], function (deleteErr) {
-                if (deleteErr) return res.status(500).json({ message: deleteErr.message });
-                logEvent({
-                    user: req.user ? req.user.email : 'system',
-                    action: 'delete',
-                    resource: 'calendar_event',
-                    details: { eventId: req.params.id, title: existing.title },
-                    status: 'success',
-                    ip: req.ip
-                }).catch(() => { });
-                res.json({ message: 'Evento eliminado.' });
-            });
-        };
-
-        deleteAssociatedTicket()
-            .then(deleteEvent)
-            .catch((err) => res.status(500).json({ message: err.message }));
-    });
-});
-
-// ==========================================
-// SYSTEM V2 ROUTES
-// ==========================================
-
-// Rutas de Usuarios V2
-app.use('/api/v2/users', require('./routes/users-v2'));
-
-// Login V2
-app.post('/api/v2/auth/login', async (req, res) => {
-    try {
-        const { email, password } = req.body;
-
-        if (!email || !password) {
-            return res.status(400).json({ message: 'Email y contraseña son requeridos' });
-        }
-
-        const user = await userServiceV2.verifyCredentials(email, password);
-
-        if (!user) {
-            return res.status(401).json({ message: 'Credenciales inválidas' });
-        }
-
-        if (user.status !== 'active') {
-            return res.status(403).json({ message: 'Usuario inactivo o suspendido' });
-        }
-
-        // Generar token JWT
-        const token = jwt.sign(
-            {
-                userId: user.id,
-                email: user.email,
-                roles: user.roles
-            },
-            process.env.JWT_SECRET || 'your-secret-key',
-            { expiresIn: '24h' }
-        );
-
-        res.json({
-            message: 'Login exitoso',
-            token,
-            user: {
-                id: user.id,
-                email: user.email,
-                name: user.name,
-                roles: user.roles,
-                groupId: user.groupId
-            }
-        });
-    } catch (error) {
-        console.error('Error during login:', error);
-        res.status(500).json({ message: 'Error durante el login' });
-    }
-});
-
-// ==========================================
-// DIAGNOSTIC ENDPOINT (TEMPORAL)
-// ==========================================
-app.get('/api/debug/tickets-check', async (req, res) => {
-    try {
-        const engine = getCurrentDbEngine();
-        if (engine !== 'mongodb') {
-            return res.status(400).json({ message: 'Este endpoint solo funciona con MongoDB' });
-        }
-
-        const mongoDb = getMongoDb();
-        if (!mongoDb) {
-            return res.status(503).json({ message: 'MongoDB no conectado' });
-        }
-
-        // 1. Ver el counter de tickets
-        const counter = await mongoDb.collection('counters').findOne({ _id: 'tickets' });
-
-        // 2. Ver los últimos 10 tickets
-        const recentTickets = await mongoDb.collection('tickets')
-            .find({})
-            .sort({ id: -1 })
-            .limit(10)
-            .toArray();
-
-        // 3. Buscar duplicados
-        const duplicates = await mongoDb.collection('tickets').aggregate([
-            { $group: { _id: '$id', count: { $sum: 1 }, docs: { $push: { _id: '$_id', title: '$title', createdAt: '$createdAt' } } } },
-            { $match: { count: { $gt: 1 } } }
-        ]).toArray();
-
-        // 4. Ticket con mayor ID
-        const maxTicket = await mongoDb.collection('tickets')
-            .find({ id: { $type: 'number' } })
-            .sort({ id: -1 })
-            .limit(1)
-            .toArray();
-
-        const analysis = {
-            counter: counter ? counter.sequence : null,
-            maxId: maxTicket.length > 0 ? maxTicket[0].id : null,
-            problem: null,
-            solution: null
-        };
-
-        if (counter && maxTicket.length > 0) {
-            if (counter.sequence <= maxTicket[0].id) {
-                analysis.problem = `El counter (${counter.sequence}) es menor o igual al máximo ID (${maxTicket[0].id})`;
-                analysis.solution = `El counter debería ser ${maxTicket[0].id + 1}`;
-            } else {
-                analysis.problem = null;
-                analysis.solution = 'OK: El counter está correctamente adelante del máximo ID';
-            }
-        }
-
-        res.json({
-            counter,
-            recentTickets: recentTickets.map(t => ({ id: t.id, title: t.title, createdAt: t.createdAt })),
-            duplicates,
-            maxTicket: maxTicket.length > 0 ? { id: maxTicket[0].id, title: maxTicket[0].title } : null,
-            analysis
-        });
-    } catch (error) {
-        res.status(500).json({ message: error.message, stack: error.stack });
-    }
-});
-
-// Endpoint para CORREGIR el counter
-app.post('/api/debug/fix-tickets-counter', async (req, res) => {
-    try {
-        const engine = getCurrentDbEngine();
-        if (engine !== 'mongodb') {
-            return res.status(400).json({ message: 'Este endpoint solo funciona con MongoDB' });
-        }
-
-        const mongoDb = getMongoDb();
-        if (!mongoDb) {
-            return res.status(503).json({ message: 'MongoDB no conectado' });
-        }
-
-        // Encontrar el máximo ID
-        const maxTicket = await mongoDb.collection('tickets')
-            .find({ id: { $type: 'number' } })
-            .sort({ id: -1 })
-            .limit(1)
-            .toArray();
-
-        if (maxTicket.length === 0) {
-            return res.json({ message: 'No hay tickets en la base de datos', newCounter: 1 });
-        }
-
-        const newCounterValue = maxTicket[0].id + 1;
-
-        // Actualizar el counter
-        await mongoDb.collection('counters').updateOne(
-            { _id: 'tickets' },
-            { $set: { sequence: newCounterValue } },
-            { upsert: true }
-        );
-
-        res.json({
-            message: 'Counter corregido exitosamente',
-            previousMax: maxTicket[0].id,
-            newCounter: newCounterValue
-        });
-    } catch (error) {
-        res.status(500).json({ message: error.message, stack: error.stack });
-    }
-});
-
+// System startup
 const { startServer } = require('./lib/serverStart');
 
 startServer(app, PORT).catch((error) => {
     console.error('\n❌ Error fatal arrancando el servidor:', error);
-    console.error('   Stack:', error.stack);
     process.exit(1);
 });
-

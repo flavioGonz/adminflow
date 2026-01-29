@@ -31,6 +31,9 @@ import {
   Network,
   FolderArchive,
   Lock,
+  Loader2,
+  FileSignature,
+  CreditCard
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -95,6 +98,8 @@ export function ClientTable({
     doc.save('clients.pdf');
   };
 
+  const [visibleCount, setVisibleCount] = useState(12);
+
   const filteredClients = useMemo(() => {
     const lowercasedSearchTerm = searchTerm.toLowerCase();
     const textIncludes = (value?: string) =>
@@ -134,7 +139,16 @@ export function ClientTable({
     })()
     : filteredClients;
 
-  const visibleClients = sortedClients;
+  const visibleClients = sortedClients.slice(0, visibleCount);
+
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+    if (scrollHeight - scrollTop <= clientHeight + 100) {
+      if (visibleCount < sortedClients.length) {
+        setVisibleCount((prev) => prev + 12);
+      }
+    }
+  };
 
 
 
@@ -143,6 +157,7 @@ export function ClientTable({
 
   const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(event.target.value);
+    setVisibleCount(12); // Reset count on search
   };
 
   const requestSort = (key: SortKey) => {
@@ -161,256 +176,237 @@ export function ClientTable({
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center px-4 md:px-0">
         <Input
           placeholder="Buscar clientes..."
           value={searchTerm}
           onChange={handleSearchChange}
-          className="max-w-sm"
+          className="max-w-sm h-11 rounded-2xl border-slate-200 shadow-sm"
         />
         <div className="flex gap-2">
           <ImportClientsDialog onImportComplete={onImportComplete} />
           <CreateClientDialog onClientCreated={onClientCreated} />
-          <Button variant="outline" size="icon" onClick={handleExportExcel} title="Exportar a Excel">
-            <FileSpreadsheet className="h-4 w-4 text-green-500" />
+          <Button variant="outline" size="icon" onClick={handleExportExcel} title="Exportar a Excel" className="rounded-xl h-11 w-11 hover:bg-green-50 transition-colors">
+            <FileSpreadsheet className="h-5 w-5 text-green-500" />
           </Button>
-          <Button variant="outline" size="icon" onClick={handleExportPdf} title="Exportar a PDF">
-            <FileDown className="h-4 w-4 text-red-500" />
+          <Button variant="outline" size="icon" onClick={handleExportPdf} title="Exportar a PDF" className="rounded-xl h-11 w-11 hover:bg-red-50 transition-colors">
+            <FileDown className="h-5 w-5 text-red-500" />
           </Button>
         </div>
       </div>
-      <div className="relative rounded-md border">
-        <div className="max-h-[60vh] overflow-y-auto">
+      <div className="relative border-t border-slate-100 bg-transparent">
+        <div className="max-h-[75vh] overflow-y-auto" onScroll={handleScroll}>
           <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>
-                  <div className="flex items-center gap-2">
-                    <Hash className="h-4 w-4" />
+            <TableHeader className="bg-slate-50/50 sticky top-0 z-10 backdrop-blur-md">
+              <TableRow className="hover:bg-transparent border-b border-slate-100">
+                <TableHead className="w-[80px] py-4 pl-6">
+                  <div className="flex items-center gap-2 text-[10px] uppercase font-black text-slate-400 tracking-widest">
+                    <Hash className="h-3 w-3" />
                     ID
                   </div>
                 </TableHead>
-                <TableHead onClick={() => requestSort("name")}>
-                  <div className="flex items-center gap-2 cursor-pointer">
-                    <User className="h-4 w-4" />
+                <TableHead onClick={() => requestSort("name")} className="cursor-pointer group">
+                  <div className="flex items-center gap-2 text-[10px] uppercase font-black text-slate-400 tracking-widest">
+                    <User className="h-3 w-3" />
                     Nombre
-                    <ArrowUpDown className="h-4 w-4" />
+                    <ArrowUpDown className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
                   </div>
                 </TableHead>
-                <TableHead onClick={() => requestSort("alias")}>
-                  <div className="flex items-center gap-2 cursor-pointer">
-                    <Users className="h-4 w-4" />
+                <TableHead onClick={() => requestSort("alias")} className="cursor-pointer group">
+                  <div className="flex items-center gap-2 text-[10px] uppercase font-black text-slate-400 tracking-widest">
+                    <Users className="h-3 w-3" />
                     Alias
-                    <ArrowUpDown className="h-4 w-4" />
+                    <ArrowUpDown className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
                   </div>
                 </TableHead>
-                <TableHead onClick={() => requestSort("rut")}>
-                  <div className="flex items-center gap-2 cursor-pointer">
-                    <Hash className="h-4 w-4" />
-                    RUT
-                    <ArrowUpDown className="h-4 w-4" />
+                <TableHead>
+                  <div className="flex items-center gap-2 text-[10px] uppercase font-black text-slate-400 tracking-widest">
+                    <FileSignature className="h-3 w-3" />
+                    Contrato
                   </div>
                 </TableHead>
-                <TableHead onClick={() => requestSort("email")}>
-                  <div className="flex items-center gap-2 cursor-pointer">
-                    <Mail className="h-4 w-4" />
-                    Email
-                    <ArrowUpDown className="h-4 w-4" />
+                <TableHead>
+                  <div className="flex items-center gap-2 text-[10px] uppercase font-black text-slate-400 tracking-widest">
+                    <CreditCard className="h-3 w-3" />
+                    Recurrente
                   </div>
                 </TableHead>
-                <TableHead onClick={() => requestSort("phone")}>
-                  <div className="flex items-center gap-2 cursor-pointer">
-                    <Phone className="h-4 w-4" />
-                    Teléfono
-                    <ArrowUpDown className="h-4 w-4" />
+                <TableHead className="hidden md:table-cell">
+                   <div className="flex items-center gap-2 text-[10px] uppercase font-black text-slate-400 tracking-widest">
+                    <Mail className="h-3 w-3" />
+                    Contacto
                   </div>
                 </TableHead>
-                <TableHead onClick={() => requestSort("address")}>
-                  <div className="flex items-center gap-2 cursor-pointer">
-                    <MapPin className="h-4 w-4" />
-                    Dirección
-                    <ArrowUpDown className="h-4 w-4" />
+                <TableHead className="hidden lg:table-cell">
+                  <div className="flex items-center gap-2 text-[10px] uppercase font-black text-slate-400 tracking-widest">
+                    <MapPin className="h-3 w-3" />
+                    Ubicación
                   </div>
                 </TableHead>
-
-                <TableHead onClick={() => requestSort("createdAt")}>
-                  <div className="flex items-center gap-2 cursor-pointer">
-                    <Settings className="h-4 w-4" />
-                    Creado
-                    <ArrowUpDown className="h-4 w-4" />
-                  </div>
-                </TableHead>
-                <TableHead className="text-right">
-                  <div className="flex items-center gap-2 justify-end">
-                    <Settings className="h-4 w-4" />
+                <TableHead className="text-right py-4 pr-6">
+                  <div className="flex items-center gap-2 justify-end text-[10px] uppercase font-black text-slate-400 tracking-widest">
+                    <Settings className="h-3 w-3" />
                     Acciones
                   </div>
                 </TableHead>
               </TableRow>
             </TableHeader>
-            <AnimatedTableBody staggerDelay={0.03}>
+            <AnimatedTableBody staggerDelay={0.02}>
               {visibleClients.length > 0 ? (
                 visibleClients.map((client, index) => (
                   <AnimatedRow
                     key={client.id}
-                    delay={index * 0.03}
+                    delay={index * 0.02}
                     onClick={() => router.push(`/clients/${client.id}`)}
-                    className="cursor-pointer group/row"
+                    className="cursor-pointer group/row border-b border-slate-50 last:border-0 hover:bg-white transition-colors"
                   >
-                    <TableCell className="font-medium">
-                      <span>{client.numericId || client.id}</span>
+                    <TableCell className="py-4 pl-6">
+                      <span className="text-xs font-mono font-bold text-slate-400">#{client.numericId || client.id}</span>
                     </TableCell>
-                    <TableCell className="font-medium">
-                      <div className="space-y-1">
-                        <div>{client.name}</div>
-                        {client.contract && (
-                          <div className="flex items-center gap-2 text-xs text-emerald-700">
-                            <ShieldCheck className="h-3.5 w-3.5" />
-                            <span>Contrato Vigente</span>
-                          </div>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="space-y-1.5">
-                        <div>{client.alias || "—"}</div>
-                        <div className="flex items-center gap-1.5">
-                          {client.hasAccess && (
-                            <div className="group relative">
-                              <Lock
-                                className="h-3.5 w-3.5 text-blue-600 cursor-pointer hover:text-blue-700 transition-colors"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  router.push(`/clients/${client.id}/repository/access`);
-                                }}
-                              />
-                              <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 text-xs bg-slate-900 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10">
-                                Datos/Acceso
-                              </span>
-                            </div>
-                          )}
-                          {client.hasDiagram && (
-                            <div className="group relative">
-                              <Network
-                                className="h-3.5 w-3.5 text-emerald-600 cursor-pointer hover:text-emerald-700 transition-colors"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  router.push(`/clients/${client.id}/diagram`);
-                                }}
-                              />
-                              <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 text-xs bg-slate-900 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10">
-                                Ver diagrama
-                              </span>
-                            </div>
-                          )}
-                          {client.hasFiles && (
-                            <div className="group relative">
-                              <FolderArchive
-                                className="h-3.5 w-3.5 text-slate-600 cursor-pointer hover:text-slate-700 transition-colors"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  router.push(`/repository?search=${encodeURIComponent(client.name)}`);
-                                }}
-                              />
-                              <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 text-xs bg-slate-900 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10">
-                                Ver archivos
-                              </span>
-                            </div>
-                          )}
-                          {client.hasImplementation && (
-                            <div className="group relative">
-                              <button
-                                type="button"
-                                className="rounded-full border border-transparent bg-white p-0.5 transition hover:border-slate-300"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  router.push(`/clients/${client.id}/implementation`);
-                                }}
-                              >
-                                <img
-                                  src="/assets/patchpanel/rj45.png"
-                                  alt="Implementación"
-                                  className="h-3.5 w-3.5 object-contain"
-                                />
-                              </button>
-                              <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 text-xs bg-slate-900 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10">
-                                Implementación guardada
-                              </span>
+                    <TableCell className="py-4">
+                      <div className="flex items-center gap-3">
+                        <Avatar className="h-10 w-10 border-2 border-white shadow-sm ring-1 ring-slate-100">
+                          <AvatarImage src={client.avatarUrl ? (client.avatarUrl.startsWith('http') ? client.avatarUrl : `${API_URL.replace('/api', '')}${client.avatarUrl}`) : undefined} />
+                          <AvatarFallback className="bg-slate-50 text-slate-400">
+                            <User className="h-5 w-5" />
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex flex-col">
+                          <span className="font-bold text-slate-900 tracking-tight">{client.name}</span>
+                          {client.contract && (
+                            <div className="flex items-center gap-1 text-[9px] font-black text-emerald-600 uppercase tracking-tighter mt-0.5">
+                              <ShieldCheck className="h-2.5 w-2.5" />
+                              <span>Contrato Activo</span>
                             </div>
                           )}
                         </div>
                       </div>
                     </TableCell>
-                    <TableCell>{client.rut}</TableCell>
-                    <TableCell>
-                      <a
-                        href={`mailto:${client.email}`}
-                        onClick={(e) => e.stopPropagation()}
-                        className="text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1"
-                      >
-                        <Mail className="h-3.5 w-3.5" />
-                        {client.email}
-                      </a>
+                    <TableCell className="py-4">
+                       <div className="flex flex-col gap-1.5">
+                          <span className="text-sm font-medium text-slate-600">{client.alias || "—"}</span>
+                          <div className="flex items-center gap-1.5">
+                          {client.hasAccess && (
+                            <Lock className="h-3 w-3 text-blue-500" />
+                          )}
+                          {client.hasDiagram && (
+                            <Network className="h-3 w-3 text-emerald-500" />
+                          )}
+                          {client.hasFiles && (
+                            <FolderArchive className="h-3 w-3 text-slate-400" />
+                          )}
+                          {client.hasImplementation && (
+                             <img src="/assets/patchpanel/rj45.png" alt="Impl" className="h-3 w-3 grayscale opacity-50" />
+                          )}
+                        </div>
+                       </div>
                     </TableCell>
-                    <TableCell>
-                      {client.phone ? (
-                        <a
-                          href={`https://wa.me/${client.phone.replace(/\D/g, "")}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={(event) => event.stopPropagation()}
-                          className="inline-flex"
-                        >
-                          <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100">
-                            <MessageCircle className="mr-1 h-3.5 w-3.5" />
-                            {client.phone}
-                          </Badge>
-                        </a>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
+                    <TableCell className="py-4">
+                         {client.contract ? (
+                             <Badge className="bg-emerald-50 text-emerald-700 border-emerald-100 hover:bg-emerald-50 text-[10px] font-bold">
+                                 {typeof client.contract === 'string' ? client.contract : 'SÍ'}
+                             </Badge>
+                         ) : (
+                             <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">N/A</span>
+                         )}
                     </TableCell>
-                    <TableCell>{client.address}</TableCell>
+                    <TableCell className="py-4">
+                        {client.recurringPaymentEnabled ? (
+                            <div className="flex flex-col">
+                                <span className="text-xs font-black text-slate-800">
+                                    {new Intl.NumberFormat("es-UY", {
+                                        style: "currency",
+                                        currency: client.recurringCurrency || "UYU",
+                                        maximumFractionDigits: 0,
+                                    }).format(client.recurringAmount || 0)}
+                                </span>
+                                <span className="text-[9px] font-bold text-emerald-600 uppercase">Activo</span>
+                            </div>
+                        ) : (
+                            <span className="text-[10px] text-slate-300">—</span>
+                        )}
+                    </TableCell>
+                    <TableCell className="py-4 hidden md:table-cell">
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center gap-1.5 text-xs text-blue-600 font-medium">
+                           <Mail className="h-3 w-3" />
+                           {client.email}
+                        </div>
+                        {client.phone && (
+                           <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-bold">
+                              <Phone className="h-2.5 w-2.5" />
+                              {client.phone}
+                           </div>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell className="py-4 hidden lg:table-cell max-w-[200px]">
+                       <div className="flex items-start gap-1.5">
+                          <MapPin className="h-3 w-3 text-slate-300 mt-0.5 shrink-0" />
+                          <span className="text-[11px] text-slate-500 leading-tight line-clamp-2">{client.address || "Sin dirección"}</span>
+                       </div>
+                    </TableCell>
 
-                    <TableCell>
-                      {client.createdAt
-                        ? new Date(client.createdAt).toLocaleDateString()
-                        : "—"}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end space-x-2" onClick={(e) => e.stopPropagation()}>
+                    <TableCell className="text-right py-4 pr-6">
+                      <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
                         <EditClientDialog
                           client={client}
                           onClientUpdated={onClientUpdated}
                         >
-                          <Button variant="ghost" size="icon">
-                            <Edit className="h-4 w-4" />
+                          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full hover:bg-white hover:shadow-sm">
+                            <Edit className="h-3.5 w-3.5 text-slate-400" />
                           </Button>
                         </EditClientDialog>
                         <DeleteClientDialog
                           client={client}
                           onClientDeleted={onClientDeleted}
                         >
-                          <Button variant="ghost" size="icon">
-                            <Trash2 className="h-4 w-4 text-red-500" />
+                          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full hover:bg-rose-50 hover:text-rose-600">
+                            <Trash2 className="h-3.5 w-3.5" />
                           </Button>
                         </DeleteClientDialog>
+                        {client.phone && (
+                            <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="h-8 w-8 rounded-full hover:bg-emerald-50 hover:text-emerald-600"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    const cleanPhone = client.phone!.replace(/\D/g, "");
+                                    window.open(`https://wa.me/${cleanPhone}`, "_blank");
+                                }}
+                            >
+                                <MessageCircle className="h-3.5 w-3.5" />
+                            </Button>
+                        )}
                       </div>
                     </TableCell>
                   </AnimatedRow>
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={9} className="h-24 text-center">
-                    No se encontraron clientes.
+                  <TableCell colSpan={8} className="h-32 text-center">
+                    <div className="flex flex-col items-center gap-2 text-slate-400">
+                       <Users className="h-8 w-8 opacity-20" />
+                       <span className="text-sm font-medium">No se encontraron clientes</span>
+                    </div>
                   </TableCell>
                 </TableRow>
               )}
             </AnimatedTableBody>
           </Table>
+          
+          {visibleCount < sortedClients.length && (
+             <div className="p-8 text-center border-t border-slate-50">
+                <Loader2 className="h-6 w-6 animate-spin mx-auto text-slate-200" />
+                <p className="text-[10px] uppercase font-black text-slate-300 tracking-[0.2em] mt-2">Cargando más clientes</p>
+             </div>
+          )}
         </div>
-
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-white to-transparent" />
+      </div>
+      <div className="flex items-center justify-between px-2 text-[10px] font-black uppercase text-slate-400 tracking-widest pb-4 pr-6">
+         <p>Total: {filteredClients.length} clientes</p>
+         <p>Mostrando {visibleClients.length}</p>
       </div>
     </div>
   );

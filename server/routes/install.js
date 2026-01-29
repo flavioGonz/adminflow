@@ -1,11 +1,11 @@
 // server/routes/install.js
-// Rutas para el instalador web
+// Rutas para el instalador web - EXCLUSIVO MONGODB
 
 const express = require('express');
 const router = express.Router();
 const fs = require('fs');
 const path = require('path');
-const sqlite3 = require('sqlite3').verbose();
+// sqlite3 removido de las rutas activas
 const { testMongoConnection, initializeMongoDB, getDatabaseStats } = require('../lib/mongoInit');
 const { upsertConfig } = require('../lib/configService');
 const { validateInstallation } = require('../lib/installationValidator');
@@ -28,7 +28,7 @@ function isInstalled() {
 function markAsInstalled() {
     fs.writeFileSync(INSTALL_LOCK_FILE, JSON.stringify({
         installedAt: new Date().toISOString(),
-        version: '1.0.0'
+        version: '1.1.0 (MongoOnly)'
     }));
 }
 /**
@@ -62,7 +62,7 @@ router.get('/validate', async (req, res) => {
 
 /**
  * POST /api/install/test-db
- * Prueba la conexión a la base de datos
+ * Prueba la conexión a la base de datos (SÓLO MONGODB)
  */
 router.post('/test-db', async (req, res) => {
     try {
@@ -70,19 +70,13 @@ router.post('/test-db', async (req, res) => {
 
         console.log('🔍 Testing database connection:', { type, mongoUri, mongoDb });
 
-        if (type === 'sqlite') {
-            // SQLite siempre funciona
-            return res.json({
-                success: true,
-                message: 'SQLite está listo para usar'
-            });
-        }
+        // Bloque SQLite removido por seguridad y limpieza
 
-        if (type === 'mongodb') {
+        if (type === 'mongodb' || !type) {
             if (!mongoUri || !mongoDb) {
                 return res.status(400).json({
                     success: false,
-                    message: 'URI y nombre de base de datos son requeridos'
+                    message: 'URI y nombre de base de datos son requeridos para MongoDB'
                 });
             }
 
@@ -135,7 +129,7 @@ router.post('/test-db', async (req, res) => {
 
         res.status(400).json({
             success: false,
-            message: 'Tipo de base de datos no válido'
+            message: 'Motor de base de datos no soportado. Este sistema requiere MongoDB.'
         });
     } catch (error) {
         console.error('❌ Fatal error in test-db:', error);
@@ -170,10 +164,10 @@ router.post('/complete', async (req, res) => {
             });
         }
 
-        if (!database || !database.type) {
+        if (!database || (database.type && database.type !== 'mongodb')) {
             return res.status(400).json({
                 success: false,
-                message: 'Configuración de base de datos incompleta'
+                message: 'Configuración de base de datos incompleta o motor no soportado (se requiere MongoDB)'
             });
         }
 
@@ -182,72 +176,67 @@ router.post('/complete', async (req, res) => {
         // 1. Configurar base de datos
         const dbConfigPath = path.join(__dirname, '../.selected-db.json');
         const dbConfig = {
-            engine: database.type,
-            sqlitePath: 'database/database.sqlite'
+            engine: 'mongodb' // Forzar motor mongodb
         };
 
-        if (database.type === 'mongodb') {
-            if (!database.mongoUri || !database.mongoDb) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Configuración de MongoDB incompleta'
-                });
+        if (!database.mongoUri || !database.mongoDb) {
+            return res.status(400).json({
+                success: false,
+                message: 'Configuración de MongoDB incompleta (URI y DB son requeridas)'
+            });
+        }
+
+        // Limpiar URI con manejo robusto
+        let cleanUri = database.mongoUri.trim();
+        
+        try {
+            const url = new URL(cleanUri);
+            if (url.pathname && url.pathname !== '/') {
+                const pathParts = url.pathname.split('/').filter(p => p);
+                if (pathParts.length > 0 && pathParts[pathParts.length - 1] === database.mongoDb) {
+                    pathParts.pop();
+                }
+                url.pathname = pathParts.length > 0 ? '/' + pathParts.join('/') : '';
             }
-
-            // Limpiar URI con manejo robusto
-            let cleanUri = database.mongoUri.trim();
-            
-            try {
-                const url = new URL(cleanUri);
-                if (url.pathname && url.pathname !== '/') {
-                    const pathParts = url.pathname.split('/').filter(p => p);
-                    if (pathParts.length > 0 && pathParts[pathParts.length - 1] === database.mongoDb) {
-                        pathParts.pop();
-                    }
-                    url.pathname = pathParts.length > 0 ? '/' + pathParts.join('/') : '';
-                }
-                cleanUri = url.toString().replace(/\/$/, '');
-            } catch (urlError) {
-                // Fallback
-                if (cleanUri.includes('/' + database.mongoDb)) {
-                    cleanUri = cleanUri.replace('/' + database.mongoDb, '');
-                }
-                if (cleanUri.endsWith('/')) {
-                    cleanUri = cleanUri.slice(0, -1);
-                }
+            cleanUri = url.toString().replace(/\/$/, '');
+        } catch (urlError) {
+            // Fallback
+            if (cleanUri.includes('/' + database.mongoDb)) {
+                cleanUri = cleanUri.replace('/' + database.mongoDb, '');
             }
+            if (cleanUri.endsWith('/')) {
+                cleanUri = cleanUri.slice(0, -1);
+            }
+        }
 
-            logs.push(`🔧 Configurando MongoDB: ${cleanUri}/${database.mongoDb}`);
+        logs.push(`🔧 Configurando MongoDB: ${cleanUri}/${database.mongoDb}`);
 
-            dbConfig.mongoUri = cleanUri;
-            dbConfig.mongoDb = database.mongoDb;
+        dbConfig.mongoUri = cleanUri;
+        dbConfig.mongoDb = database.mongoDb;
 
-            // Inicializar MongoDB
-            try {
-                const initResult = await initializeMongoDB(cleanUri, database.mongoDb, database.isNew, logs);
+        // Inicializar MongoDB
+        try {
+            const initResult = await initializeMongoDB(cleanUri, database.mongoDb, database.isNew, logs);
 
-                if (!initResult.success) {
-                    console.error('❌ Error al inicializar MongoDB:', initResult.message);
-                    return res.status(500).json({
-                        success: false,
-                        message: 'Error al inicializar MongoDB: ' + initResult.message,
-                        logs: initResult.progress,
-                    });
-                }
-
-                logs.push('✅ MongoDB inicializado correctamente');
-
-            } catch (initError) {
-                console.error('❌ Error fatal al inicializar MongoDB:', initError);
-                logs.push('❌ Error fatal al inicializar MongoDB: ' + initError.message);
+            if (!initResult.success) {
+                console.error('❌ Error al inicializar MongoDB:', initResult.message);
                 return res.status(500).json({
                     success: false,
-                    message: 'Error fatal al inicializar MongoDB: ' + initError.message,
-                    logs,
+                    message: 'Error al inicializar MongoDB: ' + initResult.message,
+                    logs: initResult.progress,
                 });
             }
-        } else if (database.type === 'sqlite') {
-            // ... (el código de sqlite no necesita cambios)
+
+            logs.push('✅ MongoDB inicializado correctamente');
+
+        } catch (initError) {
+            console.error('❌ Error fatal al inicializar MongoDB:', initError);
+            logs.push('❌ Error fatal al inicializar MongoDB: ' + initError.message);
+            return res.status(500).json({
+                success: false,
+                message: 'Error fatal al inicializar MongoDB: ' + initError.message,
+                logs,
+            });
         }
 
         fs.writeFileSync(dbConfigPath, JSON.stringify(dbConfig, null, 2));

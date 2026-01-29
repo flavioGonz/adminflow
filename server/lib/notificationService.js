@@ -3,7 +3,6 @@ const axios = require('axios');
 const { URLSearchParams } = require('url');
 
 const { getMongoDb } = require('./mongoClient');
-const { recordSyncEvent } = require('./sqliteSync');
 const { getConfig } = require('./configService');
 const { getTemplateForEvent } = require('./emailTemplates');
 
@@ -31,13 +30,11 @@ const hasSlack = Boolean(SLACK_WEBHOOK);
 const getSmtpConfig = async () => {
   try {
     const mongoDb = getMongoDb();
-    console.log('📧 MongoDB connected:', !!mongoDb);
+    if (!mongoDb) return null;
 
     const config = await getConfig('notifications');
-    console.log('📧 Config received:', JSON.stringify(config, null, 2));
     if (config && config.data && config.data.channels && config.data.channels.email) {
       const emailConfig = config.data.channels.email;
-      console.log('📧 Email config found:', emailConfig);
       if (emailConfig.enabled && emailConfig.apiKey && emailConfig.smtpUser && emailConfig.smtpPass) {
         return {
           host: emailConfig.apiKey,
@@ -48,8 +45,7 @@ const getSmtpConfig = async () => {
       }
     }
   } catch (error) {
-    console.log('No se pudo obtener configuración SMTP de MongoDB, usando variables de entorno');
-    console.error('Error:', error);
+    console.warn('No se pudo obtener configuración SMTP de MongoDB, usando fallback');
   }
 
   // Fallback a variables de entorno
@@ -66,21 +62,15 @@ const getSmtpConfig = async () => {
 };
 
 const sendEmail = async ({ to, subject, html, text }) => {
-  console.log('📧 sendEmail called with to:', to);
   const smtpConfig = await getSmtpConfig();
 
   if (!smtpConfig) {
-    console.log('❌ No SMTP config found');
     return { status: 'skipped', detail: 'Email transport not configured' };
   }
 
-  console.log('✅ SMTP Config:', { host: smtpConfig.host, port: smtpConfig.port, user: smtpConfig.user });
-
-  // Fallback: si no hay destinatario, usar el mismo usuario SMTP (admin)
   const finalTo = to || smtpConfig.user;
 
   if (!finalTo) {
-    console.error('❌ Error sending email: No recipients defined');
     return { status: 'failed', detail: 'No recipients defined' };
   }
 
@@ -102,11 +92,8 @@ const sendEmail = async ({ to, subject, html, text }) => {
     html,
   };
 
-  console.log('📧 Sending email:', { from: message.from, to: message.to, subject: message.subject });
-
   try {
     const result = await transporter.sendMail(message);
-    console.log('✅ Email sent successfully:', result.messageId);
     return { status: 'sent', channel: 'email', to: finalTo };
   } catch (error) {
     console.error('❌ Error sending email:', error.message);
@@ -115,36 +102,28 @@ const sendEmail = async ({ to, subject, html, text }) => {
 };
 
 const sendTelegram = async ({ message }) => {
-  console.log('📱 sendTelegram called');
-
-  // Intentar obtener configuración de MongoDB
   let botToken = TELEGRAM_TOKEN;
   let chatId = TELEGRAM_CHAT;
 
   try {
     const config = await getConfig('notifications');
-    console.log('📱 Telegram config:', config?.data?.channels?.telegram);
     if (config?.data?.channels?.telegram?.enabled) {
       botToken = config.data.channels.telegram.apiKey || botToken;
       chatId = config.data.channels.telegram.webhook || chatId;
     }
   } catch (error) {
-    console.log('Using env vars for Telegram');
+    // skip
   }
 
   if (!botToken || !chatId) {
-    console.log('❌ Telegram not configured');
     return { status: 'skipped', detail: 'Telegram not configured' };
   }
-
-  console.log('✅ Sending to Telegram chat:', chatId);
 
   try {
     await axios.post(`https://api.telegram.org/bot${botToken}/sendMessage`, {
       chat_id: chatId,
       text: message,
     });
-    console.log('✅ Telegram sent successfully');
     return { status: 'sent', channel: 'telegram' };
   } catch (error) {
     console.error('❌ Error sending Telegram:', error.message);
@@ -153,9 +132,6 @@ const sendTelegram = async ({ message }) => {
 };
 
 const sendWhatsApp = async ({ message }) => {
-  console.log('💬 sendWhatsApp called');
-
-  // Intentar obtener configuración de MongoDB
   let accountSid = TWILIO_SID;
   let authToken = TWILIO_TOKEN;
   let fromNumber = TWILIO_WHATSAPP_FROM;
@@ -163,22 +139,17 @@ const sendWhatsApp = async ({ message }) => {
 
   try {
     const config = await getConfig('notifications');
-    console.log('💬 WhatsApp config:', config?.data?.channels?.whatsapp);
     if (config?.data?.channels?.whatsapp?.enabled) {
       accountSid = config.data.channels.whatsapp.apiKey || accountSid;
       authToken = config.data.channels.whatsapp.webhook || authToken;
-      // Nota: fromNumber y toNumber deberían estar en metadata o campos adicionales
     }
   } catch (error) {
-    console.log('Using env vars for WhatsApp');
+    // skip
   }
 
   if (!accountSid || !authToken || !fromNumber || !toNumber) {
-    console.log('❌ WhatsApp/Twilio not configured');
     return { status: 'skipped', detail: 'WhatsApp/Twilio not configured' };
   }
-
-  console.log('✅ Sending WhatsApp from:', fromNumber, 'to:', toNumber);
 
   try {
     const params = new URLSearchParams({
@@ -197,7 +168,6 @@ const sendWhatsApp = async ({ message }) => {
         },
       }
     );
-    console.log('✅ WhatsApp sent successfully');
     return { status: 'sent', channel: 'whatsapp' };
   } catch (error) {
     console.error('❌ Error sending WhatsApp:', error.message);
@@ -206,27 +176,20 @@ const sendWhatsApp = async ({ message }) => {
 };
 
 const sendSlack = async ({ message }) => {
-  console.log('💼 sendSlack called');
-
-  // Intentar obtener configuración de MongoDB
   let webhookUrl = SLACK_WEBHOOK;
 
   try {
     const config = await getConfig('notifications');
-    console.log('💼 Slack config:', config?.data?.channels?.slack);
     if (config?.data?.channels?.slack?.enabled) {
       webhookUrl = config.data.channels.slack.apiKey || webhookUrl;
     }
   } catch (error) {
-    console.log('Using env vars for Slack');
+    // skip
   }
 
   if (!webhookUrl) {
-    console.log('❌ Slack webhook not configured');
     return { status: 'skipped', detail: 'Slack webhook not configured' };
   }
-
-  console.log('✅ Sending to Slack webhook');
 
   try {
     await axios.post(
@@ -241,7 +204,6 @@ const sendSlack = async ({ message }) => {
         },
       }
     );
-    console.log('✅ Slack sent successfully');
     return { status: 'sent', channel: 'slack' };
   } catch (error) {
     console.error('❌ Error sending Slack:', error.message);
@@ -259,8 +221,6 @@ const channelHandlers = {
 const isReady = () => hasEmail || hasTelegram || hasWhatsApp || Boolean(getMongoDb());
 
 const notify = async ({ event, message, channels = ['email'], metadata = {}, recipients = [] }) => {
-  console.log('📧 Notify called with:', { event, channels, recipients });
-
   const selectedChannels = Array.isArray(channels) ? channels : [channels];
   const tasks = selectedChannels.map((channel) => {
     const handler = channelHandlers[channel];
@@ -270,7 +230,6 @@ const notify = async ({ event, message, channels = ['email'], metadata = {}, rec
     }
     if (channel === 'email') {
       const emailTo = recipients.length > 0 ? recipients.join(', ') : EMAIL_USER;
-      console.log('📧 Sending email to:', emailTo);
 
       const templateData = { ...metadata, message };
       const { subject, html, text } = getTemplateForEvent(event, templateData);
@@ -303,13 +262,7 @@ const notify = async ({ event, message, channels = ['email'], metadata = {}, rec
       })
       .catch(() => { });
   }
-  recordSyncEvent('notifications', {
-    event,
-    message,
-    metadata,
-    channels: selectedChannels,
-    occurrences: settled,
-  }).catch(() => { });
+  
   return settled;
 };
 

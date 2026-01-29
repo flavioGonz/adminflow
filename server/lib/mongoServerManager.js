@@ -561,6 +561,23 @@ class MongoServerManager {
             let collections = null;
             let serverInfo = null;
 
+            if (server.active === false && !isCurrent) {
+                return {
+                    id: id,
+                    name: server.name,
+                    host: server.host,
+                    port: server.port,
+                    database: server.database,
+                    active: false,
+                    role: server.role || 'secondary',
+                    current: isCurrent,
+                    connectionStatus: 'disabled',
+                    collections: null,
+                    serverInfo: null,
+                    description: server.description
+                };
+            }
+
             let client = null;
             try {
                 client = new MongoClient(server.uri, {

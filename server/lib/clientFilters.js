@@ -11,44 +11,62 @@ const parseSqliteIdentifier = (value) => {
 const getMongoFilter = (id) => {
   if (!id) return {};
 
-  if (typeof id === 'string' && id.length === 24 && /^[0-9a-fA-F]{24}$/.test(id)) {
-    try {
-      return { _id: new ObjectId(id) };
-    } catch (error) {
-      // fall through
-    }
-  }
+  const normalizedId = String(id).trim();
+  if (!normalizedId) return {};
 
-  const numericId = Number(id);
   const filters = [];
 
-  if (!Number.isNaN(numericId)) {
-    filters.push({ _id: numericId });
-  } else {
-    filters.push({ _id: id });
+  if (ObjectId.isValid(normalizedId)) {
+    filters.push({ _id: new ObjectId(normalizedId) });
   }
 
+  const numericId = Number(normalizedId);
   if (!Number.isNaN(numericId)) {
+    filters.push({ _id: numericId });
     filters.push({ id: numericId });
     filters.push({ sqliteId: numericId });
   }
-  filters.push({ id: String(id) });
-  filters.push({ sqliteId: String(id) });
 
-  return filters.length > 1 ? { $or: filters } : filters[0];
+  filters.push({ id: normalizedId });
+  filters.push({ sqliteId: normalizedId });
+
+  return filters.length === 1 ? filters[0] : { $or: filters };
 };
 
 const getMongoClientFilter = (clientId) => {
   if (!clientId) return {};
-  const numericId = Number(clientId);
+
+  const normalizedId = String(clientId).trim();
+  if (!normalizedId) return {};
+
   const filters = [];
+
+  // Check for MongoDB ObjectId
+  if (ObjectId.isValid(normalizedId)) {
+    filters.push({ clientId: new ObjectId(normalizedId) });
+    filters.push({ client_id: new ObjectId(normalizedId) });
+    // Some docs might store it as string even if it's a valid hex
+    filters.push({ clientId: normalizedId });
+    filters.push({ client_id: normalizedId });
+  }
+
+  // Check for numeric IDs (legacy)
+  const numericId = Number(normalizedId);
   if (!Number.isNaN(numericId)) {
     filters.push({ clientId: numericId });
     filters.push({ client_id: numericId });
+    // Also store as string
+    filters.push({ clientId: String(numericId) });
+    filters.push({ client_id: String(numericId) });
   }
-  filters.push({ clientId: String(clientId) });
-  filters.push({ client_id: String(clientId) });
-  return { $or: filters };
+
+  // Final fallback for plain strings
+  if (!ObjectId.isValid(normalizedId) && Number.isNaN(numericId)) {
+    filters.push({ clientId: normalizedId });
+    filters.push({ client_id: normalizedId });
+  }
+
+  return filters.length === 1 ? filters[0] : { $or: filters };
 };
 
 const normalizeIdentifier = (value) => {
