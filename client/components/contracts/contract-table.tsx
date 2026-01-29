@@ -38,6 +38,8 @@ import { EditContractDialog } from "./edit-contract-dialog";
 import { DeleteContractDialog } from "./delete-contract-dialog";
 import { UploadContractDialog } from "./upload-contract-dialog";
 import { Contract } from "@/types/contract";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { API_URL } from "@/lib/config";
 
 interface ContractTableProps {
   contracts: Contract[];
@@ -47,6 +49,14 @@ interface ContractTableProps {
 }
 
 type SortKey = "id" | "clientName" | "title" | "startDate" | "endDate" | "status" | "amount";
+
+const resolveAvatarUrl = (avatarPath?: string | null) => {
+  if (!avatarPath) return undefined;
+  if (avatarPath.startsWith("http")) return avatarPath;
+  const base = API_URL.replace(/\/api\/?$/, "");
+  const normalized = avatarPath.startsWith("/") ? avatarPath : `/${avatarPath}`;
+  return `${base}${normalized}`;
+};
 
 export function ContractTable({
   contracts,
@@ -165,7 +175,7 @@ export function ContractTable({
 
   return (
     <div className="space-y-4">
-      <div className="overflow-hidden rounded-xl bg-gradient-to-b from-white to-slate-50 shadow-sm">
+      <div className="overflow-hidden border-none shadow-none bg-transparent">
         <div className="relative">
           <div
             ref={tableScrollRef}
@@ -174,7 +184,7 @@ export function ContractTable({
           >
             <Table>
               <TableHeader>
-                <TableRow className="bg-slate-50/70">
+                <TableRow className="bg-slate-50/70 border-none">
                   <TableHead onClick={() => requestSort("id")}>
                     <button className="flex items-center gap-2 cursor-pointer font-semibold text-slate-800">
                       <Check className="h-4 w-4" />
@@ -231,20 +241,36 @@ export function ContractTable({
               <TableBody>
                 {visibleContracts.length > 0 ? (
                   visibleContracts.map((contract) => (
-                    <TableRow key={contract.id} className="hover:bg-slate-50">
+                    <TableRow key={contract.id} className="hover:bg-slate-50 border-slate-100">
                       <TableCell className="font-mono text-sm text-slate-700">
                         #{contract.id}
                       </TableCell>
                       <TableCell className="font-medium">
                         {contract.clientId ? (
-                          <Link
-                            href={`/clients/${contract.clientId}`}
-                            className="text-slate-900 underline-offset-2 hover:text-slate-700 hover:underline"
-                          >
-                            {contract.clientName || "Cliente sin nombre"}
-                          </Link>
+                          <div className="flex items-center gap-3">
+                            <Avatar className="h-8 w-8 border border-slate-100 shadow-sm">
+                              <AvatarImage 
+                                src={resolveAvatarUrl(contract.clientAvatarUrl)} 
+                                alt={contract.clientName || ""} 
+                              />
+                              <AvatarFallback className="bg-slate-100 text-xs text-slate-500 font-bold uppercase">
+                                {(contract.clientName || "?").substring(0, 2)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <Link
+                              href={`/clients/${contract.clientId}`}
+                              className="text-slate-900 underline-offset-2 hover:text-slate-700 hover:underline"
+                            >
+                              {contract.clientName || "Cliente sin nombre"}
+                            </Link>
+                          </div>
                         ) : (
-                          <span className="text-slate-500">Cliente no asignado</span>
+                          <div className="flex items-center gap-3">
+                            <Avatar className="h-8 w-8 border border-slate-100 bg-slate-50">
+                              <AvatarFallback className="text-xs text-slate-400">?</AvatarFallback>
+                            </Avatar>
+                            <span className="text-slate-500">Cliente no asignado</span>
+                          </div>
                         )}
                       </TableCell>
                       <TableCell className="font-semibold text-slate-900">

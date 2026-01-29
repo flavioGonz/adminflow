@@ -238,29 +238,34 @@ const mapClientRow = (row) => ({
     recurringPaymentEnabled: !!row.recurringPaymentEnabled,
 });
 
-const mapTicketRow = (row) => ({
-    ...row,
-    id: getId(row),
-    clientId: row.clientId !== undefined ? String(row.clientId) : (row.client_id !== undefined ? String(row.client_id) : undefined),
-    clientName: row.clientName || '',
-    title: row.title,
-    status: row.status,
-    priority: row.priority,
-    amount: row.amount,
-    visit: !!row.visit,
-    annotations: parseJsonColumn(row.annotations, []),
-    hasActiveContract: !!row.hasActiveContract,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
-    description: row.description || '',
-    attachments: parseJsonColumn(row.attachments, []),
-    audioNotes: parseJsonColumn(row.audioNotes, []),
-    assignedTo: row.assignedTo || null,
-    assignedGroupId: row.assignedGroupId || null,
-    visitData: parseJsonColumn(row.visit_data, null),
-    clientNotificationsEnabled: !!row.clientNotificationsEnabled,
-    clientEmail: row.clientEmail || '',
-});
+const mapTicketRow = (row, clientMap = {}) => {
+    const clientId = row.clientId !== undefined ? String(row.clientId) : (row.client_id !== undefined ? String(row.client_id) : undefined);
+    const clientData = clientId ? clientMap[clientId] : null;
+    return {
+        ...row,
+        id: getId(row),
+        clientId,
+        clientName: clientData ? clientData.name : (row.clientName || ''),
+        clientAvatarUrl: clientData ? clientData.avatarUrl : null,
+        title: row.title,
+        status: row.status,
+        priority: row.priority,
+        amount: row.amount,
+        visit: !!row.visit,
+        annotations: parseJsonColumn(row.annotations, []),
+        hasActiveContract: !!row.hasActiveContract,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+        description: row.description || '',
+        attachments: parseJsonColumn(row.attachments, []),
+        audioNotes: parseJsonColumn(row.audioNotes, []),
+        assignedTo: row.assignedTo || null,
+        assignedGroupId: row.assignedGroupId || null,
+        visitData: parseJsonColumn(row.visit_data, null),
+        clientNotificationsEnabled: !!row.clientNotificationsEnabled,
+        clientEmail: row.clientEmail || '',
+    };
+};
 
 const extractClientIds = (rows) => {
     const clientIds = new Set();
@@ -277,9 +282,13 @@ const buildClientMap = async (mongoDb, clientIds = []) => {
     if (!clientIds.length) return {};
     const numericIds = [];
     const stringIds = [];
+    const objectIds = [];
     clientIds.forEach((value) => {
         if (value === undefined || value === null) return;
         const normalized = String(value);
+        if (ObjectId.isValid(normalized) && normalized.length === 24) {
+            objectIds.push(new ObjectId(normalized));
+        }
         const parsed = Number(normalized);
         if (!Number.isNaN(parsed)) {
             numericIds.push(parsed);
@@ -287,24 +296,23 @@ const buildClientMap = async (mongoDb, clientIds = []) => {
         stringIds.push(normalized);
     });
     const orClauses = [];
-    if (numericIds.length) {
-        orClauses.push({ id: { $in: numericIds } });
-    }
-    if (stringIds.length) {
-        orClauses.push({ id: { $in: stringIds } });
-    }
+    if (objectIds.length) orClauses.push({ _id: { $in: objectIds } });
+    if (numericIds.length) orClauses.push({ id: { $in: numericIds } });
+    if (stringIds.length) orClauses.push({ id: { $in: stringIds } });
+    
     if (!orClauses.length) return {};
     const clients = await mongoDb.collection('clients').find({ $or: orClauses }).toArray();
     const map = {};
     clients.forEach((client) => {
+        const data = {
+            name: client.name || client.clientName || "",
+            avatarUrl: client.avatarUrl || client.avatar || null
+        };
         const key = client.id !== undefined ? String(client.id) : null;
-        if (key) {
-            map[key] = client.name || client.clientName || "";
-        }
+        if (key) map[key] = data;
         const idFromDoc = getId(client);
-        if (idFromDoc) {
-            map[idFromDoc] = client.name || client.clientName || "";
-        }
+        if (idFromDoc) map[idFromDoc] = data;
+        map[String(client._id)] = data;
     });
     return map;
 };
@@ -326,11 +334,13 @@ const buildIdFilter = (entityId) => {
 const mapContractRow = (row, clientMap = {}) => {
     const clientIdValue = row.client_id ?? row.clientId;
     const normalizedClientId = clientIdValue !== undefined && clientIdValue !== null ? String(clientIdValue) : undefined;
+    const clientData = normalizedClientId ? clientMap[normalizedClientId] : null;
     return {
         ...row,
         id: getId(row),
         clientId: normalizedClientId,
-        clientName: clientMap[normalizedClientId] ?? row.clientName ?? "",
+        clientName: clientData ? clientData.name : (row.clientName || ""),
+        clientAvatarUrl: clientData ? clientData.avatarUrl : null,
         title: row.title || row.contract_name || "",
         description: row.description || "",
         startDate: row.startDate || null,
@@ -1390,7 +1400,9 @@ app.get('/api/tickets', async (req, res) => {
     if (!mongoDb) return;
     try {
         const rows = await mongoDb.collection('tickets').find().sort({ createdAt: -1 }).toArray();
-        res.json(rows.map(mapTicketRow));
+        const clientIds = extractClientIds(rows);
+        const clientMap = await buildClientMap(mongoDb, clientIds);
+        res.json(rows.map((row) => mapTicketRow(row, clientMap)));
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
@@ -1403,7 +1415,8 @@ app.get('/api/tickets/:id', async (req, res) => {
         const { getMongoFilter } = require('./lib/clientFilters');
         const row = await mongoDb.collection('tickets').findOne(getMongoFilter(req.params.id));
         if (!row) return res.status(404).json({ message: 'Ticket not found' });
-        res.json(mapTicketRow(row));
+        const clientMap = await buildClientMap(mongoDb, [row.clientId || row.client_id]);
+        res.json(mapTicketRow(row, clientMap));
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
@@ -1434,7 +1447,8 @@ app.post('/api/tickets', async (req, res) => {
             updatedAt: new Date().toISOString()
         };
         await mongoDb.collection('tickets').insertOne(newTicket);
-        res.status(201).json(mapTicketRow(newTicket));
+        const clientMap = await buildClientMap(mongoDb, [newTicket.clientId]);
+        res.status(201).json(mapTicketRow(newTicket, clientMap));
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
@@ -1466,7 +1480,8 @@ app.put('/api/tickets/:id', async (req, res) => {
         );
         const updatedDoc = result.value || result;
         if (!updatedDoc) return res.status(404).json({ message: 'Ticket not found' });
-        res.json(mapTicketRow(updatedDoc));
+        const clientMap = await buildClientMap(mongoDb, [updatedDoc.clientId || updatedDoc.client_id]);
+        res.json(mapTicketRow(updatedDoc, clientMap));
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
@@ -1778,7 +1793,8 @@ app.get('/api/clients/:id/tickets', async (req, res) => {
         const { getMongoClientFilter } = require('./lib/clientFilters');
         const filter = getMongoClientFilter(req.params.id);
         const rows = await mongoDb.collection('tickets').find(filter).sort({ createdAt: -1 }).toArray();
-        res.json(rows.map(mapTicketRow));
+        const clientMap = await buildClientMap(mongoDb, [req.params.id]);
+        res.json(rows.map((row) => mapTicketRow(row, clientMap)));
     } catch (err) {
         res.status(500).json({ message: err.message });
     }

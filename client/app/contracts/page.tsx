@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import DashboardLayout from "@/components/layout/dashboard-layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ContractTable } from "@/components/contracts/contract-table";
 import { ImportContractsDialog } from "@/components/contracts/import-contracts-dialog";
 import { CreateContractDialog } from "@/components/contracts/create-contract-dialog";
@@ -14,7 +13,7 @@ import { toast } from "sonner";
 import autoTable from "jspdf-autotable";
 import { jsPDF } from "jspdf";
 import * as XLSX from "xlsx";
-import { BarChart3, FileDown, FileSpreadsheet, PlusCircle, FileSignature } from "lucide-react";
+import { FileDown, FileSpreadsheet, PlusCircle, FileSignature } from "lucide-react";
 import { ShinyText } from "@/components/ui/shiny-text";
 import { TableSkeleton } from "@/components/skeletons/table-skeleton";
 import { PageTransition } from "@/components/ui/page-transition";
@@ -60,28 +59,6 @@ export default function ContractsPage() {
     }
   };
 
-  const metrics = useMemo(() => {
-    const totals = contracts.reduce(
-      (acc, contract) => {
-        if (contract.currency?.toUpperCase() === "USD") {
-          acc.usd += contract.amount ?? 0;
-        } else {
-          acc.uyu += contract.amount ?? 0;
-        }
-        return acc;
-      },
-      { total: contracts.length, usd: 0, uyu: 0, expiringSoon: 0 }
-    );
-    const now = new Date().getTime();
-    const inFifteenDays = now + 1000 * 60 * 60 * 24 * 15;
-    totals.expiringSoon = contracts.filter((contract) => {
-      if (!contract.endDate) return false;
-      const end = new Date(contract.endDate).getTime();
-      return end > now && end < inFifteenDays;
-    }).length;
-    return totals;
-  }, [contracts]);
-
   const handleExportExcel = () => {
     const worksheet = XLSX.utils.json_to_sheet(
       contracts.map((contract) => ({
@@ -121,8 +98,8 @@ export default function ContractsPage() {
     <DashboardLayout>
       <PageTransition>
         <div className="space-y-6">
-          <div className="flex flex-col gap-4 rounded-2xl bg-white p-5 shadow-sm">
-            <div className="flex flex-wrap items-center gap-3 justify-between">
+          <div className="flex flex-col gap-4 p-0">
+            <div className="flex flex-wrap items-center gap-3 justify-between p-5 bg-white rounded-2xl shadow-sm border-none">
               <div className="flex items-center gap-3">
                 <div className="p-2 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600">
                   <FileSignature className="h-6 w-6 text-white" />
@@ -165,8 +142,6 @@ export default function ContractsPage() {
                 </CreateContractDialog>
               </div>
             </div>
-
-  
           </div>
 
           {error && (
@@ -175,7 +150,7 @@ export default function ContractsPage() {
             </div>
           )}
 
-          <div className="rounded-xl bg-background shadow-sm">
+          <div className="w-full">
             {loading ? (
               <div className="p-8">
                 <TableSkeleton rows={6} columns={5} />
