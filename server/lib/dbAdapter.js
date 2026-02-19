@@ -1,7 +1,7 @@
 // server/lib/dbAdapter.js
 // Adaptador de base de datos que usa MongoDB como principal
 
-const { getMongoClient } = require('./mongoClient');
+const { getMongoClient, initMongo } = require('./mongoClient');
 const { determineDbEngine } = require('./dbChoice');
 
 /**
@@ -20,14 +20,31 @@ class DatabaseAdapter {
      */
     async initialize() {
         try {
-            const config = determineDbEngine();
+            const { determineDbEngine, getDbConfigFromFile } = require('./dbChoice');
+
+            // Ensure engine is set/determined
+            await determineDbEngine();
+
+            // Get the actual configuration object
+            const config = getDbConfigFromFile();
+
+            // Fallback to process.env if available and not in config
+            if (!config.mongoUri && process.env.MONGODB_URI) {
+                config.mongoUri = process.env.MONGODB_URI;
+            }
 
             if (!config.mongoUri) {
                 throw new Error('MongoDB URI no configurada. Ejecuta: npm run init-mongo');
             }
 
-            this.mongoClient = await getMongoClient();
-            this.db = this.mongoClient.db(config.mongoDb || 'adminflow');
+            let client = await getMongoClient(config.mongoUri);
+            if (!client) {
+                await initMongo({ uri: config.mongoUri, dbName: config.mongoDb || process.env.MONGODB_DB || 'adminflow' });
+                client = await getMongoClient();
+            }
+
+            this.mongoClient = client;
+            this.db = this.mongoClient.db(config.mongoDb || process.env.MONGODB_DB || 'adminflow');
 
             console.log('✅ Adaptador de BD inicializado (MongoDB)');
             return true;

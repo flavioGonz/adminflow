@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Limpiar Cache - AdminFlow</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .card {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #10b981;
+            margin-top: 0;
+        }
+        button {
+            background: #10b981;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: #059669;
+        }
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 6px;
+            display: none;
+        }
+        .status.success {
+            background: #d1fae5;
+            color: #065f46;
+            display: block;
+        }
+        .status.error {
+            background: #fee2e2;
+            color: #991b1b;
+            display: block;
+        }
+        .info {
+            background: #e0f2fe;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+            color: #075985;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>🧹 Limpiar Cache del Service Worker</h1>
+        
+        <div class="info">
+            <strong>¿Por qué necesitas esto?</strong><br>
+            Si estás viendo errores 401 al cargar manifest.json o problemas con notificaciones,
+            limpiar el cache del service worker puede resolver el problema.
+        </div>
+
+        <button onclick="clearServiceWorker()">Desregistrar Service Worker</button>
+        <button onclick="clearCaches()">Limpiar Todos los Caches</button>
+        <button onclick="clearAll()">Limpiar Todo</button>
+        
+        <div id="status" class="status"></div>
+        
+        <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e5e5;">
+            <h3>Estado Actual:</h3>
+            <div id="info"></div>
+        </div>
+    </div>
+
+    <script>
+        async function showStatus(message, isSuccess = true) {
+            const statusEl = document.getElementById('status');
+            statusEl.textContent = message;
+            statusEl.className = 'status ' + (isSuccess ? 'success' : 'error');
+        }
+
+        async function clearServiceWorker() {
+            try {
+                if ('serviceWorker' in navigator) {
+                    const registrations = await navigator.serviceWorker.getRegistrations();
+                    for (let registration of registrations) {
+                        await registration.unregister();
+                    }
+                    showStatus(`✅ ${registrations.length} service worker(s) desregistrado(s)`);
+                    updateInfo();
+                } else {
+                    showStatus('❌ Service Worker no soportado', false);
+                }
+            } catch (error) {
+                showStatus('❌ Error: ' + error.message, false);
+            }
+        }
+
+        async function clearCaches() {
+            try {
+                if ('caches' in window) {
+                    const cacheNames = await caches.keys();
+                    await Promise.all(
+                        cacheNames.map(cacheName => caches.delete(cacheName))
+                    );
+                    showStatus(`✅ ${cacheNames.length} cache(s) eliminado(s): ${cacheNames.join(', ')}`);
+                    updateInfo();
+                } else {
+                    showStatus('❌ Cache API no soportada', false);
+                }
+            } catch (error) {
+                showStatus('❌ Error: ' + error.message, false);
+            }
+        }
+
+        async function clearAll() {
+            await clearServiceWorker();
+            await clearCaches();
+            showStatus('✅ Todo limpiado. Recarga la página para registrar el service worker nuevamente.');
+        }
+
+        async function updateInfo() {
+            const infoEl = document.getElementById('info');
+            let html = '';
+
+            // Check service workers
+            if ('serviceWorker' in navigator) {
+                const registrations = await navigator.serviceWorker.getRegistrations();
+                html += `<p><strong>Service Workers:</strong> ${registrations.length}</p>`;
+                registrations.forEach((reg, i) => {
+                    html += `<p style="margin-left: 20px;">SW ${i+1}: ${reg.scope}</p>`;
+                });
+            }
+
+            // Check caches
+            if ('caches' in window) {
+                const cacheNames = await caches.keys();
+                html += `<p><strong>Caches:</strong> ${cacheNames.length}</p>`;
+                cacheNames.forEach(name => {
+                    html += `<p style="margin-left: 20px;">• ${name}</p>`;
+                });
+            }
+
+            // Check notification permission
+            if ('Notification' in window) {
+                html += `<p><strong>Permisos de Notificación:</strong> ${Notification.permission}</p>`;
+            }
+
+            infoEl.innerHTML = html;
+        }
+
+        // Update info on load
+        updateInfo();
+    </script>
+</body>
+</html>

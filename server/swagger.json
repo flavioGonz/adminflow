@@ -39,6 +39,18 @@
     {
       "name": "Teams",
       "description": "Grupos de trabajo y técnicos."
+    },
+    {
+      "name": "Push Notifications",
+      "description": "Endpoints para gestión de notificaciones push de escritorio"
+    },
+    {
+      "name": "Users V2",
+      "description": "Gestión avanzada de técnicos y usuarios (v2)"
+    },
+    {
+      "name": "MongoDB Servers",
+      "description": "Gestión de múltiples instancias de bases de datos"
     }
   ],
   "paths": {
@@ -189,6 +201,104 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/payments": {
+      "get": {
+        "tags": [
+          "Payments"
+        ],
+        "summary": "Listar todos los pagos",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Payment"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Payments"
+        ],
+        "summary": "Registrar un nuevo pago",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Payment"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Creado"
+          }
+        }
+      }
+    },
+    "/payments/{id}": {
+      "put": {
+        "tags": [
+          "Payments"
+        ],
+        "summary": "Actualizar un pago",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Payment"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Actualizado"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Payments"
+        ],
+        "summary": "Eliminar un pago",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Eliminado"
           }
         }
       }
@@ -624,6 +734,436 @@
           }
         }
       }
+    },
+    "/api/push/subscribe": {
+      "post": {
+        "tags": [
+          "Push Notifications"
+        ],
+        "summary": "Suscribir a notificaciones push",
+        "description": "Registra una suscripción push para recibir notificaciones de escritorio",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "endpoint"
+                ],
+                "properties": {
+                  "endpoint": {
+                    "type": "string",
+                    "description": "URL del endpoint push del navegador"
+                  },
+                  "keys": {
+                    "type": "object",
+                    "properties": {
+                      "p256dh": {
+                        "type": "string"
+                      },
+                      "auth": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "expirationTime": {
+                    "type": "string",
+                    "nullable": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Suscripción registrada exitosamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos de suscripción inválidos"
+          }
+        }
+      }
+    },
+    "/api/push/unsubscribe": {
+      "post": {
+        "tags": [
+          "Push Notifications"
+        ],
+        "summary": "Desuscribir de notificaciones push",
+        "description": "Elimina una suscripción push existente",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "endpoint"
+                ],
+                "properties": {
+                  "endpoint": {
+                    "type": "string",
+                    "description": "URL del endpoint push a eliminar"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Suscripción eliminada exitosamente"
+          }
+        }
+      }
+    },
+    "/api/push/subscriptions": {
+      "get": {
+        "tags": [
+          "Push Notifications"
+        ],
+        "summary": "Listar suscripciones push",
+        "description": "Obtiene todas las suscripciones push registradas",
+        "responses": {
+          "200": {
+            "description": "Lista de suscripciones",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "endpoint": {
+                        "type": "string"
+                      },
+                      "keys": {
+                        "type": "object"
+                      },
+                      "createdAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "updatedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/push/send": {
+      "post": {
+        "tags": [
+          "Push Notifications"
+        ],
+        "summary": "Enviar notificación push",
+        "description": "Envía una notificación push real a todos los dispositivos suscritos usando web-push",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "title"
+                ],
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "description": "Título de la notificación"
+                  },
+                  "body": {
+                    "type": "string",
+                    "description": "Cuerpo del mensaje"
+                  },
+                  "url": {
+                    "type": "string",
+                    "description": "URL a abrir al hacer clic"
+                  },
+                  "tag": {
+                    "type": "string",
+                    "description": "Tag para agrupar notificaciones"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Notificación enviada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "payload": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/push/key": {
+      "get": {
+        "tags": [
+          "Push Notifications"
+        ],
+        "summary": "Obtener VAPID Public Key",
+        "description": "Retorna la llave pública necesaria para que el cliente se suscriba a WebPush",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "publicKey": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/users": {
+      "get": {
+        "tags": [
+          "Users V2"
+        ],
+        "summary": "Listar todos los usuarios (V2)",
+        "responses": {
+          "200": {
+            "description": "Lista de usuarios",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/UserV2"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Users V2"
+        ],
+        "summary": "Crear un nuevo usuario (V2)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserV2"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Creado"
+          }
+        }
+      }
+    },
+    "/api/v2/users/{id}": {
+      "get": {
+        "tags": [
+          "Users V2"
+        ],
+        "summary": "Obtener usuario por ID",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Users V2"
+        ],
+        "summary": "Actualizar usuario",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Actualizado"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Users V2"
+        ],
+        "summary": "Eliminar usuario",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Eliminado"
+          }
+        }
+      }
+    },
+    "/api/v2/users/{id}/avatar": {
+      "post": {
+        "tags": [
+          "Users V2"
+        ],
+        "summary": "Subir avatar de usuario",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "avatar": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Avatar actualizado"
+          }
+        }
+      }
+    },
+    "/api/mongo-servers": {
+      "get": {
+        "tags": [
+          "MongoDB Servers"
+        ],
+        "summary": "Listar servidores configurados",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/mongo-servers/status": {
+      "get": {
+        "tags": [
+          "MongoDB Servers"
+        ],
+        "summary": "Verificar estado y colecciones de todos los servidores",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/mongo-servers/{id}/switch": {
+      "post": {
+        "tags": [
+          "MongoDB Servers"
+        ],
+        "summary": "Cambiar la aplicación a un servidor específico",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Servidor cambiado"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -772,11 +1312,37 @@
           "id": {
             "type": "string"
           },
+          "invoice": {
+            "type": "string"
+          },
           "amount": {
             "type": "number"
           },
           "status": {
             "type": "string"
+          },
+          "client": {
+            "type": "string"
+          },
+          "clientId": {
+            "type": "string",
+            "nullable": true
+          },
+          "method": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "concept": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       },
@@ -815,6 +1381,30 @@
             "type": "string"
           },
           "email": {
+            "type": "string"
+          }
+        }
+      },
+      "UserV2": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "avatar": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
             "type": "string"
           }
         }

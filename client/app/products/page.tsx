@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { FilterToolbar } from "@/components/ui/filter-toolbar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AnimatedTableBody, AnimatedRow } from "@/hooks/use-table-animation";
 import {
@@ -111,7 +112,7 @@ const productTableColumns: { key: ProductTableColumn; label: string }[] = [
   { key: "category", label: "Categoría" },
 ];
 
-const LOAD_INCREMENT = 15;
+const LOAD_INCREMENT = 50;
 
 const formatCurrencyValue = (value: number, currency: "UYU" | "USD") =>
   new Intl.NumberFormat("es-UY", {
@@ -166,25 +167,25 @@ export default function ProductsPage() {
   const [formValues, setFormValues] = useState<ProductFormValues>(defaultFormValues);
   const [saving, setSaving] = useState(false);
 
-    // Manufacturer modal state
-    const [manufacturerModalOpen, setManufacturerModalOpen] = useState(false);
-    const [editingManufacturer, setEditingManufacturer] = useState<ManufacturerEntry | null>(null);
-    const [manufacturerForm, setManufacturerForm] = useState({ name: "", logoUrl: "" });
+  // Manufacturer modal state
+  const [manufacturerModalOpen, setManufacturerModalOpen] = useState(false);
+  const [editingManufacturer, setEditingManufacturer] = useState<ManufacturerEntry | null>(null);
+  const [manufacturerForm, setManufacturerForm] = useState({ name: "", logoUrl: "" });
 
-    // Category modal state
-    const [categoryModalOpen, setCategoryModalOpen] = useState(false);
-    const [editingCategory, setEditingCategory] = useState<CategoryEntry | null>(null);
-    const [categoryForm, setCategoryForm] = useState({ name: "" });
+  // Category modal state
+  const [categoryModalOpen, setCategoryModalOpen] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<CategoryEntry | null>(null);
+  const [categoryForm, setCategoryForm] = useState({ name: "" });
 
-    // Supplier modal state
-    const [supplierModalOpen, setSupplierModalOpen] = useState(false);
-    const [editingSupplier, setEditingSupplier] = useState<SupplierCatalogEntry | null>(null);
-    const [supplierForm, setSupplierForm] = useState({ name: "", priceUYU: "", priceUSD: "", logoUrl: "" });
-    const [supplierCatalog, setSupplierCatalog] = useState<SupplierCatalogEntry[]>([]);
-    const [selectedSupplierId, setSelectedSupplierId] = useState<string>("");
+  // Supplier modal state
+  const [supplierModalOpen, setSupplierModalOpen] = useState(false);
+  const [editingSupplier, setEditingSupplier] = useState<SupplierCatalogEntry | null>(null);
+  const [supplierForm, setSupplierForm] = useState({ name: "", priceUYU: "", priceUSD: "", logoUrl: "" });
+  const [supplierCatalog, setSupplierCatalog] = useState<SupplierCatalogEntry[]>([]);
+  const [selectedSupplierId, setSelectedSupplierId] = useState<string>("");
 
-    const [manufacturers, setManufacturers] = useState<ManufacturerEntry[]>([]);
-    const [categories, setCategories] = useState<CategoryEntry[]>([]);
+  const [manufacturers, setManufacturers] = useState<ManufacturerEntry[]>([]);
+  const [categories, setCategories] = useState<CategoryEntry[]>([]);
 
   const [visibleColumns, setVisibleColumns] = useState<
     Record<ProductTableColumn, boolean>
@@ -195,7 +196,7 @@ export default function ProductsPage() {
     )
   );
   const [visibleCount, setVisibleCount] = useState(LOAD_INCREMENT);
-  const tableScrollRef = useRef<HTMLDivElement | null>(null);
+  const observerTarget = useRef<HTMLDivElement | null>(null);
 
   const loadProducts = useCallback(async () => {
     try {
@@ -284,7 +285,7 @@ export default function ProductsPage() {
 
   const filteredProducts = useMemo(() => {
     let filtered = products;
-    
+
     // Filtro por texto de búsqueda
     const term = searchTerm.toLowerCase();
     if (term) {
@@ -296,17 +297,17 @@ export default function ProductsPage() {
           product.category.toLowerCase().includes(term)
       );
     }
-    
+
     // Filtro por tipo
     if (filterType !== "all") {
       filtered = filtered.filter((product) => product.badge === filterType);
     }
-    
+
     // Filtro por fabricante
     if (filterManufacturer !== "all") {
       filtered = filtered.filter((product) => product.manufacturer === filterManufacturer);
     }
-    
+
     // Filtro por categoría
     if (filterCategory !== "all") {
       filtered = filtered.filter((product) => product.category === filterCategory);
@@ -317,7 +318,7 @@ export default function ProductsPage() {
         (product.suppliers ?? []).some((supplier) => supplier.name?.trim() === filterSupplier)
       );
     }
-    
+
     return filtered;
   }, [searchTerm, products, filterType, filterManufacturer, filterCategory, filterSupplier]);
 
@@ -329,9 +330,6 @@ export default function ProductsPage() {
 
   useEffect(() => {
     setVisibleCount(LOAD_INCREMENT);
-    if (tableScrollRef.current) {
-      tableScrollRef.current.scrollTop = 0;
-    }
   }, [
     searchTerm,
     filterType,
@@ -341,18 +339,22 @@ export default function ProductsPage() {
     filteredProducts.length,
   ]);
 
-  const handleScroll = useCallback(() => {
-    const container = tableScrollRef.current;
-    if (!container || !hasMoreResults) return;
-    if (
-      container.scrollHeight - container.scrollTop - container.clientHeight <
-      150
-    ) {
-      setVisibleCount((prev) =>
-        Math.min(prev + LOAD_INCREMENT, filteredProducts.length)
-      );
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMoreResults && !loading) {
+          setVisibleCount((prev) => Math.min(prev + LOAD_INCREMENT, filteredProducts.length));
+        }
+      },
+      { threshold: 0.1, rootMargin: "200px" }
+    );
+
+    if (observerTarget.current) {
+      observer.observe(observerTarget.current);
     }
-  }, [filteredProducts.length, hasMoreResults]);
+
+    return () => observer.disconnect();
+  }, [visibleCount, hasMoreResults, loading, filteredProducts.length]);
   const visibleColumnCount = productTableColumns.filter((column) => visibleColumns[column.key]).length;
 
   const resetForm = () => setFormValues(defaultFormValues);
@@ -614,7 +616,7 @@ export default function ProductsPage() {
   };
 
   const deleteSupplier = async (supplier: SupplierCatalogEntry) => {
-    const affectedProducts = products.filter(p => 
+    const affectedProducts = products.filter(p =>
       p.suppliers && p.suppliers.some(s => s.name === supplier.name)
     );
     if (affectedProducts.length > 0) {
@@ -712,45 +714,38 @@ export default function ProductsPage() {
               </TabsTrigger>
             </TabsList>
             <div className="ml-4 hidden md:flex items-center gap-3 text-xs">
-            <span className="inline-flex items-center gap-1 text-slate-600">
-              <Activity className="h-3.5 w-3.5 text-slate-500" />
-              <span>Total</span>
-              <span className="font-semibold text-slate-900">{summaryStats.total}</span>
-            </span>
-            <span className="inline-flex items-center gap-1 text-slate-600">
-              <Star className="h-3.5 w-3.5 text-amber-500" />
-              <span>Servicios</span>
-              <span className="font-semibold text-slate-900">{summaryStats.services}</span>
-            </span>
-            <span className="inline-flex items-center gap-1 text-slate-600">
-              <Layers className="h-3.5 w-3.5 text-slate-500" />
-              <span>Productos</span>
-              <span className="font-semibold text-slate-900">{summaryStats.physical}</span>
-            </span>
+              <span className="inline-flex items-center gap-1 text-slate-600">
+                <Activity className="h-3.5 w-3.5 text-slate-500" />
+                <span>Total</span>
+                <span className="font-semibold text-slate-900">{summaryStats.total}</span>
+              </span>
+              <span className="inline-flex items-center gap-1 text-slate-600">
+                <Star className="h-3.5 w-3.5 text-amber-500" />
+                <span>Servicios</span>
+                <span className="font-semibold text-slate-900">{summaryStats.services}</span>
+              </span>
+              <span className="inline-flex items-center gap-1 text-slate-600">
+                <Layers className="h-3.5 w-3.5 text-slate-500" />
+                <span>Productos</span>
+                <span className="font-semibold text-slate-900">{summaryStats.physical}</span>
+              </span>
             </div>
           </div>
 
           <TabsContent value="products" className="space-y-6 mt-2">
 
-        {/* Removed bulky KPI cards in favor of the inline bar */}
+            {/* Removed bulky KPI cards in favor of the inline bar */}
 
-        <Card className="w-full">
-          <CardHeader className="flex flex-col gap-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <CardTitle className="text-base">Catálogo de productos</CardTitle>
-              <div className="flex items-center gap-2">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Buscar productos..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-9 text-sm w-64"
-                  />
-                </div>
+            <FilterToolbar
+              searchTerm={searchTerm}
+              onSearchChange={setSearchTerm}
+              searchPlaceholder="Buscar productos..."
+              className="px-2"
+            >
+              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1 md:pb-0">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="sm" className="gap-2">
+                    <Button variant="outline" size="sm" className="h-10 rounded-xl border-slate-200 bg-white/50 backdrop-blur-sm hover:bg-slate-100 transition-all gap-2">
                       <Activity className="h-4 w-4" />
                       Tipo
                     </Button>
@@ -776,9 +771,10 @@ export default function ProductsPage() {
                     </DropdownMenuCheckboxItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
+
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="sm" className="gap-2">
+                    <Button variant="outline" size="sm" className="h-10 rounded-xl border-slate-200 bg-white/50 backdrop-blur-sm hover:bg-slate-100 transition-all gap-2">
                       <Factory className="h-4 w-4" />
                       Fabricante
                     </Button>
@@ -801,9 +797,10 @@ export default function ProductsPage() {
                     ))}
                   </DropdownMenuContent>
                 </DropdownMenu>
+
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="sm" className="gap-2">
+                    <Button variant="outline" size="sm" className="h-10 rounded-xl border-slate-200 bg-white/50 backdrop-blur-sm hover:bg-slate-100 transition-all gap-2">
                       <FolderTree className="h-4 w-4" />
                       Categoría
                     </Button>
@@ -826,34 +823,14 @@ export default function ProductsPage() {
                     ))}
                   </DropdownMenuContent>
                 </DropdownMenu>
+              </div>
+
+              <div className="w-px h-6 bg-slate-200/60 mx-1" />
+
+              <div className="flex items-center gap-2">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="sm" className="gap-2">
-                      <Truck className="h-4 w-4" />
-                      Proveedor
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-48">
-                    <DropdownMenuCheckboxItem
-                      checked={filterSupplier === "all"}
-                      onCheckedChange={() => setFilterSupplier("all")}
-                    >
-                      Todos
-                    </DropdownMenuCheckboxItem>
-                    {uniqueSuppliers.map((supplier) => (
-                      <DropdownMenuCheckboxItem
-                        key={supplier}
-                        checked={filterSupplier === supplier}
-                        onCheckedChange={() => setFilterSupplier(supplier)}
-                      >
-                        {supplier}
-                      </DropdownMenuCheckboxItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="sm" className="gap-2">
+                    <Button variant="outline" size="sm" className="h-10 rounded-xl border-slate-200 bg-white/50 backdrop-blur-sm hover:bg-slate-100 transition-all gap-2 font-medium">
                       <Tag className="h-4 w-4" />
                       Columnas
                     </Button>
@@ -878,261 +855,202 @@ export default function ProductsPage() {
                     ))}
                   </DropdownMenuContent>
                 </DropdownMenu>
-                <Button onClick={openModal} variant="outline" disabled={loading}>
+
+                <Button
+                  onClick={openModal}
+                  variant="default"
+                  disabled={loading}
+                  className="h-10 rounded-xl bg-slate-900 border-none text-white hover:bg-slate-800 shadow-lg shadow-slate-200 transition-all hover:-translate-y-0.5"
+                >
                   {loading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
                   ) : (
-                    <Layers className="h-4 w-4" />
+                    <Plus className="h-4 w-4 mr-2" />
                   )}
-                  {loading ? "Cargando..." : "Agregar item"}
+                  {loading ? "Cargando..." : "Nuevo"}
                 </Button>
               </div>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4 overflow-hidden">
-            <div className="w-full">
-              <div className="relative">
-                <div
-                  ref={tableScrollRef}
-                  className="max-h-[65vh] overflow-y-auto"
-                  onScroll={handleScroll}
-                >
-                  <Table className="w-full text-sm">
-                <TableHeader>
-                  <TableRow>
-                    {visibleColumns.name && <TableHead>Nombre</TableHead>}
-                    {visibleColumns.description && <TableHead>Descripción</TableHead>}
-                    {visibleColumns.manufacturer && <TableHead>Fabricante</TableHead>}
-                    {visibleColumns.price && <TableHead>Precio</TableHead>}
-                    {visibleColumns.supplier && <TableHead>Proveedor</TableHead>}
-                    {visibleColumns.type && <TableHead>Tipo</TableHead>}
-                    {visibleColumns.stock && <TableHead>Stock</TableHead>}
-                    {visibleColumns.category && <TableHead>Categoría</TableHead>}
-                    <TableHead className="text-right">Acciones</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  <AnimatePresence mode="wait">
-                  {visibleProducts.map((product, index) => {
-                    const baseFallbackKey = `${product.name}-${product.manufacturer}-${product.category}`.trim();
-                    const productRowKey = product.id?.trim()
-                      ? product.id
-                      : baseFallbackKey
-                      ? `${baseFallbackKey}-${index}`
-                      : `row-${index}`;
-                    const meta = typeMeta[product.badge];
-                    const TypeIcon = meta.icon;
-                    const suppliers = product.suppliers ?? [];
-                    const supplierNames = suppliers
-                      .map((supplier) => supplier.name?.trim())
-                      .filter((name): name is string => Boolean(name));
-                    const primarySupplierName = supplierNames[0];
-                    const extraSuppliers = supplierNames.length > 1 ? supplierNames.length - 1 : 0;
-                    return (
-                      <motion.tr
-                        key={productRowKey}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -10 }}
-                        transition={{ duration: 0.2 }}
-                        className="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted"
-                      >
-                        {visibleColumns.name && (
-                          <TableCell className="whitespace-nowrap">
-                            <div className="flex items-center gap-2">
-                              <div className="h-10 w-10 flex-shrink-0 overflow-hidden rounded-lg border bg-neutral-50">
-                                {product.imageUrl ? (
-                                  <img
-                                    src={product.imageUrl}
-                                    alt={product.name}
-                                    className="h-full w-full object-cover"
-                                  />
-                                ) : (
-                                  <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
-                                    <ImageIcon className="h-4 w-4" />
-                                  </div>
-                                )}
-                              </div>
-                              <p className="font-semibold text-sm">{product.name}</p>
-                            </div>
-                          </TableCell>
-                        )}
-                        {visibleColumns.description && (
-                          <TableCell className="max-w-xs">
-                            <p className="truncate text-xs text-muted-foreground">{product.description || "Sin descripción"}</p>
-                          </TableCell>
-                        )}
-                        {visibleColumns.manufacturer && (
-                          <TableCell className="whitespace-nowrap">
-                            <div className="flex items-center gap-2">
-                              <div className="h-8 w-8 flex-shrink-0 overflow-hidden rounded-full border bg-white/90">
-                                {product.manufacturerLogoUrl ? (
-                                  <img
-                                    src={product.manufacturerLogoUrl}
-                                    alt={`${product.manufacturer} logo`}
-                                    className="h-full w-full object-cover"
-                                  />
-                                ) : (
-                                  <span className="flex h-full w-full items-center justify-center text-xs font-semibold uppercase text-muted-foreground">
-                                    {product.manufacturer?.[0] ?? "?"}
-                                  </span>
-                                )}
-                              </div>
-                              <span className="truncate font-semibold text-sm">{product.manufacturer}</span>
-                            </div>
-                          </TableCell>
-                        )}
-                        {visibleColumns.price && (
-                          <TableCell className="whitespace-nowrap align-top">
-                            {product.priceUYU === 0 && product.priceUSD === 0 ? (
-                              <span className="text-xs text-muted-foreground">Sin precio</span>
-                            ) : (
-                              <div className="flex flex-col gap-1 text-xs text-slate-700">
-                                {product.priceUSD > 0 ? (
-                                  <div className="flex items-center gap-1">
-                                    <ReactCountryFlag svg countryCode="US" className="inline-block h-3 w-4" aria-label="Estados Unidos" />
-                                    <span>{formatCurrencyValue(product.priceUSD, "USD")}</span>
-                                  </div>
-                                ) : (
-                                  <div className="flex items-center gap-1">
-                                    <ReactCountryFlag svg countryCode="UY" className="inline-block h-3 w-4" aria-label="Uruguay" />
-                                    <span>{formatCurrencyValue(product.priceUYU, "UYU")}</span>
-                                  </div>
-                                )}
-                                {(product.quotedAt || product.updatedAt || product.createdAt) && (
-                                  <span className="pt-1 text-[10px] text-muted-foreground">
-                                    Cotizado: {formatDateValue(product.quotedAt || product.updatedAt || product.createdAt)}
-                                  </span>
-                                )}
-                                {supplierNames.length > 0 && (
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <button
-                                        type="button"
-                                        className="pt-1 inline-flex items-center gap-1 text-[10px] font-medium text-blue-600 transition hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                                        aria-label={`Ver ${supplierNames.length} proveedor${
-                                          supplierNames.length > 1 ? "es" : ""
-                                        }`}
-                                      >
-                                        <Truck className="h-3 w-3" />
-                                        {supplierNames.length} proveedor{supplierNames.length > 1 ? "es" : ""}
-                                      </button>
-                                    </TooltipTrigger>
-                                    <TooltipContent side="top" align="center" className="max-w-[230px]">
-                                      <p className="font-semibold text-[11px] text-slate-900">
-                                        {supplierNames.length} proveedor{supplierNames.length > 1 ? "es" : ""}
-                                      </p>
-                                      <div className="mt-1 flex flex-col gap-0.5 text-[11px] text-slate-600">
-                                        {supplierNames.slice(0, 5).map((name, idx) => (
-                                          <span key={`${name}-${idx}`}>{name}</span>
-                                        ))}
-                                        {supplierNames.length > 5 && (
-                                          <span className="text-slate-500">
-                                            +{supplierNames.length - 5} más
-                                          </span>
+            </FilterToolbar>
+
+            <Card className="w-full">
+              <CardContent className="space-y-4 overflow-hidden pt-6">
+
+                <div className="w-full">
+                  <div className="rounded-2xl border border-slate-100 bg-white/50 backdrop-blur-sm shadow-sm overflow-hidden">
+                    <div className="max-h-[75vh] overflow-y-auto">
+                      <Table>
+                        <TableHeader className="bg-slate-50/50">
+                          <TableRow className="hover:bg-transparent">
+                            {productTableColumns.map((column) => (
+                              visibleColumns[column.key] && (
+                                <TableHead key={column.key} className="h-11 text-[10px] font-black uppercase text-slate-400 tracking-widest py-3">
+                                  {column.label}
+                                </TableHead>
+                              )
+                            ))}
+                            <TableHead className="w-20 text-right py-3 pr-6 text-[10px] font-black uppercase text-slate-400 tracking-widest">
+                              Acciones
+                            </TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <AnimatedTableBody>
+                          {visibleProducts.length === 0 && !loading ? (
+                            <TableRow>
+                              <TableCell colSpan={visibleColumnCount + 1} className="h-32 text-center text-slate-400">
+                                No se encontraron productos
+                              </TableCell>
+                            </TableRow>
+                          ) : (
+                            visibleProducts.map((product, index) => {
+                              const meta = typeMeta[product.badge];
+                              const TypeIcon = meta.icon;
+                              return (
+                                <AnimatedRow key={product.id || index} delay={index * 0.02} className="group/row hover:bg-slate-50/50 transition-colors">
+                                  {visibleColumns.name && (
+                                    <TableCell className="py-3 font-semibold text-slate-900 min-w-[200px]">
+                                      <div className="flex items-center gap-3">
+                                        <div className="h-10 w-10 overflow-hidden rounded-lg bg-slate-100 shadow-sm transition-transform group-hover/row:scale-110">
+                                          {product.imageUrl ? (
+                                            <img src={product.imageUrl} alt={product.name} className="h-full w-full object-cover" />
+                                          ) : (
+                                            <div className="flex h-full w-full items-center justify-center text-slate-300">
+                                              <ImageIcon className="h-5 w-5" />
+                                            </div>
+                                          )}
+                                        </div>
+                                        <span className="line-clamp-2">{product.name}</span>
+                                      </div>
+                                    </TableCell>
+                                  )}
+                                  {visibleColumns.description && (
+                                    <TableCell className="py-3 text-slate-500 text-sm max-w-[250px]">
+                                      <span className="line-clamp-2">{product.description || "—"}</span>
+                                    </TableCell>
+                                  )}
+                                  {visibleColumns.manufacturer && (
+                                    <TableCell className="py-3 min-w-[140px]">
+                                      <div className="flex items-center gap-2">
+                                        {product.manufacturerLogoUrl && (
+                                          <div className="h-6 w-6 overflow-hidden rounded-full border bg-white flex-shrink-0">
+                                            <img src={product.manufacturerLogoUrl} alt={product.manufacturer} className="h-full w-full object-cover" />
+                                          </div>
+                                        )}
+                                        <Badge variant="outline" className="bg-slate-50 text-slate-600 border-slate-100 font-medium">
+                                          {product.manufacturer}
+                                        </Badge>
+                                      </div>
+                                    </TableCell>
+                                  )}
+                                  {visibleColumns.price && (
+                                    <TableCell className="py-3">
+                                      <div className="flex flex-col gap-0.5">
+                                        <div className="flex items-center gap-1.5 font-bold text-slate-900">
+                                          {product.priceUSD && product.priceUSD > 0 ? (
+                                            <>
+                                              <ReactCountryFlag svg countryCode="US" className="h-3 w-4" />
+                                              <span>{formatCurrencyValue(product.priceUSD, "USD")}</span>
+                                            </>
+                                          ) : (
+                                            <>
+                                              <ReactCountryFlag svg countryCode="UY" className="h-3 w-4" />
+                                              <span>{formatCurrencyValue(product.priceUYU || 0, "UYU")}</span>
+                                            </>
+                                          )}
+                                        </div>
+                                        {product.quotedAt && (
+                                          <span className="text-[10px] text-slate-400 font-medium">Cotiz: {formatDateValue(product.quotedAt)}</span>
                                         )}
                                       </div>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                )}
-                              </div>
-                            )}
-                          </TableCell>
-                        )}
-                        {visibleColumns.supplier && (
-                          <TableCell className="whitespace-nowrap align-top">
-                            {supplierNames.length === 0 ? (
-                              <span className="text-xs text-muted-foreground">Sin proveedor asignado</span>
-                            ) : (
-                              <div className="flex flex-col gap-0.5 text-xs text-slate-700">
-                                <span className="flex items-center gap-1 font-semibold text-slate-900">
-                                  <Truck className="h-3 w-3 text-slate-500" />
-                                  {primarySupplierName}
-                                </span>
-                                {extraSuppliers > 0 && (
-                                  <span className="text-[11px] text-muted-foreground">
-                                    +{extraSuppliers} proveedor{extraSuppliers > 1 ? "es" : ""}
-                                  </span>
-                                )}
-                              </div>
-                            )}
-                          </TableCell>
-                        )}
-                        {visibleColumns.type && (
-                          <TableCell className="whitespace-nowrap">
-                            <Badge className="flex w-fit items-center gap-1 px-2 py-1 text-xs">
-                              <TypeIcon className={`h-3 w-3 ${meta.color}`} />
-                              {product.badge}
-                            </Badge>
-                          </TableCell>
-                        )}
-                        {visibleColumns.stock && (
-                          <TableCell className="whitespace-nowrap text-center">
-                            <span className="text-sm font-semibold">
-                              {typeof product.stock === "number" ? product.stock : 0}
-                            </span>
-                          </TableCell>
-                        )}
-                        {visibleColumns.category && (
-                          <TableCell className="whitespace-nowrap">
-                            <Badge className="truncate bg-slate-100 px-2 py-1 text-xs">
-                              {product.category || "Sin categoría"}
-                            </Badge>
-                          </TableCell>
-                        )}
-                        <TableCell className="whitespace-nowrap text-right">
-                          <div className="flex justify-end gap-1">
-                            <Button variant="outline" size="sm" onClick={() => handleEdit(product)} className="h-7 w-7 p-0">
-                              <Edit3 className="h-3 w-3" />
-                            </Button>
-                            <Button variant="ghost" size="sm" onClick={() => handleDelete(product.id)} className="h-7 w-7 p-0">
-                              <Trash2 className="h-3 w-3" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </motion.tr>
-                    );
-                  })}
-                                    </AnimatePresence>
-                  {!loading && filteredProducts.length === 0 && (
-                    <TableRow>
-                      <TableCell
-                        colSpan={visibleColumnCount + 1}
-                        className="text-center text-xs text-muted-foreground"
-                      >
-                        No hay productos que coincidan con la búsqueda.
-                      </TableCell>
-                    </TableRow>
-                  )}
-                  {loading && (
-                    <>
-                      {Array.from({ length: 5 }).map((_, idx) => (
-                        <TableRow key={idx}>
-                          <TableCell colSpan={visibleColumnCount + 1}>
-                            <div className="flex gap-2">
-                              {Array.from({ length: visibleColumnCount + 1 }).map((_, i) => (
-                                <div key={i} className="flex-1 h-8 bg-slate-200 rounded animate-pulse" />
-                              ))}
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </>
-                  )}
-                </TableBody>
-                  </Table>
-                </div>
-                {hasMoreResults && (
-                  <div className="px-4 py-3 text-center text-xs text-slate-500 relative z-10">
-                    Desliza para cargar más productos
+                                    </TableCell>
+                                  )}
+                                  {visibleColumns.supplier && (
+                                    <TableCell className="py-3">
+                                      {product.suppliers && product.suppliers.length > 0 ? (
+                                        <div className="flex -space-x-2">
+                                          {product.suppliers.slice(0, 3).map((s, i) => (
+                                            <Tooltip key={i}>
+                                              <TooltipTrigger asChild>
+                                                <div className="h-7 w-7 rounded-full border-2 border-white bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-600 shadow-sm cursor-help">
+                                                  {s.name?.charAt(0)}
+                                                </div>
+                                              </TooltipTrigger>
+                                              <TooltipContent side="top" className="bg-slate-900 text-white border-none shadow-xl">
+                                                <div className="flex flex-col gap-1 p-1">
+                                                  <span className="font-bold">{s.name}</span>
+                                                  <div className="flex items-center gap-2 text-[10px] opacity-80">
+                                                    <span>{s.priceUSD ? formatCurrencyValue(s.priceUSD, "USD") : formatCurrencyValue(s.priceUYU || 0, "UYU")}</span>
+                                                  </div>
+                                                </div>
+                                              </TooltipContent>
+                                            </Tooltip>
+                                          ))}
+                                          {product.suppliers.length > 3 && (
+                                            <div className="h-7 w-7 rounded-full border-2 border-white bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-400 shadow-sm">
+                                              +{product.suppliers.length - 3}
+                                            </div>
+                                          )}
+                                        </div>
+                                      ) : (
+                                        <span className="text-slate-300">—</span>
+                                      )}
+                                    </TableCell>
+                                  )}
+                                  {visibleColumns.type && (
+                                    <TableCell className="py-3">
+                                      <Badge
+                                        className={cn(
+                                          "rounded-full px-2.5 py-0.5 text-[10px] font-bold tracking-wide uppercase",
+                                          product.badge === "Servicio" ? "bg-orange-50 text-orange-600 border-orange-100" : "bg-sky-50 text-sky-600 border-sky-100"
+                                        )}
+                                        variant="outline"
+                                      >
+                                        {product.badge}
+                                      </Badge>
+                                    </TableCell>
+                                  )}
+                                  {visibleColumns.stock && (
+                                    <TableCell className="py-3">
+                                      <div className="flex items-center gap-1.5">
+                                        <div className={cn("h-1.5 w-1.5 rounded-full shadow-sm", (product.stock || 0) > 0 ? "bg-emerald-500" : "bg-rose-500")} />
+                                        <span className={cn("font-bold text-sm", (product.stock || 0) > 0 ? "text-slate-700" : "text-rose-600")}>
+                                          {product.stock || 0}
+                                        </span>
+                                      </div>
+                                    </TableCell>
+                                  )}
+                                  {visibleColumns.category && (
+                                    <TableCell className="py-3">
+                                      <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest">{product.category || "General"}</span>
+                                    </TableCell>
+                                  )}
+                                  <TableCell className="text-right py-3 pr-6">
+                                    <div className="flex justify-end gap-1 opacity-0 group-hover/row:opacity-100 transition-opacity">
+                                      <Button variant="ghost" size="icon" onClick={() => handleEdit(product)} className="h-8 w-8 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-900">
+                                        <Edit3 className="h-4 w-4" />
+                                      </Button>
+                                      <Button variant="ghost" size="icon" onClick={() => handleDelete(product.id)} className="h-8 w-8 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600">
+                                        <Trash2 className="h-4 w-4" />
+                                      </Button>
+                                    </div>
+                                  </TableCell>
+                                </AnimatedRow>
+                              );
+                            })
+                          )}
+                        </AnimatedTableBody>
+                      </Table>
+                      {hasMoreResults && (
+                        <div ref={observerTarget} className="px-4 py-8 text-center border-t border-slate-50">
+                          <Loader2 className="h-6 w-6 animate-spin mx-auto text-slate-200" />
+                          <p className="text-[10px] uppercase font-black text-slate-300 tracking-[0.2em] mt-2">Cargando más productos</p>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                )}
-                <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-white to-transparent" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        
+                </div>
+              </CardContent>
+            </Card>
+
           </TabsContent>
 
           <TabsContent value="manufacturers" className="space-y-6 mt-2">
@@ -1445,536 +1363,536 @@ export default function ProductsPage() {
           </TabsContent>
         </Tabs>
 
-      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="w-full sm:max-w-3xl lg:max-w-4xl rounded-2xl border border-slate-100 shadow-2xl max-h-[92vh] overflow-y-auto">
-          <DialogHeader className="flex items-center gap-2 border-b border-slate-100 pb-2">
-            <Layers className="h-5 w-5 text-slate-600" />
-            <DialogTitle className="text-lg font-semibold text-slate-900">
-              {editingProduct ? "Editar producto" : "Nuevo producto o servicio"}
-            </DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-5 py-3">
-            <div className="rounded-2xl border border-slate-100 bg-white/80 p-4 shadow-sm">
-              <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Tipo principal</p>
-                  <p className="text-base font-semibold text-slate-900">¿Es un servicio o un producto?</p>
+        <Dialog open={modalOpen} onOpenChange={setModalOpen}>
+          <DialogContent className="w-full sm:max-w-3xl lg:max-w-4xl rounded-2xl border border-slate-100 shadow-2xl max-h-[92vh] overflow-y-auto">
+            <DialogHeader className="flex items-center gap-2 border-b border-slate-100 pb-2">
+              <Layers className="h-5 w-5 text-slate-600" />
+              <DialogTitle className="text-lg font-semibold text-slate-900">
+                {editingProduct ? "Editar producto" : "Nuevo producto o servicio"}
+              </DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleSubmit} className="space-y-5 py-3">
+              <div className="rounded-2xl border border-slate-100 bg-white/80 p-4 shadow-sm">
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Tipo principal</p>
+                    <p className="text-base font-semibold text-slate-900">¿Es un servicio o un producto?</p>
+                  </div>
+                  <span className="text-xs text-muted-foreground">Define badges y métricas agrupadas</span>
                 </div>
-                <span className="text-xs text-muted-foreground">Define badges y métricas agrupadas</span>
-              </div>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                {badgeTypes.map((type) => {
-                  const Icon = typeMeta[type].icon;
-                  const active = formValues.badge === type;
-                  return (
-                    <button
-                      key={type}
-                      type="button"
-                      onClick={() => setFormValues({ ...formValues, badge: type })}
-                      className={cn(
-                        "flex w-full items-center justify-between gap-3 rounded-xl border p-4 text-left transition",
-                        active
-                          ? "border-orange-400 bg-orange-50/80 shadow-sm"
-                          : "border-transparent bg-slate-50 hover:border-slate-200"
-                      )}
-                    >
-                      <div className="flex items-center gap-3">
-                        <span
-                          className={cn(
-                            "flex h-10 w-10 items-center justify-center rounded-full bg-white",
-                            active ? "text-orange-500" : "text-slate-500"
-                          )}
-                        >
-                          <Icon className="h-5 w-5" />
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  {badgeTypes.map((type) => {
+                    const Icon = typeMeta[type].icon;
+                    const active = formValues.badge === type;
+                    return (
+                      <button
+                        key={type}
+                        type="button"
+                        onClick={() => setFormValues({ ...formValues, badge: type })}
+                        className={cn(
+                          "flex w-full items-center justify-between gap-3 rounded-xl border p-4 text-left transition",
+                          active
+                            ? "border-orange-400 bg-orange-50/80 shadow-sm"
+                            : "border-transparent bg-slate-50 hover:border-slate-200"
+                        )}
+                      >
+                        <div className="flex items-center gap-3">
+                          <span
+                            className={cn(
+                              "flex h-10 w-10 items-center justify-center rounded-full bg-white",
+                              active ? "text-orange-500" : "text-slate-500"
+                            )}
+                          >
+                            <Icon className="h-5 w-5" />
+                          </span>
+                          <div>
+                            <p className="text-sm font-semibold text-slate-900">{type}</p>
+                            <p className="text-xs text-muted-foreground">{badgeDescriptions[type]}</p>
+                          </div>
+                        </div>
+                        <span className={cn("text-xs font-semibold", active ? "text-orange-600" : "text-slate-400")}>
+                          {active ? "Seleccionado" : "Elegir"}
                         </span>
-                        <div>
-                          <p className="text-sm font-semibold text-slate-900">{type}</p>
-                          <p className="text-xs text-muted-foreground">{badgeDescriptions[type]}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <Tabs defaultValue="general" className="w-full">
+                <TabsList className="grid w-full grid-cols-4">
+                  <TabsTrigger value="general" className="gap-2">
+                    <Package className="h-4 w-4" />
+                    General
+                  </TabsTrigger>
+                  <TabsTrigger value="precio" className="gap-2">
+                    <Coins className="h-4 w-4" />
+                    Precio
+                  </TabsTrigger>
+                  <TabsTrigger value="proveedores" className="gap-2">
+                    <Truck className="h-4 w-4" />
+                    Proveedores
+                  </TabsTrigger>
+                  <TabsTrigger value="media" className="gap-2">
+                    <ImageIcon className="h-4 w-4" />
+                    Media
+                  </TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="general" className="mt-4 space-y-4">
+                  <div className="space-y-3 rounded-xl border border-slate-100 bg-slate-50/80 p-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Detalles</p>
+                    <div className="space-y-2">
+                      <Label className="flex items-center gap-2 text-slate-700">
+                        <Package className="h-4 w-4 text-slate-500" />
+                        Nombre
+                      </Label>
+                      <Input
+                        value={formValues.name}
+                        onChange={(e) => setFormValues({ ...formValues, name: e.target.value })}
+                        required
+                        placeholder="Ej: Licencia anual"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="flex items-center gap-2 text-slate-700">
+                        <Star className="h-4 w-4 text-slate-500" />
+                        Descripción
+                      </Label>
+                      <Input
+                        value={formValues.description}
+                        onChange={(e) => setFormValues({ ...formValues, description: e.target.value })}
+                        placeholder="Detalle breve del producto"
+                      />
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label className="flex items-center gap-2 text-slate-700">
+                          <Tag className="h-4 w-4 text-slate-500" />
+                          Fabricante
+                        </Label>
+                        <Input
+                          list="manufacturers-list"
+                          value={formValues.manufacturer}
+                          onChange={(e) => setFormValues({ ...formValues, manufacturer: e.target.value })}
+                          placeholder="Selecciona o escribe"
+                          required
+                        />
+                        <datalist id="manufacturers-list">
+                          {manufacturerFilterOptions.map((m) => (
+                            <option key={m} value={m} />
+                          ))}
+                        </datalist>
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="flex items-center gap-2 text-slate-700">
+                          <Layers className="h-4 w-4 text-slate-500" />
+                          Categoría
+                        </Label>
+                        <Input
+                          list="categories-list"
+                          value={formValues.category}
+                          onChange={(e) => setFormValues({ ...formValues, category: e.target.value })}
+                          placeholder="Ej: Monitoreo"
+                        />
+                        <datalist id="categories-list">
+                          {categoryFilterOptions.map((c) => (
+                            <option key={c} value={c} />
+                          ))}
+                        </datalist>
+                      </div>
+                    </div>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="precio" className="mt-4 space-y-4">
+                  <div className="space-y-3 rounded-xl border border-slate-100 bg-slate-50/80 p-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Precio y stock</p>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-1">
+                        <Label className="flex items-center gap-2 text-slate-700">
+                          <Coins className="h-4 w-4 text-slate-500" />
+                          Moneda
+                        </Label>
+                        <div className="flex items-center gap-2">
+                          <select
+                            className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm bg-white"
+                            value={formValues.currency}
+                            onChange={(e) => setFormValues({ ...formValues, currency: e.target.value as CurrencyCode })}
+                            aria-label="Moneda"
+                          >
+                            {currencyOptions.map((opt) => (
+                              <option key={opt.code} value={opt.code}>{opt.label}</option>
+                            ))}
+                          </select>
+                          {formValues.currency === "UYU" ? (
+                            <ReactCountryFlag svg countryCode="UY" className="h-4 w-4" />
+                          ) : (
+                            <ReactCountryFlag svg countryCode="US" className="h-4 w-4" />
+                          )}
                         </div>
                       </div>
-                      <span className={cn("text-xs font-semibold", active ? "text-orange-600" : "text-slate-400") }>
-                        {active ? "Seleccionado" : "Elegir"}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <Tabs defaultValue="general" className="w-full">
-              <TabsList className="grid w-full grid-cols-4">
-                <TabsTrigger value="general" className="gap-2">
-                  <Package className="h-4 w-4" />
-                  General
-                </TabsTrigger>
-                <TabsTrigger value="precio" className="gap-2">
-                  <Coins className="h-4 w-4" />
-                  Precio
-                </TabsTrigger>
-                <TabsTrigger value="proveedores" className="gap-2">
-                  <Truck className="h-4 w-4" />
-                  Proveedores
-                </TabsTrigger>
-                <TabsTrigger value="media" className="gap-2">
-                  <ImageIcon className="h-4 w-4" />
-                  Media
-                </TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="general" className="mt-4 space-y-4">
-                <div className="space-y-3 rounded-xl border border-slate-100 bg-slate-50/80 p-4">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Detalles</p>
-                  <div className="space-y-2">
-                    <Label className="flex items-center gap-2 text-slate-700">
-                      <Package className="h-4 w-4 text-slate-500" />
-                      Nombre
-                    </Label>
-                    <Input
-                      value={formValues.name}
-                      onChange={(e) => setFormValues({ ...formValues, name: e.target.value })}
-                      required
-                      placeholder="Ej: Licencia anual"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="flex items-center gap-2 text-slate-700">
-                      <Star className="h-4 w-4 text-slate-500" />
-                      Descripción
-                    </Label>
-                    <Input
-                      value={formValues.description}
-                      onChange={(e) => setFormValues({ ...formValues, description: e.target.value })}
-                      placeholder="Detalle breve del producto"
-                    />
-                  </div>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label className="flex items-center gap-2 text-slate-700">
-                        <Tag className="h-4 w-4 text-slate-500" />
-                        Fabricante
-                      </Label>
-                      <Input
-                        list="manufacturers-list"
-                        value={formValues.manufacturer}
-                        onChange={(e) => setFormValues({ ...formValues, manufacturer: e.target.value })}
-                        placeholder="Selecciona o escribe"
-                        required
-                      />
-                      <datalist id="manufacturers-list">
-                        {manufacturerFilterOptions.map((m) => (
-                          <option key={m} value={m} />
-                        ))}
-                      </datalist>
+                      <div className="space-y-1 sm:col-span-2">
+                        <Label className="flex items-center gap-2 text-slate-700">
+                          <Banknote className="h-4 w-4 text-slate-500" />
+                          Monto
+                        </Label>
+                        <Input
+                          type="number"
+                          inputMode="decimal"
+                          value={formValues.amount}
+                          onChange={(e) => setFormValues({ ...formValues, amount: e.target.value })}
+                          placeholder="0.00"
+                          className="w-full"
+                        />
+                      </div>
                     </div>
-                    <div className="space-y-2">
-                      <Label className="flex items-center gap-2 text-slate-700">
-                        <Layers className="h-4 w-4 text-slate-500" />
-                        Categoría
-                      </Label>
-                      <Input
-                        list="categories-list"
-                        value={formValues.category}
-                        onChange={(e) => setFormValues({ ...formValues, category: e.target.value })}
-                        placeholder="Ej: Monitoreo"
-                      />
-                      <datalist id="categories-list">
-                        {categoryFilterOptions.map((c) => (
-                          <option key={c} value={c} />
-                        ))}
-                      </datalist>
+                    <div className="space-y-3">
+                      <div className="space-y-1">
+                        <Label className="flex items-center gap-2 text-slate-700">
+                          <Activity className="h-4 w-4 text-slate-500" />
+                          Stock
+                        </Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          value={formValues.stock}
+                          onChange={(e) => setFormValues({ ...formValues, stock: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="flex items-center gap-2 text-slate-700">
+                          <Calendar className="h-4 w-4 text-slate-500" />
+                          Fecha de cotización
+                        </Label>
+                        <Input
+                          type="date"
+                          value={formValues.quotedAt}
+                          onChange={(e) => setFormValues({ ...formValues, quotedAt: e.target.value })}
+                        />
+                      </div>
                     </div>
                   </div>
-                </div>
-              </TabsContent>
+                </TabsContent>
 
-              <TabsContent value="precio" className="mt-4 space-y-4">
-                <div className="space-y-3 rounded-xl border border-slate-100 bg-slate-50/80 p-4">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Precio y stock</p>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="space-y-1">
-                      <Label className="flex items-center gap-2 text-slate-700">
-                        <Coins className="h-4 w-4 text-slate-500" />
-                        Moneda
-                      </Label>
+                <TabsContent value="proveedores" className="mt-4 space-y-4">
+                  <div className="space-y-3 rounded-xl border border-slate-100 bg-slate-50/80 p-4">
+                    <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <select
-                          className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm bg-white"
-                          value={formValues.currency}
-                          onChange={(e) => setFormValues({ ...formValues, currency: e.target.value as CurrencyCode })}
-                          aria-label="Moneda"
-                        >
-                          {currencyOptions.map((opt) => (
-                            <option key={opt.code} value={opt.code}>{opt.label}</option>
-                          ))}
-                        </select>
-                        {formValues.currency === "UYU" ? (
-                          <ReactCountryFlag svg countryCode="UY" className="h-4 w-4" />
-                        ) : (
-                          <ReactCountryFlag svg countryCode="US" className="h-4 w-4" />
+                        <Truck className="h-4 w-4 text-slate-500" />
+                        <div className="flex flex-col">
+                          <span className="text-sm font-semibold text-slate-800">Proveedores</span>
+                          <span className="text-xs text-muted-foreground">Selecciona existentes desde el catálogo</span>
+                        </div>
+                      </div>
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                        <div className="flex items-center gap-2">
+                          <select
+                            className="w-56 rounded-md border border-slate-200 px-3 py-2 text-sm bg-white"
+                            value={selectedSupplierId}
+                            onChange={(e) => setSelectedSupplierId(e.target.value)}
+                            aria-label="Seleccionar proveedor"
+                          >
+                            <option value="">Seleccionar proveedor</option>
+                            {supplierCatalog.map((s) => (
+                              <option key={s.id} value={s.id}>{s.name}</option>
+                            ))}
+                          </select>
+                          <Button type="button" variant="secondary" size="sm" onClick={addSupplierFromCatalog} disabled={!selectedSupplierId}>
+                            Añadir
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                    {formValues.suppliers.length === 0 ? (
+                      <p className="text-xs text-muted-foreground">Sin proveedores asignados</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {formValues.suppliers.map((supplier, index) => (
+                          <div key={index} className="flex items-center gap-2 p-3 rounded-lg border bg-white">
+                            <div className="flex-1 grid grid-cols-3 gap-2">
+                              <Input
+                                placeholder="Nombre proveedor"
+                                value={supplier.name ?? ""}
+                                readOnly={supplier.locked}
+                                onChange={(e) => {
+                                  if (supplier.locked) return;
+                                  const updated = [...formValues.suppliers];
+                                  updated[index].name = e.target.value;
+                                  setFormValues({ ...formValues, suppliers: updated });
+                                }}
+                                className="text-sm"
+                              />
+                              <Input
+                                type="number"
+                                placeholder="Precio UYU"
+                                value={supplier.priceUYU ?? ""}
+                                onChange={(e) => {
+                                  const updated = [...formValues.suppliers];
+                                  updated[index].priceUYU = e.target.value;
+                                  setFormValues({ ...formValues, suppliers: updated });
+                                }}
+                                className="text-sm"
+                              />
+                              <Input
+                                type="number"
+                                placeholder="Precio USD"
+                                value={supplier.priceUSD ?? ""}
+                                onChange={(e) => {
+                                  const updated = [...formValues.suppliers];
+                                  updated[index].priceUSD = e.target.value;
+                                  setFormValues({ ...formValues, suppliers: updated });
+                                }}
+                                className="text-sm"
+                              />
+                            </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                const updated = formValues.suppliers.filter((_, i) => i !== index);
+                                setFormValues({ ...formValues, suppliers: updated });
+                              }}
+                              className="h-8 w-8 p-0 text-red-500 hover:text-red-600"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="media" className="mt-4 space-y-4">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-3 rounded-xl border border-slate-100 bg-slate-50/80 p-4">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Branding</p>
+                      <div className="space-y-2">
+                        <Label className="flex items-center gap-2 text-slate-700">
+                          <ImageIcon className="h-4 w-4 text-slate-500" />
+                          Logo del fabricante (URL)
+                        </Label>
+                        <Input
+                          type="url"
+                          value={formValues.manufacturerLogoUrl}
+                          onChange={(e) =>
+                            setFormValues({ ...formValues, manufacturerLogoUrl: e.target.value })
+                          }
+                          placeholder="https://..."
+                        />
+                        {formValues.manufacturerLogoUrl && (
+                          <div className="mt-2 flex items-center gap-3">
+                            <div className="h-10 w-10 overflow-hidden rounded-full border bg-white/80">
+                              <img
+                                src={formValues.manufacturerLogoUrl}
+                                alt="Logo fabricante"
+                                className="h-full w-full object-cover"
+                              />
+                            </div>
+                            <p className="text-xs text-muted-foreground">Mini avatar mostrado en la tabla.</p>
+                          </div>
                         )}
                       </div>
                     </div>
-                    <div className="space-y-1 sm:col-span-2">
-                      <Label className="flex items-center gap-2 text-slate-700">
-                        <Banknote className="h-4 w-4 text-slate-500" />
-                        Monto
-                      </Label>
-                      <Input
-                        type="number"
-                        inputMode="decimal"
-                        value={formValues.amount}
-                        onChange={(e) => setFormValues({ ...formValues, amount: e.target.value })}
-                        placeholder="0.00"
-                        className="w-full"
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-3">
-                    <div className="space-y-1">
-                      <Label className="flex items-center gap-2 text-slate-700">
-                        <Activity className="h-4 w-4 text-slate-500" />
-                        Stock
-                      </Label>
-                      <Input
-                        type="number"
-                        min={0}
-                        value={formValues.stock}
-                        onChange={(e) => setFormValues({ ...formValues, stock: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="flex items-center gap-2 text-slate-700">
-                        <Calendar className="h-4 w-4 text-slate-500" />
-                        Fecha de cotización
-                      </Label>
-                      <Input
-                        type="date"
-                        value={formValues.quotedAt}
-                        onChange={(e) => setFormValues({ ...formValues, quotedAt: e.target.value })}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </TabsContent>
 
-              <TabsContent value="proveedores" className="mt-4 space-y-4">
-                <div className="space-y-3 rounded-xl border border-slate-100 bg-slate-50/80 p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Truck className="h-4 w-4 text-slate-500" />
-                      <div className="flex flex-col">
-                        <span className="text-sm font-semibold text-slate-800">Proveedores</span>
-                        <span className="text-xs text-muted-foreground">Selecciona existentes desde el catálogo</span>
-                      </div>
-                    </div>
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-                      <div className="flex items-center gap-2">
-                        <select
-                          className="w-56 rounded-md border border-slate-200 px-3 py-2 text-sm bg-white"
-                          value={selectedSupplierId}
-                          onChange={(e) => setSelectedSupplierId(e.target.value)}
-                          aria-label="Seleccionar proveedor"
-                        >
-                          <option value="">Seleccionar proveedor</option>
-                          {supplierCatalog.map((s) => (
-                            <option key={s.id} value={s.id}>{s.name}</option>
-                          ))}
-                        </select>
-                        <Button type="button" variant="secondary" size="sm" onClick={addSupplierFromCatalog} disabled={!selectedSupplierId}>
-                          Añadir
-                        </Button>
+                    <div className="space-y-3 rounded-xl border border-slate-100 bg-slate-50/80 p-4">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Imagen</p>
+                      <div className="space-y-2">
+                        <Label className="flex items-center gap-2 text-slate-700">
+                          <ImageIcon className="h-4 w-4 text-slate-500" />
+                          Imagen del artículo
+                        </Label>
+                        <Input type="file" accept="image/*" onChange={handleImageUpload} />
+                        {formValues.imageUrl && (
+                          <div className="mt-2 flex items-center gap-3">
+                            <div className="h-16 w-16 overflow-hidden rounded-lg border bg-slate-50">
+                              <img src={formValues.imageUrl} alt="Vista previa" className="h-full w-full object-cover" />
+                            </div>
+                            <p className="text-xs text-muted-foreground">Miniatura visible en la tabla central.</p>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
-                  {formValues.suppliers.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">Sin proveedores asignados</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {formValues.suppliers.map((supplier, index) => (
-                        <div key={index} className="flex items-center gap-2 p-3 rounded-lg border bg-white">
-                          <div className="flex-1 grid grid-cols-3 gap-2">
-                            <Input
-                              placeholder="Nombre proveedor"
-                              value={supplier.name ?? ""}
-                              readOnly={supplier.locked}
-                              onChange={(e) => {
-                                if (supplier.locked) return;
-                                const updated = [...formValues.suppliers];
-                                updated[index].name = e.target.value;
-                                setFormValues({ ...formValues, suppliers: updated });
-                              }}
-                              className="text-sm"
-                            />
-                            <Input
-                              type="number"
-                              placeholder="Precio UYU"
-                              value={supplier.priceUYU ?? ""}
-                              onChange={(e) => {
-                                const updated = [...formValues.suppliers];
-                                updated[index].priceUYU = e.target.value;
-                                setFormValues({ ...formValues, suppliers: updated });
-                              }}
-                              className="text-sm"
-                            />
-                            <Input
-                              type="number"
-                              placeholder="Precio USD"
-                              value={supplier.priceUSD ?? ""}
-                              onChange={(e) => {
-                                const updated = [...formValues.suppliers];
-                                updated[index].priceUSD = e.target.value;
-                                setFormValues({ ...formValues, suppliers: updated });
-                              }}
-                              className="text-sm"
-                            />
-                          </div>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              const updated = formValues.suppliers.filter((_, i) => i !== index);
-                              setFormValues({ ...formValues, suppliers: updated });
-                            }}
-                            className="h-8 w-8 p-0 text-red-500 hover:text-red-600"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </TabsContent>
+                </TabsContent>
+              </Tabs>
 
-              <TabsContent value="media" className="mt-4 space-y-4">
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-3 rounded-xl border border-slate-100 bg-slate-50/80 p-4">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Branding</p>
-                    <div className="space-y-2">
-                      <Label className="flex items-center gap-2 text-slate-700">
-                        <ImageIcon className="h-4 w-4 text-slate-500" />
-                        Logo del fabricante (URL)
-                      </Label>
-                      <Input
-                        type="url"
-                        value={formValues.manufacturerLogoUrl}
-                        onChange={(e) =>
-                          setFormValues({ ...formValues, manufacturerLogoUrl: e.target.value })
-                        }
-                        placeholder="https://..."
-                      />
-                      {formValues.manufacturerLogoUrl && (
-                        <div className="mt-2 flex items-center gap-3">
-                          <div className="h-10 w-10 overflow-hidden rounded-full border bg-white/80">
-                            <img
-                              src={formValues.manufacturerLogoUrl}
-                              alt="Logo fabricante"
-                              className="h-full w-full object-cover"
-                            />
-                          </div>
-                          <p className="text-xs text-muted-foreground">Mini avatar mostrado en la tabla.</p>
-                        </div>
-                      )}
+              <DialogFooter className="justify-end">
+                <Button type="submit" disabled={saving}>
+                  {saving ? "Guardando..." : editingProduct ? "Guardar cambios" : "Agregar producto"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* Manufacturer Modal */}
+        <Dialog open={manufacturerModalOpen} onOpenChange={setManufacturerModalOpen}>
+          <DialogContent className="sm:max-w-md rounded-2xl border border-slate-100 shadow-2xl">
+            <DialogHeader className="flex items-center gap-2 border-b border-slate-100 pb-2">
+              <Factory className="h-5 w-5 text-slate-600" />
+              <DialogTitle className="text-lg font-semibold text-slate-900">
+                {editingManufacturer ? "Editar fabricante" : "Nuevo fabricante"}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-3">
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2 text-slate-700">
+                  <Tag className="h-4 w-4 text-slate-500" />
+                  Nombre del fabricante
+                </Label>
+                <Input
+                  value={manufacturerForm.name}
+                  onChange={(e) => setManufacturerForm({ ...manufacturerForm, name: e.target.value })}
+                  placeholder="Ej: Hikvision"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2 text-slate-700">
+                  <ImageIcon className="h-4 w-4 text-slate-500" />
+                  Logo URL
+                </Label>
+                <Input
+                  type="url"
+                  value={manufacturerForm.logoUrl}
+                  onChange={(e) => setManufacturerForm({ ...manufacturerForm, logoUrl: e.target.value })}
+                  placeholder="https://..."
+                />
+                {manufacturerForm.logoUrl && (
+                  <div className="mt-2 flex items-center gap-3">
+                    <div className="h-10 w-10 overflow-hidden rounded-full border bg-white/80">
+                      <img src={manufacturerForm.logoUrl} alt="Preview" className="h-full w-full object-cover" />
                     </div>
+                    <p className="text-xs text-muted-foreground">Vista previa del logo</p>
                   </div>
-
-                  <div className="space-y-3 rounded-xl border border-slate-100 bg-slate-50/80 p-4">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Imagen</p>
-                    <div className="space-y-2">
-                      <Label className="flex items-center gap-2 text-slate-700">
-                        <ImageIcon className="h-4 w-4 text-slate-500" />
-                        Imagen del artículo
-                      </Label>
-                      <Input type="file" accept="image/*" onChange={handleImageUpload} />
-                      {formValues.imageUrl && (
-                        <div className="mt-2 flex items-center gap-3">
-                          <div className="h-16 w-16 overflow-hidden rounded-lg border bg-slate-50">
-                            <img src={formValues.imageUrl} alt="Vista previa" className="h-full w-full object-cover" />
-                          </div>
-                          <p className="text-xs text-muted-foreground">Miniatura visible en la tabla central.</p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </TabsContent>
-            </Tabs>
-
+                )}
+              </div>
+            </div>
             <DialogFooter className="justify-end">
-              <Button type="submit" disabled={saving}>
-                {saving ? "Guardando..." : editingProduct ? "Guardar cambios" : "Agregar producto"}
+              <Button onClick={saveManufacturer} disabled={saving}>
+                {saving ? "Guardando..." : editingManufacturer ? "Guardar cambios" : "Crear fabricante"}
               </Button>
             </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+          </DialogContent>
+        </Dialog>
 
-            {/* Manufacturer Modal */}
-            <Dialog open={manufacturerModalOpen} onOpenChange={setManufacturerModalOpen}>
-              <DialogContent className="sm:max-w-md rounded-2xl border border-slate-100 shadow-2xl">
-                <DialogHeader className="flex items-center gap-2 border-b border-slate-100 pb-2">
-                  <Factory className="h-5 w-5 text-slate-600" />
-                  <DialogTitle className="text-lg font-semibold text-slate-900">
-                    {editingManufacturer ? "Editar fabricante" : "Nuevo fabricante"}
-                  </DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4 py-3">
-                  <div className="space-y-2">
-                    <Label className="flex items-center gap-2 text-slate-700">
-                      <Tag className="h-4 w-4 text-slate-500" />
-                      Nombre del fabricante
-                    </Label>
-                    <Input
-                      value={manufacturerForm.name}
-                      onChange={(e) => setManufacturerForm({ ...manufacturerForm, name: e.target.value })}
-                      placeholder="Ej: Hikvision"
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="flex items-center gap-2 text-slate-700">
-                      <ImageIcon className="h-4 w-4 text-slate-500" />
-                      Logo URL
-                    </Label>
-                    <Input
-                      type="url"
-                      value={manufacturerForm.logoUrl}
-                      onChange={(e) => setManufacturerForm({ ...manufacturerForm, logoUrl: e.target.value })}
-                      placeholder="https://..."
-                    />
-                    {manufacturerForm.logoUrl && (
-                      <div className="mt-2 flex items-center gap-3">
-                        <div className="h-10 w-10 overflow-hidden rounded-full border bg-white/80">
-                          <img src={manufacturerForm.logoUrl} alt="Preview" className="h-full w-full object-cover" />
-                        </div>
-                        <p className="text-xs text-muted-foreground">Vista previa del logo</p>
-                      </div>
-                    )}
-                  </div>
+        {/* Category Modal */}
+        <Dialog open={categoryModalOpen} onOpenChange={setCategoryModalOpen}>
+          <DialogContent className="sm:max-w-md rounded-2xl border border-slate-100 shadow-2xl">
+            <DialogHeader className="flex items-center gap-2 border-b border-slate-100 pb-2">
+              <FolderTree className="h-5 w-5 text-slate-600" />
+              <DialogTitle className="text-lg font-semibold text-slate-900">
+                {editingCategory ? "Editar categoría" : "Nueva categoría"}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-3">
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2 text-slate-700">
+                  <Tag className="h-4 w-4 text-slate-500" />
+                  Nombre de la categoría
+                </Label>
+                <Input
+                  value={categoryForm.name}
+                  onChange={(e) => setCategoryForm({ name: e.target.value })}
+                  placeholder="Ej: Cámaras IP"
+                  required
+                />
+              </div>
+            </div>
+            <DialogFooter className="justify-end">
+              <Button onClick={saveCategory} disabled={saving}>
+                {saving ? "Guardando..." : editingCategory ? "Guardar cambios" : "Crear categoría"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Supplier Modal */}
+        <Dialog open={supplierModalOpen} onOpenChange={setSupplierModalOpen}>
+          <DialogContent className="sm:max-w-md rounded-2xl border border-slate-100 shadow-2xl">
+            <DialogHeader className="flex items-center gap-2 border-b border-slate-100 pb-2">
+              <Truck className="h-5 w-5 text-slate-600" />
+              <DialogTitle className="text-lg font-semibold text-slate-900">
+                {editingSupplier ? "Editar proveedor" : "Nuevo proveedor"}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-3">
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2 text-slate-700">
+                  <Tag className="h-4 w-4 text-slate-500" />
+                  Nombre del proveedor
+                </Label>
+                <Input
+                  value={supplierForm.name}
+                  onChange={(e) => setSupplierForm({ ...supplierForm, name: e.target.value })}
+                  placeholder="Ej: Proveedor ABC"
+                  required
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-2 text-slate-700 text-sm">
+                    <Coins className="h-4 w-4 text-slate-500" />
+                    Precio base UYU
+                  </Label>
+                  <Input
+                    type="number"
+                    value={supplierForm.priceUYU}
+                    onChange={(e) => setSupplierForm({ ...supplierForm, priceUYU: e.target.value })}
+                    placeholder="0.00"
+                  />
                 </div>
-                <DialogFooter className="justify-end">
-                  <Button onClick={saveManufacturer} disabled={saving}>
-                    {saving ? "Guardando..." : editingManufacturer ? "Guardar cambios" : "Crear fabricante"}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-
-            {/* Category Modal */}
-            <Dialog open={categoryModalOpen} onOpenChange={setCategoryModalOpen}>
-              <DialogContent className="sm:max-w-md rounded-2xl border border-slate-100 shadow-2xl">
-                <DialogHeader className="flex items-center gap-2 border-b border-slate-100 pb-2">
-                  <FolderTree className="h-5 w-5 text-slate-600" />
-                  <DialogTitle className="text-lg font-semibold text-slate-900">
-                    {editingCategory ? "Editar categoría" : "Nueva categoría"}
-                  </DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4 py-3">
-                  <div className="space-y-2">
-                    <Label className="flex items-center gap-2 text-slate-700">
-                      <Tag className="h-4 w-4 text-slate-500" />
-                      Nombre de la categoría
-                    </Label>
-                    <Input
-                      value={categoryForm.name}
-                      onChange={(e) => setCategoryForm({ name: e.target.value })}
-                      placeholder="Ej: Cámaras IP"
-                      required
-                    />
-                  </div>
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-2 text-slate-700 text-sm">
+                    <Coins className="h-4 w-4 text-slate-500" />
+                    Precio base USD
+                  </Label>
+                  <Input
+                    type="number"
+                    value={supplierForm.priceUSD}
+                    onChange={(e) => setSupplierForm({ ...supplierForm, priceUSD: e.target.value })}
+                    placeholder="0.00"
+                  />
                 </div>
-                <DialogFooter className="justify-end">
-                  <Button onClick={saveCategory} disabled={saving}>
-                    {saving ? "Guardando..." : editingCategory ? "Guardar cambios" : "Crear categoría"}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-
-            {/* Supplier Modal */}
-            <Dialog open={supplierModalOpen} onOpenChange={setSupplierModalOpen}>
-              <DialogContent className="sm:max-w-md rounded-2xl border border-slate-100 shadow-2xl">
-                <DialogHeader className="flex items-center gap-2 border-b border-slate-100 pb-2">
-                  <Truck className="h-5 w-5 text-slate-600" />
-                  <DialogTitle className="text-lg font-semibold text-slate-900">
-                    {editingSupplier ? "Editar proveedor" : "Nuevo proveedor"}
-                  </DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4 py-3">
-                  <div className="space-y-2">
-                    <Label className="flex items-center gap-2 text-slate-700">
-                      <Tag className="h-4 w-4 text-slate-500" />
-                      Nombre del proveedor
-                    </Label>
-                    <Input
-                      value={supplierForm.name}
-                      onChange={(e) => setSupplierForm({ ...supplierForm, name: e.target.value })}
-                      placeholder="Ej: Proveedor ABC"
-                      required
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-2">
-                      <Label className="flex items-center gap-2 text-slate-700 text-sm">
-                        <Coins className="h-4 w-4 text-slate-500" />
-                        Precio base UYU
-                      </Label>
-                      <Input
-                        type="number"
-                        value={supplierForm.priceUYU}
-                        onChange={(e) => setSupplierForm({ ...supplierForm, priceUYU: e.target.value })}
-                        placeholder="0.00"
+              </div>
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2 text-slate-700">
+                  <ImageIcon className="h-4 w-4 text-slate-500" />
+                  Logo del proveedor
+                </Label>
+                <Input
+                  type="url"
+                  value={supplierForm.logoUrl}
+                  onChange={(e) => setSupplierForm({ ...supplierForm, logoUrl: e.target.value })}
+                  placeholder="https://..."
+                />
+                {supplierForm.logoUrl && (
+                  <div className="mt-2 flex items-center gap-3">
+                    <div className="h-10 w-10 overflow-hidden rounded-full border bg-white/80">
+                      <img
+                        src={supplierForm.logoUrl}
+                        alt="Preview"
+                        className="h-full w-full object-cover"
                       />
                     </div>
-                    <div className="space-y-2">
-                      <Label className="flex items-center gap-2 text-slate-700 text-sm">
-                        <Coins className="h-4 w-4 text-slate-500" />
-                        Precio base USD
-                      </Label>
-                      <Input
-                        type="number"
-                        value={supplierForm.priceUSD}
-                        onChange={(e) => setSupplierForm({ ...supplierForm, priceUSD: e.target.value })}
-                        placeholder="0.00"
-                      />
-                    </div>
+                    <p className="text-xs text-muted-foreground">Vista previa del logo</p>
                   </div>
-                  <div className="space-y-2">
-                    <Label className="flex items-center gap-2 text-slate-700">
-                      <ImageIcon className="h-4 w-4 text-slate-500" />
-                      Logo del proveedor
-                    </Label>
-                    <Input
-                      type="url"
-                      value={supplierForm.logoUrl}
-                      onChange={(e) => setSupplierForm({ ...supplierForm, logoUrl: e.target.value })}
-                      placeholder="https://..."
-                    />
-                    {supplierForm.logoUrl && (
-                      <div className="mt-2 flex items-center gap-3">
-                        <div className="h-10 w-10 overflow-hidden rounded-full border bg-white/80">
-                          <img
-                            src={supplierForm.logoUrl}
-                            alt="Preview"
-                            className="h-full w-full object-cover"
-                          />
-                        </div>
-                        <p className="text-xs text-muted-foreground">Vista previa del logo</p>
-                      </div>
-                    )}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Estos precios son opcionales y sirven como referencia base para este proveedor
-                  </p>
-                </div>
-                <DialogFooter className="justify-end">
-                  <Button onClick={saveSupplier} disabled={saving}>
-                    {saving ? "Guardando..." : editingSupplier ? "Guardar cambios" : "Crear proveedor"}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Estos precios son opcionales y sirven como referencia base para este proveedor
+              </p>
+            </div>
+            <DialogFooter className="justify-end">
+              <Button onClick={saveSupplier} disabled={saving}>
+                {saving ? "Guardando..." : editingSupplier ? "Guardar cambios" : "Crear proveedor"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
       </div>
     </DashboardLayout>

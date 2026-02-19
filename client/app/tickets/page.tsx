@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TicketTable } from "@/components/clients/ticket-table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { FilterToolbar, ToolbarButton } from "@/components/ui/filter-toolbar";
 import { Label } from "@/components/ui/label";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
@@ -21,7 +22,6 @@ import { FileDown, FileSpreadsheet, Ticket as TicketIcon, Clock, Banknote, Check
 import { toast } from "sonner";
 import { ShinyText } from "@/components/ui/shiny-text";
 import { PageTransition } from "@/components/ui/page-transition";
-import { TicketsTimeline } from "@/components/tickets/tickets-timeline";
 import { cn } from "@/lib/utils";
 import {
   Ticket,
@@ -139,13 +139,13 @@ const fallbackTickets: Ticket[] = [
 const formatTime = (iso: string) =>
   new Date(iso).toLocaleTimeString("es-UY", { hour: "2-digit", minute: "2-digit" });
 
-const LOAD_INCREMENT = 20;
+const LOAD_INCREMENT = 50;
 
 export default function TicketsPage() {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [visibleCount, setVisibleCount] = useState(20);
-  const tableScrollRef = useRef<HTMLDivElement | null>(null);
+  const [visibleCount, setVisibleCount] = useState(LOAD_INCREMENT);
+  const observerTarget = useRef<HTMLDivElement | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | Ticket["status"]>(
     "all"
@@ -155,7 +155,6 @@ export default function TicketsPage() {
   const [showResolved, setShowResolved] = useState(true);
   const [showMyTickets, setShowMyTickets] = useState(false);
   const [showMyGroupTickets, setShowMyGroupTickets] = useState(false);
-  const [timelinePeriod, setTimelinePeriod] = useState<"day" | "week" | "month">("day");
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
   const [currentUserAvatar, setCurrentUserAvatar] = useState<string | null>(null);
   const [currentUserGroupId, setCurrentUserGroupId] = useState<string | null>(null);
@@ -409,9 +408,6 @@ export default function TicketsPage() {
 
   useEffect(() => {
     setVisibleCount(LOAD_INCREMENT);
-    if (tableScrollRef.current) {
-      tableScrollRef.current.scrollTop = 0;
-    }
   }, [
     searchTerm,
     statusFilter,
@@ -426,13 +422,22 @@ export default function TicketsPage() {
     sortDir,
   ]);
 
-  const handleScroll = useCallback(() => {
-    const container = tableScrollRef.current;
-    if (!container || isLoading || !hasMoreResults) return;
-    if (container.scrollHeight - container.scrollTop - container.clientHeight < 150) {
-      setVisibleCount((prev) => Math.min(prev + LOAD_INCREMENT, filteredTickets.length));
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMoreResults && !isLoading) {
+          setVisibleCount((prev) => Math.min(prev + LOAD_INCREMENT, filteredTickets.length));
+        }
+      },
+      { threshold: 0.1, rootMargin: "200px" }
+    );
+
+    if (observerTarget.current) {
+      observer.observe(observerTarget.current);
     }
-  }, [filteredTickets.length, hasMoreResults, isLoading]);
+
+    return () => observer.disconnect();
+  }, [visibleCount, hasMoreResults, isLoading, filteredTickets.length]);
 
   const exportRows = useMemo(
     () =>
@@ -498,249 +503,112 @@ export default function TicketsPage() {
           </div>
         </div>
 
-        <div className="flex items-center justify-between">
-          <div className="text-sm text-muted-foreground">Actividad temporal</div>
-          <div className="flex items-center gap-2">
-            {[{ key: "day", label: "1" }, { key: "week", label: "7" }, { key: "month", label: "30" }].map((option) => (
-              <Button
-                key={option.key}
-                variant={timelinePeriod === option.key ? "default" : "outline"}
-                size="sm"
-                className="h-8 w-12 px-2 justify-center gap-1"
-                onClick={() => setTimelinePeriod(option.key as "day" | "week" | "month")}
-              >
-                <CalendarDays className="h-3.5 w-3.5" />
-                <span className="text-xs font-semibold">{option.label}</span>
-              </Button>
-            ))}
-          </div>
-        </div>
-        <div className="-mt-2">
-          <TicketsTimeline tickets={tickets} period={timelinePeriod} />
-        </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-3 pb-2">
-          <div className="flex-1 min-w-[260px]">
-            <Input
-              placeholder="Buscar por cliente, título o ID..."
-              value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
+        <FilterToolbar
+          searchTerm={searchTerm}
+          onSearchChange={setSearchTerm}
+          searchPlaceholder="Buscar por cliente, título o ID..."
+          className="px-2"
+        >
+          {/* Main Quick Filters */}
+          <ToolbarButton
+            icon={TicketIcon}
+            label="Todos"
+            isActive={statusFilter === "all"}
+            onClick={() => setStatusFilter("all")}
+          />
+          <ToolbarButton
+            icon={Lock}
+            label="Cerrados"
+            isActive={showResolved}
+            onClick={() => setShowResolved((prev) => !prev)}
+            variant="info"
+          />
+          <ToolbarButton
+            icon={User}
+            label="Mis tickets"
+            isActive={showMyTickets}
+            onClick={() => setShowMyTickets((prev) => !prev)}
+            variant="success"
+          />
+          <ToolbarButton
+            icon={Users}
+            label="Mi grupo"
+            isActive={showMyGroupTickets}
+            onClick={() => setShowMyGroupTickets((prev) => !prev)}
+            variant="warning"
+          />
+
+          <div className="w-px h-6 bg-slate-200/60 mx-1" />
+
+          {/* Status Specific Filters */}
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1 md:pb-0">
+            <ToolbarButton
+              icon={Clock}
+              label="Nuevo"
+              isActive={statusFilter === "Nuevo"}
+              onClick={() => setStatusFilter(statusFilter === "Nuevo" ? "all" : "Nuevo")}
+            />
+            <ToolbarButton
+              icon={CalendarDays}
+              label="Abierto"
+              isActive={statusFilter === "Abierto"}
+              onClick={() => setStatusFilter(statusFilter === "Abierto" ? "all" : "Abierto")}
+            />
+            <ToolbarButton
+              icon={Clock}
+              label="En Proceso"
+              isActive={statusFilter === "En proceso"}
+              onClick={() => setStatusFilter(statusFilter === "En proceso" ? "all" : "En proceso")}
+              className="text-blue-500"
+            />
+            <ToolbarButton
+              icon={MapPin}
+              label="Visita"
+              isActive={statusFilter === "Visita"}
+              onClick={() => setStatusFilter(statusFilter === "Visita" ? "all" : "Visita")}
+              variant="info"
             />
           </div>
-          <div className="flex flex-col gap-2 md:flex-row md:flex-wrap md:items-center md:gap-3">
-              <ToggleGroup type="multiple" className="flex flex-wrap gap-1 items-center">
-              {/* Filtros de estado */}
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <ToggleGroupItem
-                    value="all-status"
-                    className={cn(statusFilter === "all" && "bg-primary text-primary-foreground")}
-                    onClick={() => setStatusFilter("all")}
-                    aria-label="Todos los estados"
-                  >
-                    <TicketIcon className="h-4 w-4" />
-                  </ToggleGroupItem>
-                </TooltipTrigger>
-                <TooltipContent>Todos los estados</TooltipContent>
-              </Tooltip>
 
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <ToggleGroupItem
-                    value="cerrados"
-                    className={cn(showResolved && "bg-primary text-primary-foreground")}
-                    onClick={() => setShowResolved((prev) => !prev)}
-                    aria-label="Mostrar cerrados"
-                  >
-                    <Lock className="h-4 w-4 text-slate-500" />
-                  </ToggleGroupItem>
-                </TooltipTrigger>
-                <TooltipContent>{showResolved ? "Ocultar cerrados" : "Mostrar cerrados"}</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <ToggleGroupItem
-                    value="asignados-mi"
-                    className={cn(showMyTickets && "bg-primary text-primary-foreground")}
-                    onClick={() => setShowMyTickets((prev) => !prev)}
-                    aria-label="Asignados a mí"
-                  >
-                    <User className="h-4 w-4 text-slate-500" />
-                  </ToggleGroupItem>
-                </TooltipTrigger>
-                <TooltipContent>{showMyTickets ? "Ver todos" : "Asignados a mí"}</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <ToggleGroupItem
-                    value="asignados-grupo"
-                    className={cn(showMyGroupTickets && "bg-primary text-primary-foreground")}
-                    onClick={() => setShowMyGroupTickets((prev) => !prev)}
-                    aria-label="Asignados a mi grupo"
-                  >
-                    <Users className="h-4 w-4 text-slate-500" />
-                  </ToggleGroupItem>
-                </TooltipTrigger>
-                <TooltipContent>{showMyGroupTickets ? "Ver todos" : "Asignados a mi grupo"}</TooltipContent>
-              </Tooltip>
+          <div className="w-px h-6 bg-slate-200/60 mx-1" />
 
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <ToggleGroupItem
-                    value="nuevo"
-                    className={cn(statusFilter === "Nuevo" && "bg-primary text-primary-foreground")}
-                    onClick={() => setStatusFilter(statusFilter === "Nuevo" ? "all" : "Nuevo")}
-                    aria-label="Nuevo"
-                  >
-                    <Clock className="h-4 w-4" />
-                  </ToggleGroupItem>
-                </TooltipTrigger>
-                <TooltipContent>Estado: Nuevo</TooltipContent>
-              </Tooltip>
+          {/* Secondary Actions */}
+          <div className="flex items-center gap-2 px-1">
+            <Select
+              value={`${sortKey}-${sortDir}`}
+              onValueChange={(value) => {
+                const [key, dir] = value.split("-") as [typeof sortKey, typeof sortDir];
+                setSortKey(key);
+                setSortDir(dir);
+              }}
+            >
+              <SelectTrigger className="w-36 h-10 rounded-xl border-slate-200 bg-white/50 backdrop-blur-sm shadow-sm transition-all hover:bg-white focus:ring-4 focus:ring-indigo-100">
+                <SelectValue placeholder="Orden" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="createdAt-desc">Más nuevos</SelectItem>
+                <SelectItem value="createdAt-asc">Más antiguos</SelectItem>
+                <SelectItem value="priority-desc">Prioridad alta</SelectItem>
+                <SelectItem value="priority-asc">Prioridad baja</SelectItem>
+              </SelectContent>
+            </Select>
 
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <ToggleGroupItem
-                    value="abierto"
-                    className={cn(statusFilter === "Abierto" && "bg-primary text-primary-foreground")}
-                    onClick={() => setStatusFilter(statusFilter === "Abierto" ? "all" : "Abierto")}
-                    aria-label="Abierto"
-                  >
-                    <CalendarDays className="h-4 w-4" />
-                  </ToggleGroupItem>
-                </TooltipTrigger>
-                <TooltipContent>Estado: Abierto</TooltipContent>
-              </Tooltip>
+            <Button
+              variant="outline"
+              size="icon"
+              className="rounded-xl h-10 w-10 border-slate-200 bg-white/50 backdrop-blur-sm hover:bg-green-50 hover:border-green-200 transition-all group"
+              onClick={handleExportExcel}
+              title="Exportar Excel"
+            >
+              <FileSpreadsheet className="h-[18px] w-[18px] text-emerald-600 transition-transform group-hover:scale-110" />
+            </Button>
 
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <ToggleGroupItem
-                    value="enproceso"
-                    className={cn(statusFilter === "En proceso" && "bg-primary text-primary-foreground")}
-                    onClick={() => setStatusFilter(statusFilter === "En proceso" ? "all" : "En proceso")}
-                    aria-label="En proceso"
-                  >
-                    <Clock className="h-4 w-4 text-blue-500" />
-                  </ToggleGroupItem>
-                </TooltipTrigger>
-                <TooltipContent>Estado: En proceso</TooltipContent>
-              </Tooltip>
-
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <ToggleGroupItem
-                    value="visita"
-                    className={cn(statusFilter === "Visita" && "bg-primary text-primary-foreground")}
-                    onClick={() => setStatusFilter(statusFilter === "Visita" ? "all" : "Visita")}
-                    aria-label="Visita"
-                  >
-                    <CalendarDays className="h-4 w-4 text-purple-500" />
-                  </ToggleGroupItem>
-                </TooltipTrigger>
-                <TooltipContent>Estado: Visita</TooltipContent>
-              </Tooltip>
-
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <ToggleGroupItem
-                    value="visita-coordinar"
-                    className={cn(statusFilter === "Visita - Coordinar" && "bg-primary text-primary-foreground")}
-                    onClick={() => setStatusFilter(statusFilter === "Visita - Coordinar" ? "all" : "Visita - Coordinar")}
-                    aria-label="Visita - Coordinar"
-                  >
-                    <MapPin className="h-4 w-4 text-purple-400" />
-                  </ToggleGroupItem>
-                </TooltipTrigger>
-                <TooltipContent>Estado: Visita - Coordinar</TooltipContent>
-              </Tooltip>
-
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <ToggleGroupItem
-                    value="visita-programada"
-                    className={cn(statusFilter === "Visita Programada" && "bg-primary text-primary-foreground")}
-                    onClick={() => setStatusFilter(statusFilter === "Visita Programada" ? "all" : "Visita Programada")}
-                    aria-label="Visita Programada"
-                  >
-                    <Clock className="h-4 w-4 text-indigo-500" />
-                  </ToggleGroupItem>
-                </TooltipTrigger>
-                <TooltipContent>Estado: Visita Programada</TooltipContent>
-              </Tooltip>
-
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <ToggleGroupItem
-                    value="visita-realizada"
-                    className={cn(statusFilter === "Visita Realizada" && "bg-primary text-primary-foreground")}
-                    onClick={() => setStatusFilter(statusFilter === "Visita Realizada" ? "all" : "Visita Realizada")}
-                    aria-label="Visita Realizada"
-                  >
-                    <CheckCircle className="h-4 w-4 text-teal-600" />
-                  </ToggleGroupItem>
-                </TooltipTrigger>
-                <TooltipContent>Estado: Visita Realizada</TooltipContent>
-              </Tooltip>
-
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <ToggleGroupItem
-                    value="revision-cerrar-visita"
-                    className={cn(statusFilter === "Revision Cerrar Visita" && "bg-primary text-primary-foreground")}
-                    onClick={() => setStatusFilter(statusFilter === "Revision Cerrar Visita" ? "all" : "Revision Cerrar Visita")}
-                    aria-label="Revision Cerrar Visita"
-                  >
-                    <Activity className="h-4 w-4 text-amber-600" />
-                  </ToggleGroupItem>
-                </TooltipTrigger>
-                <TooltipContent>Estado: Revisión Cerrar Visita</TooltipContent>
-              </Tooltip>
-            </ToggleGroup>
-            <div className="flex flex-wrap items-center gap-2">
-              <Select
-                value={`${sortKey}-${sortDir}`}
-                onValueChange={(value) => {
-                  const [key, dir] = value.split("-") as [typeof sortKey, typeof sortDir];
-                  setSortKey(key);
-                  setSortDir(dir);
-                }}
-              >
-                <SelectTrigger className="w-48">
-                  <SelectValue placeholder="Orden" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="createdAt-desc">Más nuevos</SelectItem>
-                  <SelectItem value="createdAt-asc">Más antiguos</SelectItem>
-                  <SelectItem value="priority-desc">Prioridad alta primero</SelectItem>
-                  <SelectItem value="priority-asc">Prioridad baja primero</SelectItem>
-                  <SelectItem value="status-desc">Estado abiertos primero</SelectItem>
-                  <SelectItem value="status-asc">Estado cerrados primero</SelectItem>
-                </SelectContent>
-              </Select>
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1"
-                onClick={handleExportExcel}
-              >
-                <FileSpreadsheet className="h-4 w-4 text-green-500" />
-                Excel
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1"
-                onClick={handleExportPdf}
-              >
-                <FileDown className="h-4 w-4 text-red-500" />
-                PDF
-              </Button>
-              <Button asChild>
-                <Link href="/tickets/new">Nuevo ticket</Link>
-              </Button>
-            </div>
+            <Button asChild className="rounded-xl h-10 bg-slate-900 hover:bg-slate-800 text-white shadow-lg shadow-slate-200 border-none transition-all hover:-translate-y-0.5">
+              <Link href="/tickets/new">Nuevo ticket</Link>
+            </Button>
           </div>
-        </div>
+        </FilterToolbar>
 
         {isLoading ? (
           <div className="flex justify-center py-8">
@@ -749,9 +617,7 @@ export default function TicketsPage() {
         ) : (
           <div className="relative">
             <div
-              ref={tableScrollRef}
-              className="max-h-[65vh] overflow-y-auto"
-              onScroll={handleScroll}
+              className="max-h-[75vh] overflow-y-auto"
             >
               <TicketTable
                 tickets={visibleTickets}
@@ -762,8 +628,9 @@ export default function TicketsPage() {
                 disablePagination
               />
               {hasMoreResults && (
-                <div className="px-4 py-3 text-center text-xs text-slate-500">
-                  Desliza para cargar más tickets
+                <div ref={observerTarget} className="px-4 py-8 text-center border-t border-slate-50">
+                  <Loader2 className="h-6 w-6 animate-spin mx-auto text-slate-200" />
+                  <p className="text-[10px] uppercase font-black text-slate-300 tracking-[0.2em] mt-2">Cargando más tickets</p>
                 </div>
               )}
             </div>

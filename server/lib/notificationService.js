@@ -1,6 +1,7 @@
 const nodemailer = require('nodemailer');
 const axios = require('axios');
 const { URLSearchParams } = require('url');
+const webpush = require('web-push');
 
 const { getMongoDb } = require('./mongoClient');
 const { getConfig } = require('./configService');
@@ -25,6 +26,14 @@ const SLACK_WEBHOOK = process.env.SLACK_WEBHOOK_URL;
 const hasTelegram = TELEGRAM_TOKEN && TELEGRAM_CHAT;
 const hasWhatsApp = TWILIO_SID && TWILIO_TOKEN && TWILIO_WHATSAPP_FROM && TWILIO_WHATSAPP_TO;
 const hasSlack = Boolean(SLACK_WEBHOOK);
+
+const VAPID_PUBLIC = process.env.VAPID_PUBLIC_KEY;
+const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY;
+const VAPID_EMAIL = process.env.VAPID_EMAIL || 'mailto:admin@infratec.com.uy';
+
+if (VAPID_PUBLIC && VAPID_PRIVATE) {
+  webpush.setVapidDetails(VAPID_EMAIL, VAPID_PUBLIC, VAPID_PRIVATE);
+}
 
 // Función para obtener configuración SMTP (primero de MongoDB, luego de env)
 const getSmtpConfig = async () => {
@@ -211,14 +220,69 @@ const sendSlack = async ({ message }) => {
   }
 };
 
+const sendWebPush = async ({ message, title = 'AdminFlow' }) => {
+  const mongoDb = getMongoDb();
+  if (!mongoDb) return { status: 'skipped', detail: 'DB not connected' };
+
+  if (!VAPID_PUBLIC || !VAPID_PRIVATE) {
+    return { status: 'skipped', detail: 'WebPush VAPID keys not configured' };
+  }
+
+  try {
+    const subscriptions = await mongoDb.collection('push_subscriptions').find().toArray();
+    if (subscriptions.length === 0) {
+      return { status: 'skipped', detail: 'No active push subscriptions' };
+    }
+
+    const payload = JSON.stringify({
+      title,
+      body: message,
+      icon: '/icons/icon-192x192.png',
+      badge: '/icons/badge-72x72.png',
+      data: {
+        url: '/'
+      }
+    });
+
+    const results = await Promise.allSettled(
+      subscriptions.map(async (sub) => {
+        try {
+          await webpush.sendNotification(sub, payload);
+          return { success: true };
+        } catch (error) {
+          if (error.statusCode === 410 || error.statusCode === 404) {
+            // Remove expired subscription
+            await mongoDb.collection('push_subscriptions').deleteOne({ endpoint: sub.endpoint });
+            return { success: false, expired: true };
+          }
+          throw error;
+        }
+      })
+    );
+
+    const successful = results.filter(r => r.status === 'fulfilled' && r.value.success).length;
+    const expired = results.filter(r => r.status === 'fulfilled' && r.value.expired).length;
+
+    return {
+      status: 'sent',
+      channel: 'webpush',
+      detail: `Sent to ${successful}/${subscriptions.length} subscribers (${expired} expired removed)`
+    };
+  } catch (error) {
+    console.error('❌ Error sending WebPush:', error.message);
+    throw error;
+  }
+};
+
 const channelHandlers = {
   email: sendEmail,
   telegram: sendTelegram,
   whatsapp: sendWhatsApp,
   slack: sendSlack,
+  webpush: sendWebPush,
 };
 
-const isReady = () => hasEmail || hasTelegram || hasWhatsApp || Boolean(getMongoDb());
+const isReady = () => hasEmail || hasTelegram || hasWhatsApp || (VAPID_PUBLIC && VAPID_PRIVATE) || Boolean(getMongoDb());
 
 const notify = async ({ event, message, channels = ['email'], metadata = {}, recipients = [] }) => {
   const selectedChannels = Array.isArray(channels) ? channels : [channels];
@@ -262,7 +326,7 @@ const notify = async ({ event, message, channels = ['email'], metadata = {}, rec
       })
       .catch(() => { });
   }
-  
+
   return settled;
 };
 

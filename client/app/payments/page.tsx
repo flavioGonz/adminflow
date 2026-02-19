@@ -4,6 +4,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import DashboardLayout from "@/components/layout/dashboard-layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { FilterToolbar, ToolbarButton } from "@/components/ui/filter-toolbar";
 import {
   Dialog,
   DialogContent,
@@ -35,10 +36,23 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Calendar } from "@/components/ui/calendar";
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subMonths, isWithinInterval, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import { cn } from "@/lib/utils";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   ArrowUpDown,
   Calculator,
@@ -55,9 +69,13 @@ import {
   Search,
   ShieldCheck,
   Trash2,
+  CalendarClock,
   User,
   Calendar as CalendarIcon,
   X,
+  Loader2,
+  MoreVertical,
+  Columns3,
 } from "lucide-react";
 import { ShinyText } from "@/components/ui/shiny-text";
 import { PageTransition, TablePageTransition } from "@/components/ui/page-transition";
@@ -288,7 +306,7 @@ function PaymentDialog({
             {isEditing ? "Editar pago" : "Registrar pago nuevo"}
           </DialogTitle>
           <DialogDescription>
-            Asocia un ticket en estado “Facturar” y genera la cobranza.
+            Asocia un ticket en estado Facturar y genera la cobranza.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-2">
@@ -429,7 +447,7 @@ function PaymentDialog({
                       className="inline-block h-4 w-5"
                       aria-label="Estados Unidos"
                     />
-                    Dólares (USD)
+                    Dlares (USD)
                   </div>
                 </SelectItem>
               </SelectContent>
@@ -631,7 +649,7 @@ function ConfirmPaymentDialog({
                 }
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Elige método" />
+                  <SelectValue placeholder="Elige mtodo" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="Transferencia">Transferencia</SelectItem>
@@ -672,7 +690,7 @@ function ConfirmPaymentDialog({
   );
 }
 
-const LOAD_INCREMENT = 10;
+const LOAD_INCREMENT = 50;
 
 export default function PaymentsPage() {
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -687,14 +705,24 @@ export default function PaymentsPage() {
   const [confirmForm, setConfirmForm] = useState<ConfirmPaymentForm>(getDefaultConfirmForm());
   const [usdRate, setUsdRate] = useState<number | null>(null);
   const [currencyFilter, setCurrencyFilter] = useState<"todos" | "UYU" | "USD">("todos");
-  const [dateFilter, setDateFilter] = useState<"thisMonth" | "lastMonth" | "thisWeek" | "all" | "custom">("thisMonth");
+  const [visibleColumns, setVisibleColumns] = useState({
+    fecha: true,
+    factura: true,
+    cliente: true,
+    ticket: true,
+    concepto: true,
+    estado: true,
+    monto: true,
+    metodo: true,
+  });
+  const [dateFilter, setDateFilter] = useState<"thisMonth" | "lastMonth" | "thisWeek" | "all" | "custom">("all");
   const [customDate, setCustomDate] = useState<Date | undefined>(undefined);
   const [sortConfig, setSortConfig] = useState<{
     key: keyof Payment | "client" | "amount";
     direction: "ascending" | "descending";
   } | null>(null);
   const [visibleCount, setVisibleCount] = useState(LOAD_INCREMENT);
-  const tableScrollRef = useRef<HTMLDivElement | null>(null);
+  const observerTarget = useRef<HTMLDivElement | null>(null);
 
   const requestSort = (key: keyof Payment | "client" | "amount") => {
     let direction: "ascending" | "descending" = "ascending";
@@ -762,7 +790,7 @@ export default function PaymentsPage() {
           { signal: controller.signal }
         );
         if (!response.ok) {
-          throw new Error("No se pudo obtener la cotización.");
+          throw new Error("No se pudo obtener la cotizacin.");
         }
         const data = await response.json();
         const rate = data?.rates?.UYU;
@@ -773,7 +801,7 @@ export default function PaymentsPage() {
         if (error instanceof DOMException && error.name === "AbortError") {
           return;
         }
-        console.warn("Cotización USD no disponible", error);
+        console.warn("Cotizacin USD no disponible", error);
       }
     };
 
@@ -786,7 +814,10 @@ export default function PaymentsPage() {
     const term = search.toLowerCase();
     let filtered = payments.filter((payment) => {
       const matchesStatus =
-        statusFilter === "todos" || payment.status === statusFilter;
+        statusFilter === "todos" ||
+        (statusFilter === "Pendiente"
+          ? (payment.status === "Pendiente" || payment.status === "Enviado" || payment.status === "A confirmar")
+          : payment.status === statusFilter);
       const matchesCurrency =
         currencyFilter === "todos" || payment.currency === currencyFilter;
       const matchesSearch =
@@ -813,7 +844,7 @@ export default function PaymentsPage() {
         const end = endOfWeek(now, { locale: es });
         matchesDate = isWithinInterval(paymentDate, { start, end });
       } else if (dateFilter === "custom" && customDate) {
-        // Comparar solo día, mes y año
+        // Comparar solo da, mes y ao
         matchesDate =
           paymentDate.getDate() === customDate.getDate() &&
           paymentDate.getMonth() === customDate.getMonth() &&
@@ -851,19 +882,25 @@ export default function PaymentsPage() {
   );
   const hasMoreResults = visibleCount < filteredPayments.length;
 
-  const handleScroll = useCallback(() => {
-    const container = tableScrollRef.current;
-    if (!container || !hasMoreResults) return;
-    if (container.scrollHeight - container.scrollTop - container.clientHeight < 150) {
-      setVisibleCount((prev) => Math.min(prev + LOAD_INCREMENT, filteredPayments.length));
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMoreResults) {
+          setVisibleCount((prev) => Math.min(prev + LOAD_INCREMENT, filteredPayments.length));
+        }
+      },
+      { threshold: 0.1, rootMargin: "200px" }
+    );
+
+    if (observerTarget.current) {
+      observer.observe(observerTarget.current);
     }
-  }, [filteredPayments.length, hasMoreResults]);
+
+    return () => observer.disconnect();
+  }, [visibleCount, hasMoreResults, filteredPayments.length]);
 
   useEffect(() => {
     setVisibleCount(LOAD_INCREMENT);
-    if (tableScrollRef.current) {
-      tableScrollRef.current.scrollTop = 0;
-    }
   }, [
     search,
     statusFilter,
@@ -874,44 +911,7 @@ export default function PaymentsPage() {
     filteredPayments.length,
   ]);
 
-  const totalThisMonth = useMemo(() => {
-    const today = new Date();
-    return payments
-      .filter((payment) => {
-        const date = new Date(payment.createdAt);
-        return (
-          date.getFullYear() === today.getFullYear() &&
-          date.getMonth() === today.getMonth()
-        );
-      })
-      .reduce((acc, payment) => acc + payment.amount, 0);
-  }, [payments]);
 
-  const pendingCount = payments.filter((payment) => payment.status === "Pendiente")
-    .length;
-
-  const ticketDebtCount = facturarTickets.length;
-
-  const summaryCards = [
-    {
-      title: "Tickets adeudados",
-      value: ticketDebtCount,
-      description: "Casos en estado Facturar listos para cobrar.",
-      icon: Calculator,
-    },
-    {
-      title: "Pagos este mes",
-      value: `$${totalThisMonth.toLocaleString("es-AR")}`,
-      description: "Cobros registrados en el mes vigente.",
-      icon: CalendarCheck,
-    },
-    {
-      title: "Pagos pendientes",
-      value: pendingCount,
-      description: "A la espera de confirmación o comprobante.",
-      icon: Clock3,
-    },
-  ];
 
   const handleSavePayment = async (payment: Payment) => {
     try {
@@ -938,11 +938,11 @@ export default function PaymentsPage() {
       return;
     }
     if (formState.invoiceEnabled && !formState.invoice.trim()) {
-      toast.error("Completa el número de factura antes de guardar.");
+      toast.error("Completa el nmero de factura antes de guardar.");
       return;
     }
     if (!(formState.amount > 0)) {
-      toast.error("Ingresá un monto mayor a cero.");
+      toast.error("Ingres un monto mayor a cero.");
       return;
     }
 
@@ -986,6 +986,11 @@ export default function PaymentsPage() {
   };
 
   const handleDeletePayment = async (paymentId: string) => {
+    const payment = payments.find(p => p.id === paymentId);
+    if (payment?.isRecurring) {
+      toast.error("No se pueden eliminar pagos recurrentes generados automticamente.");
+      return;
+    }
     try {
       await deletePayment(paymentId);
       setPayments((prev) => prev.filter((payment) => payment.id !== paymentId));
@@ -1054,242 +1059,263 @@ export default function PaymentsPage() {
                   <ShinyText size="3xl" weight="bold">Pagos</ShinyText>
                 </h1>
                 <p className="text-sm text-muted-foreground">
-                  Controla cobranzas y estados de los tickets en facturación.
+                  Controla cobranzas y estados de los tickets en facturacin.
                 </p>
               </div>
             </div>
-            <div className="flex flex-wrap items-center gap-3">
-              {usdRate && (
-                <p className="text-xs text-muted-foreground">
-                  1 USD = {usdRate.toFixed(2)} UYU (cotización oficial)
-                </p>
-              )}
-              <PaymentDialog
-                open={isDialogOpen}
-                onOpenChange={(open) => {
-                  setIsDialogOpen(open);
-                  if (!open) {
-                    setEditingPayment(null);
-                    setFormState(getDefaultFormState());
-                  }
-                }}
-                ticketOptions={facturarTickets}
-                formState={formState}
-                onFormChange={setFormState}
-                onSave={handleDialogSave}
-                isEditing={Boolean(editingPayment)}
-              />
-            </div>
+            {usdRate && (
+              <p className="text-xs text-muted-foreground bg-slate-100 rounded-lg px-3 py-1.5 border border-slate-200">
+                1 USD = {usdRate.toFixed(2)} UYU <span className="text-slate-400 font-light">(oficial)</span>
+              </p>
+            )}
           </div>
-
-          <section className="grid gap-4 md:grid-cols-3">
-            {summaryCards.map((card) => {
-              const Icon = card.icon;
-              return (
-                <div
-                  key={card.title}
-                  className="group flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 p-4 shadow-sm"
-                >
-                  <div className="flex items-center gap-2 text-slate-500">
-                    <Icon className="h-5 w-5 text-slate-500" />
-                    <span className="text-xs font-semibold uppercase tracking-wide">
-                      {card.title}
-                    </span>
-                  </div>
-                  <div className="text-3xl font-semibold text-slate-800">
-                    {card.value}
-                  </div>
-                  <p className="text-sm text-slate-500">{card.description}</p>
-                </div>
-              );
-            })}
-          </section>
-
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-white p-4 shadow-sm">
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="relative min-w-[280px]">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  placeholder="Buscar por factura, cliente, concepto o ticket..."
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  className="pl-9 bg-slate-50 border-slate-200 focus:bg-white transition-colors"
+        </div>
+      </PageTransition>
+      <TooltipProvider delayDuration={100}>
+        <FilterToolbar
+          searchTerm={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Buscar pagos..."
+          className="px-2"
+        >
+          {/* Status Filters */}
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1 md:pb-0">
+            <ToolbarButton
+              icon={Filter}
+              label="Todos"
+              isActive={statusFilter === "todos"}
+              onClick={() => setStatusFilter("todos")}
+            />
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <ToolbarButton
+                  icon={Clock3}
+                  label="Pendiente"
+                  isActive={statusFilter === "Pendiente"}
+                  onClick={() => setStatusFilter("Pendiente")}
+                  variant="error"
                 />
-              </div>
-              <div className="flex items-center gap-2">
-                <Select
-                  value={statusFilter}
-                  onValueChange={(value: "todos" | PaymentStatus) =>
-                    setStatusFilter(value)
-                  }
-                >
-                  <SelectTrigger className="w-[180px] bg-slate-50 border-slate-200">
-                    <div className="flex items-center gap-2">
-                      <Filter className="h-4 w-4 text-muted-foreground" />
-                      <SelectValue placeholder="Estado" />
-                    </div>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="todos">Todos los estados</SelectItem>
-                    <SelectItem value="Pendiente">
-                      <div className="flex items-center gap-2">
-                        <Clock3 className="h-4 w-4 text-red-500" />
-                        Pendiente
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="Enviado">
-                      <div className="flex items-center gap-2">
-                        <CreditCard className="h-4 w-4 text-blue-500" />
-                        Enviado
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="A confirmar">
-                      <div className="flex items-center gap-2">
-                        <ShieldCheck className="h-4 w-4 text-orange-500" />
-                        A confirmar
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="Emitir Factura">
-                      <div className="flex items-center gap-2">
-                        <FileText className="h-4 w-4 text-amber-500" />
-                        Emitir Factura
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="Pagado">
-                      <div className="flex items-center gap-2">
-                        <CheckCircle className="h-4 w-4 text-emerald-500" />
-                        Pagado
-                      </div>
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-
-                <Select
-                  value={currencyFilter}
-                  onValueChange={(value: "todos" | "UYU" | "USD") =>
-                    setCurrencyFilter(value)
-                  }
-                >
-                  <SelectTrigger className="w-[140px] bg-slate-50 border-slate-200">
-                    <div className="flex items-center gap-2">
-                      <DollarSign className="h-4 w-4 text-muted-foreground" />
-                      <SelectValue placeholder="Moneda" />
-                    </div>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="todos">Todas</SelectItem>
-                    <SelectItem value="UYU">
-                      <div className="flex items-center gap-2">
-                        <ReactCountryFlag
-                          svg
-                          countryCode="UY"
-                          className="inline-block h-4 w-5"
-                          aria-label="Uruguay"
-                        />
-                        UYU
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="USD">
-                      <div className="flex items-center gap-2">
-                        <ReactCountryFlag
-                          svg
-                          countryCode="US"
-                          className="inline-block h-4 w-5"
-                          aria-label="Estados Unidos"
-                        />
-                        USD
-                      </div>
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-
-                <Select
-                  value={dateFilter}
-                  onValueChange={(value: "thisMonth" | "lastMonth" | "thisWeek" | "all" | "custom") => {
-                    setDateFilter(value);
-                    if (value !== "custom") setCustomDate(undefined);
-                  }}
-                >
-                  <SelectTrigger className="w-[160px] bg-slate-50 border-slate-200">
-                    <div className="flex items-center gap-2">
-                      <CalendarIcon className="h-4 w-4 text-muted-foreground" />
-                      <SelectValue placeholder="Fecha" />
-                    </div>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="thisMonth">Este mes</SelectItem>
-                    <SelectItem value="lastMonth">Mes pasado</SelectItem>
-                    <SelectItem value="thisWeek">Esta semana</SelectItem>
-                    <SelectItem value="custom">Filtrar por fecha</SelectItem>
-                    <SelectSeparator />
-                    <SelectItem value="all">Todas las fechas</SelectItem>
-                  </SelectContent>
-                </Select>
-
-                {dateFilter === "custom" && (
-                  <div className="flex items-center gap-2">
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant={"outline"}
-                          className={cn(
-                            "w-[180px] justify-start text-left font-normal",
-                            !customDate && "text-muted-foreground"
-                          )}
-                        >
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {customDate ? (
-                            format(customDate, "PPP", { locale: es })
-                          ) : (
-                            <span>Seleccionar fecha</span>
-                          )}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0">
-                        <Calendar
-                          mode="single"
-                          selected={customDate}
-                          onSelect={setCustomDate}
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
-                    {customDate && (
-                      <Button variant="ghost" size="icon" onClick={() => setCustomDate(undefined)}>
-                        <X className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-            <div className="text-sm text-muted-foreground">
-              {filteredPayments.length} {filteredPayments.length === 1 ? 'resultado' : 'resultados'}
-            </div>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p className="text-xs">Incluye Pendientes, Enviados y A confirmar</p>
+              </TooltipContent>
+            </Tooltip>
+            <ToolbarButton
+              icon={CreditCard}
+              label="Enviado"
+              isActive={statusFilter === "Enviado"}
+              onClick={() => setStatusFilter("Enviado")}
+              variant="info"
+            />
+            <ToolbarButton
+              icon={ShieldCheck}
+              label="A confirmar"
+              isActive={statusFilter === "A confirmar"}
+              onClick={() => setStatusFilter("A confirmar")}
+              variant="warning"
+            />
+            <ToolbarButton
+              icon={FileText}
+              label="Factura"
+              isActive={statusFilter === "Emitir Factura"}
+              onClick={() => setStatusFilter("Emitir Factura")}
+              variant="warning"
+            />
+            <ToolbarButton
+              icon={CheckCircle}
+              label="Pagado"
+              isActive={statusFilter === "Pagado"}
+              onClick={() => setStatusFilter("Pagado")}
+              variant="success"
+            />
           </div>
 
+          <div className="w-px h-6 bg-slate-200/60 mx-1" />
 
-          <ConfirmPaymentDialog
-            open={isConfirmDialogOpen}
-            onOpenChange={(open) => {
-              setIsConfirmDialogOpen(open);
-              if (!open) {
-                setConfirmingPayment(null);
-              }
-            }}
-            formState={confirmForm}
-            onFormChange={setConfirmForm}
-            onConfirm={applyConfirmPayment}
-            payment={confirmingPayment}
-          />
-          <div className="rounded-lg border">
-            <div className="relative">
-              <div
-                ref={tableScrollRef}
-                className="max-h-[65vh] overflow-y-auto"
-                onScroll={handleScroll}
-              >
-                <Table>
+          <div className="flex items-center gap-2">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={currencyFilter === "todos" ? "default" : "outline"}
+                  size="icon"
+                  className="h-10 w-10 rounded-xl"
+                  onClick={() => setCurrencyFilter("todos")}
+                >
+                  <DollarSign className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent className="animate-in fade-in-50 zoom-in-95">
+                <p className="text-xs font-medium">Todas las monedas</p>
+              </TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={currencyFilter === "UYU" ? "default" : "outline"}
+                  size="icon"
+                  className="h-10 w-10 rounded-xl p-0"
+                  onClick={() => setCurrencyFilter("UYU")}
+                >
+                  <ReactCountryFlag
+                    svg
+                    countryCode="UY"
+                    className="h-5 w-6"
+                    aria-label="Uruguay"
+                  />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent className="animate-in fade-in-50 zoom-in-95">
+                <p className="text-xs font-medium">Pesos Uruguayos (UYU)</p>
+              </TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={currencyFilter === "USD" ? "default" : "outline"}
+                  size="icon"
+                  className="h-10 w-10 rounded-xl p-0"
+                  onClick={() => setCurrencyFilter("USD")}
+                >
+                  <ReactCountryFlag
+                    svg
+                    countryCode="US"
+                    className="h-5 w-6"
+                    aria-label="Estados Unidos"
+                  />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent className="animate-in fade-in-50 zoom-in-95">
+                <p className="text-xs font-medium">Dlares Americanos (USD)</p>
+              </TooltipContent>
+            </Tooltip>
+
+            <Select value={dateFilter} onValueChange={(value) => setDateFilter(value as any)}>
+              <SelectTrigger className="w-36 h-10 rounded-xl border-slate-200 bg-white/50 backdrop-blur-sm shadow-sm transition-all hover:bg-white focus:ring-4 focus:ring-indigo-100">
+                <SelectValue placeholder="Fecha" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todo el tiempo</SelectItem>
+                <SelectItem value="today">Hoy</SelectItem>
+                <SelectItem value="yesterday">Ayer</SelectItem>
+                <SelectItem value="thisWeek">Esta semana</SelectItem>
+                <SelectItem value="thisMonth">Este mes</SelectItem>
+                <SelectItem value="lastMonth">Mes pasado</SelectItem>
+                <SelectItem value="custom">Personalizado</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Popover>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-10 w-10 rounded-xl"
+                    >
+                      <Columns3 className="h-4 w-4" />
+                    </Button>
+                  </PopoverTrigger>
+                </TooltipTrigger>
+                <TooltipContent className="animate-in fade-in-50 zoom-in-95">
+                  <p className="text-xs font-medium">Columnas visibles</p>
+                </TooltipContent>
+              </Tooltip>
+              <PopoverContent className="w-56" align="end">
+                <div className="space-y-2">
+                  <h4 className="font-semibold text-sm mb-3">Columnas</h4>
+                  {Object.entries(visibleColumns).map(([key, value]) => (
+                    <div key={key} className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        id={`col-${key}`}
+                        checked={value}
+                        onChange={(e) => setVisibleColumns(prev => ({ ...prev, [key]: e.target.checked }))}
+                        className="rounded border-slate-300"
+                      />
+                      <label htmlFor={`col-${key}`} className="text-sm capitalize cursor-pointer">
+                        {key}
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              </PopoverContent>
+            </Popover>
+
+            {(statusFilter !== "todos" || currencyFilter !== "todos" || dateFilter !== "all" || search) && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-10 w-10 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-all"
+                    onClick={() => {
+                      setStatusFilter("todos");
+                      setCurrencyFilter("todos");
+                      setDateFilter("all");
+                      setCustomDate(undefined);
+                      setSearch("");
+                    }}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent className="animate-in fade-in-50 zoom-in-95">
+                  <p className="text-xs font-medium">Limpiar filtros</p>
+                </TooltipContent>
+              </Tooltip>
+            )}
+
+            <div className="w-px h-6 bg-slate-200/60 mx-1" />
+
+            <PaymentDialog
+              open={isDialogOpen}
+              onOpenChange={(open) => {
+                setIsDialogOpen(open);
+                if (!open) {
+                  setEditingPayment(null);
+                  setFormState(getDefaultFormState());
+                }
+              }}
+              ticketOptions={facturarTickets}
+              formState={formState}
+              onFormChange={setFormState}
+              onSave={handleDialogSave}
+              isEditing={Boolean(editingPayment)}
+            />
+          </div>
+
+          <div className="w-px h-6 bg-slate-200/60 mx-1" />
+
+          <div className="text-xs text-slate-500 ml-auto font-medium bg-slate-100/50 px-3 py-1.5 rounded-full backdrop-blur-sm">
+            {filteredPayments.length} resultado{filteredPayments.length !== 1 ? 's' : ''}
+          </div>
+        </FilterToolbar>
+      </TooltipProvider>
+
+
+      <ConfirmPaymentDialog
+        open={isConfirmDialogOpen}
+        onOpenChange={(open) => {
+          setIsConfirmDialogOpen(open);
+          if (!open) {
+            setConfirmingPayment(null);
+          }
+        }}
+        formState={confirmForm}
+        onFormChange={setConfirmForm}
+        onConfirm={applyConfirmPayment}
+        payment={confirmingPayment}
+      />
+      <div className="rounded-lg border">
+        <div className="relative">
+          <div
+            className="max-h-[75vh] overflow-y-auto"
+          >
+            <Table>
+              {/* ... Table headers and body ... */}
               <TableHeader>
                 <TableRow>
                   <TableHead onClick={() => requestSort("createdAt")}>
@@ -1344,12 +1370,12 @@ export default function PaymentsPage() {
                   <TableHead>
                     <div className="flex items-center gap-2">
                       <CreditCard className="h-4 w-4" />
-                      Método
+                      Mtodo
                     </div>
                   </TableHead>
-                  <TableHead className="text-right">
-                    <div className="flex items-center gap-2 justify-end">
-                      Acciones
+                  <TableHead className="text-center w-[50px]">
+                    <div className="flex items-center gap-2 justify-center">
+                      <MoreVertical className="h-4 w-4" />
                     </div>
                   </TableHead>
                 </TableRow>
@@ -1375,6 +1401,21 @@ export default function PaymentsPage() {
                           <span className="flex items-center gap-2">
                             <Hash className="h-4 w-4 text-muted-foreground" />
                             {payment.invoice}
+                            {payment.isRecurring && (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Badge className="bg-emerald-100 text-emerald-700 border-emerald-300 text-[9px] px-1.5 py-0 h-4">
+                                      <CalendarClock className="h-2.5 w-2.5 mr-1" />
+                                      RECURRENTE
+                                    </Badge>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p className="text-xs">Pago generado automticamente</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            )}
                           </span>
                           {payment.note && (
                             <span className="text-xs text-muted-foreground">
@@ -1435,61 +1476,63 @@ export default function PaymentsPage() {
                       <TableCell>
                         {payment.status === "Pagado" ? (
                           <Badge variant="secondary">
-                            {payment.method || "Sin método"}
+                            {payment.method || "Sin mtodo"}
                           </Badge>
                         ) : (
                           <span className="text-xs text-muted-foreground">-</span>
                         )}
                       </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          {payment.status !== "Pagado" && payment.status !== "Pagado Facturado" && (
+                      <TableCell className="text-center w-[50px]">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
                             <Button
-                              variant="outline"
-                              size="sm"
-                              className="gap-2"
-                              type="button"
-                              onClick={() => openConfirmDialog(payment)}
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
                             >
-                              <CheckCircle className="h-4 w-4" />
-                              Confirmar pago
+                              <MoreVertical className="h-4 w-4" />
                             </Button>
-                          )}
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            type="button"
-                            onClick={() => openEditDialog(payment)}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            type="button"
-                            onClick={() => handleDeletePayment(payment.id)}
-                          >
-                            <Trash2 className="h-4 w-4 text-red-500" />
-                          </Button>
-                        </div>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-48">
+                            {payment.status !== "Pagado" && payment.status !== "Pagado Facturado" && (
+                              <>
+                                <DropdownMenuItem onClick={() => openConfirmDialog(payment)}>
+                                  <CheckCircle className="h-4 w-4 mr-2 text-emerald-600" />
+                                  Confirmar pago
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                              </>
+                            )}
+                            <DropdownMenuItem onClick={() => openEditDialog(payment)}>
+                              <Edit className="h-4 w-4 mr-2 text-blue-600" />
+                              Editar
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => handleDeletePayment(payment.id)}
+                              disabled={payment.isRecurring}
+                              className={payment.isRecurring ? "opacity-50 cursor-not-allowed" : ""}
+                            >
+                              <Trash2 className={cn("h-4 w-4 mr-2", payment.isRecurring ? "text-slate-300" : "text-red-500")} />
+                              {payment.isRecurring ? "No se puede eliminar" : "Eliminar"}
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </TableCell>
                     </TableRow>
                   ))
                 )}
               </TablePageTransition>
-                </Table>
-                {hasMoreResults && (
-                  <div className="px-4 py-3 text-center text-xs text-slate-500">
-                    Desliza para cargar más pagos
-                  </div>
-                )}
+            </Table>
+            {hasMoreResults && (
+              <div ref={observerTarget} className="px-4 py-8 text-center border-t border-slate-50">
+                <Loader2 className="h-6 w-6 animate-spin mx-auto text-slate-200" />
+                <p className="text-[10px] uppercase font-black text-slate-300 tracking-[0.2em] mt-2">Cargando más pagos</p>
               </div>
-              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-white to-transparent" />
-            </div>
+            )}
           </div>
-
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-white to-transparent" />
         </div>
-      </PageTransition>
-    </DashboardLayout >
+      </div>
+    </DashboardLayout>
   );
 }

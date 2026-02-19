@@ -72,7 +72,7 @@
     "react-email": "^3.0.0",
     "react-hook-form": "^7.68.0",
     "react-leaflet": "^5.0.0",
-    "react-loader-spinner": "^6.1.6",
+    "react-loader-spinner": "^8.0.2",
     "react-mui-sidebar": "^1.6.10",
     "recharts": "^3.5.1",
     "sonner": "^2.0.7",

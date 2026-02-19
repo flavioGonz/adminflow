@@ -24,6 +24,7 @@ import {
   Check,
   Clock3,
   ClipboardList,
+  Loader2,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -70,9 +71,9 @@ export function ContractTable({
   } | null>(null);
   const [isPdfViewerOpen, setIsPdfViewerOpen] = useState(false);
   const [currentPdfPath, setCurrentPdfPath] = useState<string | undefined>(undefined);
-  const LOAD_INCREMENT = 15;
+  const LOAD_INCREMENT = 50;
   const [visibleCount, setVisibleCount] = useState(LOAD_INCREMENT);
-  const tableScrollRef = useRef<HTMLDivElement | null>(null);
+  const observerTarget = useRef<HTMLDivElement | null>(null);
 
   const filteredContracts = useMemo(() => {
     return contracts.filter((contract) => {
@@ -90,7 +91,7 @@ export function ContractTable({
   }, [contracts, searchTerm]);
 
   const sortedContracts = useMemo(() => {
-    let sortableItems = [...filteredContracts];
+    const sortableItems = [...filteredContracts];
     if (sortConfig !== null) {
       sortableItems.sort((a, b) => {
         const aValue = a[sortConfig.key];
@@ -118,30 +119,32 @@ export function ContractTable({
   );
   const hasMoreResults = visibleCount < sortedContracts.length;
 
-  const handleScroll = useCallback(() => {
-    const container = tableScrollRef.current;
-    if (!container || !hasMoreResults) return;
-    if (
-      container.scrollHeight - container.scrollTop - container.clientHeight <
-      150
-    ) {
-      setVisibleCount((prev) =>
-        Math.min(prev + LOAD_INCREMENT, sortedContracts.length)
-      );
-    }
-  }, [hasMoreResults, sortedContracts.length]);
-
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setVisibleCount(LOAD_INCREMENT);
-    if (tableScrollRef.current) {
-      tableScrollRef.current.scrollTop = 0;
-    }
   }, [
     searchTerm,
     sortConfig?.key,
     sortConfig?.direction,
     sortedContracts.length,
   ]);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMoreResults) {
+          setVisibleCount((prev) => Math.min(prev + LOAD_INCREMENT, sortedContracts.length));
+        }
+      },
+      { threshold: 0.1, rootMargin: "200px" }
+    );
+
+    if (observerTarget.current) {
+      observer.observe(observerTarget.current);
+    }
+
+    return () => observer.disconnect();
+  }, [visibleCount, hasMoreResults, sortedContracts.length]);
 
   const currencyInfo = (currency?: string) => {
     if (!currency) return { label: "Sin moneda", flagCode: null };
@@ -177,11 +180,7 @@ export function ContractTable({
     <div className="space-y-4">
       <div className="overflow-hidden border-none shadow-none bg-transparent">
         <div className="relative">
-          <div
-            ref={tableScrollRef}
-            className="max-h-[65vh] overflow-y-auto"
-            onScroll={handleScroll}
-          >
+          <div className="max-h-[65vh] overflow-y-auto">
             <Table>
               <TableHeader>
                 <TableRow className="bg-slate-50/70 border-none">
@@ -249,9 +248,9 @@ export function ContractTable({
                         {contract.clientId ? (
                           <div className="flex items-center gap-3">
                             <Avatar className="h-8 w-8 border border-slate-100 shadow-sm">
-                              <AvatarImage 
-                                src={resolveAvatarUrl(contract.clientAvatarUrl)} 
-                                alt={contract.clientName || ""} 
+                              <AvatarImage
+                                src={resolveAvatarUrl(contract.clientAvatarUrl)}
+                                alt={contract.clientName || ""}
                               />
                               <AvatarFallback className="bg-slate-100 text-xs text-slate-500 font-bold uppercase">
                                 {(contract.clientName || "?").substring(0, 2)}
@@ -394,12 +393,13 @@ export function ContractTable({
                 )}
               </TableBody>
             </Table>
+            {hasMoreResults && (
+              <div ref={observerTarget} className="px-4 py-8 text-center border-t border-slate-50">
+                <Loader2 className="h-6 w-6 animate-spin mx-auto text-slate-200" />
+                <p className="text-[10px] uppercase font-black text-slate-300 tracking-[0.2em] mt-2">Cargando más contratos</p>
+              </div>
+            )}
           </div>
-          {hasMoreResults && (
-            <div className="px-4 py-3 text-center text-xs text-slate-500 relative z-10">
-              Desliza para cargar más contratos
-            </div>
-          )}
           <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-white to-transparent" />
         </div>
       </div>

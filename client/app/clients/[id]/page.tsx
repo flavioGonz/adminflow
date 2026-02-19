@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
+import { FilterToolbar, ToolbarButton } from "@/components/ui/filter-toolbar";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/layout/page-header";
@@ -101,28 +102,28 @@ function MapCard({
   const handleSearch = async () => {
     if (!searchQuery.trim()) return;
     try {
-        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}`);
-        const data = await res.json();
-        if (data && data.length > 0) {
-            const { lat, lon } = data[0];
-            const newLat = parseFloat(lat);
-            const newLon = parseFloat(lon);
-            if (mapInstanceRef.current) {
-                mapInstanceRef.current.setView([newLat, newLon], 16);
-                if (markerRef.current) {
-                    markerRef.current.setLatLng([newLat, newLon]);
-                }
-            }
-            if (onLocationSave) {
-                onLocationSave(newLat, newLon);
-            }
-            setIsLocked(false);
-            toast.success("Ubicación encontrada.");
-        } else {
-            toast.error("No se encontró la dirección.");
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}`);
+      const data = await res.json();
+      if (data && data.length > 0) {
+        const { lat, lon } = data[0];
+        const newLat = parseFloat(lat);
+        const newLon = parseFloat(lon);
+        if (mapInstanceRef.current) {
+          mapInstanceRef.current.setView([newLat, newLon], 16);
+          if (markerRef.current) {
+            markerRef.current.setLatLng([newLat, newLon]);
+          }
         }
+        if (onLocationSave) {
+          onLocationSave(newLat, newLon);
+        }
+        setIsLocked(false);
+        toast.success("Ubicación encontrada.");
+      } else {
+        toast.error("No se encontró la dirección.");
+      }
     } catch (err) {
-        toast.error("Error al buscar dirección.");
+      toast.error("Error al buscar dirección.");
     }
   };
 
@@ -210,33 +211,33 @@ function MapCard({
         style={{ zIndex: 0 }}
       />
       <div className="absolute left-3 top-3 right-3 flex items-center gap-2" style={{ zIndex: 2 }}>
-          <div className="relative flex-1 group">
-            <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
-            <Input 
-                placeholder="Buscar dirección..." 
-                className="h-9 pl-8 bg-white/90 backdrop-blur border-slate-200 shadow-lg text-xs"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-            />
-          </div>
-          <button
-            className="flex items-center gap-1 h-9 px-3 rounded-xl border border-slate-200 bg-white/90 text-[0.65rem] font-bold uppercase tracking-widest text-slate-700 shadow-lg backdrop-blur outline-none transition-all hover:bg-white active:scale-95"
-            onClick={() => setIsLocked((prev) => !prev)}
-            type="button"
-          >
-            {isLocked ? (
-              <>
-                <Lock className="h-3 w-3 text-slate-500" />
-                Bloqueado
-              </>
-            ) : (
-              <>
-                <Unlock className="h-3 w-3 text-blue-500 animate-bounce" />
-                Mover dot
-              </>
-            )}
-          </button>
+        <div className="relative flex-1 group">
+          <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
+          <Input
+            placeholder="Buscar dirección..."
+            className="h-9 pl-8 bg-white/90 backdrop-blur border-slate-200 shadow-lg text-xs"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+          />
+        </div>
+        <button
+          className="flex items-center gap-1 h-9 px-3 rounded-xl border border-slate-200 bg-white/90 text-[0.65rem] font-bold uppercase tracking-widest text-slate-700 shadow-lg backdrop-blur outline-none transition-all hover:bg-white active:scale-95"
+          onClick={() => setIsLocked((prev) => !prev)}
+          type="button"
+        >
+          {isLocked ? (
+            <>
+              <Lock className="h-3 w-3 text-slate-500" />
+              Bloqueado
+            </>
+          ) : (
+            <>
+              <Unlock className="h-3 w-3 text-blue-500 animate-bounce" />
+              Mover dot
+            </>
+          )}
+        </button>
       </div>
     </section>
   );
@@ -536,11 +537,11 @@ export default function ClientDetailPage() {
 
     const text = movementSearch.trim().toLowerCase();
     if (text) {
-        base = base.filter((row) =>
-            row.description.toLowerCase().includes(text) ||
-            row.status?.toLowerCase().includes(text) ||
-            row.reference?.toLowerCase().includes(text)
-        );
+      base = base.filter((row) =>
+        row.description.toLowerCase().includes(text) ||
+        row.status?.toLowerCase().includes(text) ||
+        row.reference?.toLowerCase().includes(text)
+      );
     }
 
     return base;
@@ -605,10 +606,10 @@ export default function ClientDetailPage() {
   ];
 
   const tabList = [
-      { id: 'movimientos', label: 'Todos', icon: History, count: movementRows.length },
-      { id: 'tickets', label: 'Tickets', icon: TicketIcon, count: tickets.length },
-      { id: 'pagos', label: 'Pagos', icon: DollarSign, count: payments.length },
-      { id: 'repositorio', label: 'Inventario', icon: Monitor, count: repositoryItems.length },
+    { id: 'movimientos', label: 'Todos', icon: History, count: movementRows.length },
+    { id: 'tickets', label: 'Tickets', icon: TicketIcon, count: tickets.length },
+    { id: 'pagos', label: 'Pagos', icon: DollarSign, count: payments.length },
+    { id: 'repositorio', label: 'Inventario', icon: Monitor, count: repositoryItems.length },
   ];
 
   return (
@@ -623,15 +624,15 @@ export default function ClientDetailPage() {
           </div>
         }
         breadcrumbs={[
-            { label: "Clientes", href: "/clients", icon: <Users className="h-3 w-3 text-slate-500" /> },
-            { label: client.name, icon: <User className="h-3 w-3 text-slate-500" /> },
+          { label: "Clientes", href: "/clients", icon: <Users className="h-3 w-3 text-slate-500" /> },
+          { label: client.name, icon: <User className="h-3 w-3 text-slate-500" /> },
         ]}
         actions={
-            <div className="flex items-center gap-2">
-                 <Badge variant="outline" className="bg-white border-slate-200 text-slate-500 text-[10px] font-mono px-2">
-                    ID: {client.id}
-                 </Badge>
-            </div>
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className="bg-white border-slate-200 text-slate-500 text-[10px] font-mono px-2">
+              ID: {client.id}
+            </Badge>
+          </div>
         }
       />
 
@@ -654,14 +655,14 @@ export default function ClientDetailPage() {
           isSaving={savingSection === "contact"}
           avatarUrl={client.avatarUrl}
         />
-        
+
         <ContractSelectionCard
-            contracts={contracts}
-            selectedContractId={selectedContractId}
-            onContractSelect={setSelectedContractId}
-            payments={payments}
-            client={client}
-            onSave={(updates) => handleCardSave("contract", updates)}
+          contracts={contracts}
+          selectedContractId={selectedContractId}
+          onContractSelect={setSelectedContractId}
+          payments={payments}
+          client={client}
+          onSave={(updates) => handleCardSave("contract", updates)}
         />
 
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm flex flex-col h-full">
@@ -696,48 +697,43 @@ export default function ClientDetailPage() {
         />
       </section>
 
-      <section className="flex flex-wrap gap-2 p-1 bg-slate-100/50 rounded-2xl border border-slate-200 w-fit">
-        {tabList.map((tab) => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
-            return (
-                <button
-                    key={tab.id}
-                    onClick={() => { setActiveTab(tab.id); setMovementPage(1); }}
-                    className={cn(
-                        "flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all",
-                        isActive 
-                            ? "bg-white text-emerald-700 shadow-sm border border-emerald-100" 
-                            : "text-slate-500 hover:text-slate-700 hover:bg-white/50"
-                    )}
-                >
-                    <Icon className={cn("h-4 w-4", isActive ? "text-emerald-600" : "text-slate-400")} />
-                    {tab.label}
-                    <Badge variant="outline" className={cn("text-[10px] px-1.5 h-4 border-none", isActive ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-600")}>
-                        {tab.count}
-                    </Badge>
-                </button>
-            );
-        })}
-      </section>
+
 
       <section className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/30">
-            <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                {tabList.find(t => t.id === activeTab)?.label}
-                <span className="text-slate-400 font-normal text-xs">— Historial</span>
+        <div className="px-4 py-2.5 border-b border-slate-100 bg-slate-50/10">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2">
+            <h3 className="font-bold text-slate-800 flex items-center gap-2 shrink-0 text-sm">
+              {tabList.find(t => t.id === activeTab)?.label}
+              <span className="text-slate-400 font-normal text-xs">— Historial</span>
             </h3>
-            <div className="flex items-center gap-2">
-                <div className="relative">
-                    <Hash className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
-                    <Input
-                        placeholder="Filtrar historial..."
-                        value={movementSearch}
-                        onChange={(e) => setMovementSearch(e.target.value)}
-                        className="h-9 w-64 pl-9 text-xs border-slate-200 rounded-xl bg-white"
+
+            <div className="flex items-center gap-2 flex-1 lg:justify-end">
+              <FilterToolbar
+                searchTerm={movementSearch}
+                onSearchChange={setMovementSearch}
+                searchPlaceholder="Filtrar movimientos..."
+                className="px-0"
+              >
+                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                  {tabList.map((tab) => (
+                    <ToolbarButton
+                      key={tab.id}
+                      icon={tab.icon}
+                      label={tab.label}
+                      isActive={activeTab === tab.id}
+                      onClick={() => { setActiveTab(tab.id); setMovementPage(1); }}
                     />
+                  ))}
                 </div>
+
+                <div className="w-px h-6 bg-slate-200/60 mx-1 hidden md:block" />
+
+                <div className="text-xs text-slate-500 font-medium bg-white/50 px-2.5 py-1 rounded-full border border-slate-200/50 backdrop-blur-sm">
+                  {filteredMovements.length} registro{filteredMovements.length !== 1 ? 's' : ''}
+                </div>
+              </FilterToolbar>
             </div>
+          </div>
         </div>
 
         <div className="overflow-x-auto">
@@ -756,7 +752,7 @@ export default function ClientDetailPage() {
               {paginatedMovements.map((movement) => {
                 const dateLabel = movement.date ? new Date(movement.date).toLocaleDateString() : "—";
                 const amountLabel = typeof movement.amount === "number" ? formatCurrency(movement.amount) : (movement.reference || "—");
-                
+
                 const detailHref = (() => {
                   if (movement.type === "Ticket") return `/tickets/${movement.id}`;
                   if (movement.type === "Pago") return `/payments?search=${movement.id}`;
@@ -768,64 +764,64 @@ export default function ClientDetailPage() {
                   <tr key={`${movement.type}-${movement.id}`} className="hover:bg-slate-50 transition-colors">
                     <td className="px-6 py-4 text-slate-500 font-medium">{dateLabel}</td>
                     <td className="px-6 py-4">
-                        <div className="flex items-center gap-2">
-                            <Badge variant="outline" className="text-[9px] font-bold border-slate-200 text-slate-500 uppercase px-1.5 h-5">
-                                {movement.type}
-                            </Badge>
-                        </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-[9px] font-bold border-slate-200 text-slate-500 uppercase px-1.5 h-5">
+                          {movement.type}
+                        </Badge>
+                      </div>
                     </td>
                     <td className="px-6 py-4">
-                        <p className="font-semibold text-slate-800 line-clamp-1">{movement.description}</p>
+                      <p className="font-semibold text-slate-800 line-clamp-1">{movement.description}</p>
                     </td>
                     <td className="px-6 py-4 font-mono text-slate-600">{amountLabel}</td>
                     <td className="px-6 py-4">
-                        <Badge className={cn("text-[10px] font-bold border-none px-2", getStatusTone(movement.status))}>
-                            {movement.status || "—"}
-                        </Badge>
+                      <Badge className={cn("text-[10px] font-bold border-none px-2", getStatusTone(movement.status))}>
+                        {movement.status || "—"}
+                      </Badge>
                     </td>
                     <td className="px-6 py-4 text-right">
-                        <Button asChild variant="ghost" size="icon" className="h-8 w-8 rounded-full hover:bg-slate-100">
-                            <Link href={detailHref}>
-                                <ChevronRight className="h-4 w-4 text-slate-400" />
-                            </Link>
-                        </Button>
+                      <Button asChild variant="ghost" size="icon" className="h-8 w-8 rounded-full hover:bg-slate-100">
+                        <Link href={detailHref}>
+                          <ChevronRight className="h-4 w-4 text-slate-400" />
+                        </Link>
+                      </Button>
                     </td>
                   </tr>
                 );
               })}
               {paginatedMovements.length === 0 && (
-                  <tr>
-                      <td colSpan={6} className="px-6 py-12 text-center">
-                          <div className="flex flex-col items-center text-slate-400">
-                              <Hash className="h-8 w-8 mb-2 opacity-20" />
-                              <p className="text-sm">No se encontraron registros.</p>
-                          </div>
-                      </td>
-                  </tr>
+                <tr>
+                  <td colSpan={6} className="px-6 py-12 text-center">
+                    <div className="flex flex-col items-center text-slate-400">
+                      <Hash className="h-8 w-8 mb-2 opacity-20" />
+                      <p className="text-sm">No se encontraron registros.</p>
+                    </div>
+                  </td>
+                </tr>
               )}
             </tbody>
           </table>
         </div>
 
         <div className="p-4 bg-slate-50/30 border-t border-slate-100 flex items-center justify-between text-xs font-medium text-slate-500">
-            <p>Mostrando {paginatedMovements.length} de {filteredMovements.length} resultados</p>
-            <div className="flex items-center gap-2">
-                <Button 
-                    variant="outline" 
-                    size="sm" 
-                    className="h-8 rounded-lg"
-                    disabled={movementPage === 1}
-                    onClick={() => setMovementPage(p => p - 1)}
-                >Anterior</Button>
-                <span className="px-2">Página {movementPage} de {totalMovementPages}</span>
-                <Button 
-                    variant="outline" 
-                    size="sm" 
-                    className="h-8 rounded-lg"
-                    disabled={movementPage === totalMovementPages}
-                    onClick={() => setMovementPage(p => p + 1)}
-                >Siguiente</Button>
-            </div>
+          <p>Mostrando {paginatedMovements.length} de {filteredMovements.length} resultados</p>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 rounded-lg"
+              disabled={movementPage === 1}
+              onClick={() => setMovementPage(p => p - 1)}
+            >Anterior</Button>
+            <span className="px-2">Página {movementPage} de {totalMovementPages}</span>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 rounded-lg"
+              disabled={movementPage === totalMovementPages}
+              onClick={() => setMovementPage(p => p + 1)}
+            >Siguiente</Button>
+          </div>
         </div>
       </section>
 
@@ -834,12 +830,12 @@ export default function ClientDetailPage() {
 }
 
 function getStatusTone(status?: string) {
-    if (!status) return "bg-slate-100 text-slate-500";
-    const s = status.toLowerCase();
-    if (s.includes("pagado") || s.includes("complet") || s.includes("cerrado")) return "bg-emerald-100 text-emerald-700";
-    if (s.includes("pendiente") || s.includes("abierto")) return "bg-amber-100 text-amber-700";
-    if (s.includes("error") || s.includes("fallido") || s.includes("vencido")) return "bg-rose-100 text-rose-700";
-    return "bg-slate-100 text-slate-500";
+  if (!status) return "bg-slate-100 text-slate-500";
+  const s = status.toLowerCase();
+  if (s.includes("pagado") || s.includes("complet") || s.includes("cerrado")) return "bg-emerald-100 text-emerald-700";
+  if (s.includes("pendiente") || s.includes("abierto")) return "bg-amber-100 text-amber-700";
+  if (s.includes("error") || s.includes("fallido") || s.includes("vencido")) return "bg-rose-100 text-rose-700";
+  return "bg-slate-100 text-slate-500";
 }
 
 function ContractSelectionCard({
@@ -877,30 +873,30 @@ function ContractSelectionCard({
         <div className="flex items-start justify-between">
           <div>
             <div className="flex items-center gap-2 mb-2">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-700">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-700">
                 Contrato vigente
-                </p>
-                <div className="flex items-center gap-1.5 ml-2 px-2 py-0.5 rounded-full bg-emerald-100/50 border border-emerald-200">
-                    <Checkbox 
-                        id="contract-active"
-                        checked={!!client.contract} 
-                        onCheckedChange={(checked) => onSave({ contract: !!checked })}
-                        className="h-3 w-3 border-emerald-400 data-[state=checked]:bg-emerald-600"
-                    />
-                    <Label htmlFor="contract-active" className="text-[9px] font-black text-emerald-800 cursor-pointer">ACTIVO</Label>
-                </div>
+              </p>
+              <div className="flex items-center gap-1.5 ml-2 px-2 py-0.5 rounded-full bg-emerald-100/50 border border-emerald-200">
+                <Checkbox
+                  id="contract-active"
+                  checked={!!client.contract}
+                  onCheckedChange={(checked) => onSave({ contract: !!checked })}
+                  className="h-3 w-3 border-emerald-400 data-[state=checked]:bg-emerald-600"
+                />
+                <Label htmlFor="contract-active" className="text-[9px] font-black text-emerald-800 cursor-pointer">ACTIVO</Label>
+              </div>
             </div>
             <div className="flex flex-col gap-2">
               {contracts.length > 0 ? (
                 <Select value={selectedContractId || ""} onValueChange={onContractSelect}>
-                    <SelectTrigger className="h-9 bg-white/80 border-emerald-200 text-emerald-900 font-bold text-xs rounded-xl shadow-sm">
-                        <SelectValue placeholder="Seleccionar contrato" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        {contracts.map(c => (
-                            <SelectItem key={c.id} value={c.id}>{c.title}</SelectItem>
-                        ))}
-                    </SelectContent>
+                  <SelectTrigger className="h-9 bg-white/80 border-emerald-200 text-emerald-900 font-bold text-xs rounded-xl shadow-sm">
+                    <SelectValue placeholder="Seleccionar contrato" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {contracts.map(c => (
+                      <SelectItem key={c.id} value={c.id}>{c.title}</SelectItem>
+                    ))}
+                  </SelectContent>
                 </Select>
               ) : (
                 <p className="text-xs text-slate-600 italic">Sin contratos disponibles</p>
@@ -923,127 +919,127 @@ function ContractSelectionCard({
               <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter">por mes</span>
             </div>
             <div className="grid grid-cols-2 gap-2 text-[10px]">
-                <div className="flex flex-col">
-                    <span className="text-emerald-700 font-bold uppercase opacity-60">Inicio</span>
-                    <span className="font-bold text-slate-700">{formatDate(selectedContract.startDate)}</span>
-                </div>
-                <div className="flex flex-col">
-                    <span className="text-emerald-700 font-bold uppercase opacity-60">Vencimiento</span>
-                    <span className="font-bold text-slate-700">{formatDate(selectedContract.endDate)}</span>
-                </div>
+              <div className="flex flex-col">
+                <span className="text-emerald-700 font-bold uppercase opacity-60">Inicio</span>
+                <span className="font-bold text-slate-700">{formatDate(selectedContract.startDate)}</span>
+              </div>
+              <div className="flex flex-col">
+                <span className="text-emerald-700 font-bold uppercase opacity-60">Vencimiento</span>
+                <span className="font-bold text-slate-700">{formatDate(selectedContract.endDate)}</span>
+              </div>
             </div>
           </div>
         )}
 
         <div className="border-t border-emerald-200/50 pt-3 mt-auto">
-             <div className="flex items-center justify-between mb-2">
-                 <div className="flex items-center gap-2">
-                    <CalendarClock className="h-4 w-4 text-emerald-600" />
-                    <span className="text-[10px] font-black text-emerald-700 uppercase tracking-widest">Pago Recurrente</span>
-                 </div>
-                 <div className="flex items-center gap-2">
-                    <Dialog open={openConfig} onOpenChange={setOpenConfig}>
-                        <DialogTrigger asChild>
-                            <button className="p-1 rounded-md hover:bg-emerald-100 text-emerald-600 transition-colors">
-                                <Edit2 className="h-3 w-3" />
-                            </button>
-                        </DialogTrigger>
-                        <DialogContent className="max-w-md rounded-3xl p-6">
-                            <DialogHeader>
-                                <div className="mx-auto h-12 w-12 rounded-full bg-emerald-100 flex items-center justify-center mb-4">
-                                    <CreditCard className="h-6 w-6 text-emerald-600" />
-                                </div>
-                                <DialogTitle className="text-center text-xl font-bold">Configuración de Pago</DialogTitle>
-                                <p className="text-center text-slate-500 text-sm">Define los valores para la facturación automática mensual.</p>
-                            </DialogHeader>
-                            <div className="space-y-6 py-6">
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="space-y-2">
-                                        <Label className="text-[10px] uppercase font-black text-slate-400 tracking-wider">Monto Mensual</Label>
-                                        <div className="relative">
-                                            <DollarSign className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
-                                            <Input 
-                                                type="number" 
-                                                className="h-11 pl-9 rounded-2xl border-slate-200 font-bold"
-                                                value={localAmount}
-                                                onChange={(e) => setLocalAmount(Number(e.target.value))}
-                                            />
-                                        </div>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label className="text-[10px] uppercase font-black text-slate-400 tracking-wider">Moneda</Label>
-                                        <Select 
-                                            value={localCurrency}
-                                            onValueChange={setLocalCurrency}
-                                        >
-                                            <SelectTrigger className="h-11 rounded-2xl border-slate-200 font-bold">
-                                                <SelectValue />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="UYU">Pesos (UYU)</SelectItem>
-                                                <SelectItem value="USD">Dólares (USD)</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                </div>
-                                
-                                <div className="flex items-center justify-between p-4 rounded-2xl bg-slate-50 border border-slate-100">
-                                    <div className="flex items-center gap-3">
-                                        <div className="h-8 w-8 rounded-lg bg-white flex items-center justify-center border border-slate-200">
-                                            <Bell className="h-4 w-4 text-emerald-600" />
-                                        </div>
-                                        <div>
-                                            <p className="text-xs font-bold text-slate-700">Facturación el día 1</p>
-                                            <p className="text-[10px] text-slate-400">Se generará un pago pendiente automáticamente.</p>
-                                        </div>
-                                    </div>
-                                    <Checkbox 
-                                        checked={!!client.recurringPaymentEnabled}
-                                        onCheckedChange={(val) => onSave({ recurringPaymentEnabled: !!val })}
-                                        className="h-5 w-5 rounded-md"
-                                    />
-                                </div>
-                            </div>
-                            <DialogFooter>
-                                <Button 
-                                    className="w-full h-12 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-lg shadow-emerald-200 transition-all"
-                                    onClick={() => {
-                                        onSave({ recurringAmount: localAmount, recurringCurrency: localCurrency });
-                                        setOpenConfig(false);
-                                    }}
-                                >
-                                    <Save className="h-4 w-4 mr-2" />
-                                    Guardar Pago
-                                </Button>
-                            </DialogFooter>
-                        </DialogContent>
-                    </Dialog>
-                    <Checkbox 
-                        id="recurring-enabled"
-                        checked={!!client.recurringPaymentEnabled} 
-                        onCheckedChange={(checked) => onSave({ recurringPaymentEnabled: !!checked })}
-                        className="h-4 w-4 border-emerald-400 data-[state=checked]:bg-emerald-600"
-                    />
-                 </div>
-             </div>
-             {client.recurringPaymentEnabled ? (
-                 <div className="flex items-center justify-between rounded-xl bg-white/50 px-3 py-2 border border-emerald-200/30 shadow-sm">
-                    <div className="flex flex-col">
-                        <div className="flex items-center gap-1">
-                            <CheckCircle2 className="h-2.5 w-2.5 text-emerald-600" />
-                            <span className="text-[10px] font-bold text-emerald-800 leading-none">Generación Activa</span>
-                        </div>
-                        <span className="text-[9px] text-emerald-600/70 mt-1 font-medium">Auto-invoice día 1 cada mes</span>
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <CalendarClock className="h-4 w-4 text-emerald-600" />
+              <span className="text-[10px] font-black text-emerald-700 uppercase tracking-widest">Pago Recurrente</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Dialog open={openConfig} onOpenChange={setOpenConfig}>
+                <DialogTrigger asChild>
+                  <button className="p-1 rounded-md hover:bg-emerald-100 text-emerald-600 transition-colors">
+                    <Edit2 className="h-3 w-3" />
+                  </button>
+                </DialogTrigger>
+                <DialogContent className="max-w-md rounded-3xl p-6">
+                  <DialogHeader>
+                    <div className="mx-auto h-12 w-12 rounded-full bg-emerald-100 flex items-center justify-center mb-4">
+                      <CreditCard className="h-6 w-6 text-emerald-600" />
                     </div>
-                    <span className="text-sm font-black text-slate-900">
-                        {formatCurrency(client.recurringAmount || 0, client.recurringCurrency)}
-                    </span>
-                 </div>
-             ) : (
-                <div className="p-2 rounded-xl bg-slate-100/50 border border-slate-200/50 text-center">
-                    <p className="text-[10px] text-slate-400 italic">Facturación automática desactivada</p>
+                    <DialogTitle className="text-center text-xl font-bold">Configuración de Pago</DialogTitle>
+                    <p className="text-center text-slate-500 text-sm">Define los valores para la facturación automática mensual.</p>
+                  </DialogHeader>
+                  <div className="space-y-6 py-6">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label className="text-[10px] uppercase font-black text-slate-400 tracking-wider">Monto Mensual</Label>
+                        <div className="relative">
+                          <DollarSign className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+                          <Input
+                            type="number"
+                            className="h-11 pl-9 rounded-2xl border-slate-200 font-bold"
+                            value={localAmount}
+                            onChange={(e) => setLocalAmount(Number(e.target.value))}
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-[10px] uppercase font-black text-slate-400 tracking-wider">Moneda</Label>
+                        <Select
+                          value={localCurrency}
+                          onValueChange={setLocalCurrency}
+                        >
+                          <SelectTrigger className="h-11 rounded-2xl border-slate-200 font-bold">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="UYU">Pesos (UYU)</SelectItem>
+                            <SelectItem value="USD">Dólares (USD)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between p-4 rounded-2xl bg-slate-50 border border-slate-100">
+                      <div className="flex items-center gap-3">
+                        <div className="h-8 w-8 rounded-lg bg-white flex items-center justify-center border border-slate-200">
+                          <Bell className="h-4 w-4 text-emerald-600" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-slate-700">Facturación el día 1</p>
+                          <p className="text-[10px] text-slate-400">Se generará un pago pendiente automáticamente.</p>
+                        </div>
+                      </div>
+                      <Checkbox
+                        checked={!!client.recurringPaymentEnabled}
+                        onCheckedChange={(val) => onSave({ recurringPaymentEnabled: !!val })}
+                        className="h-5 w-5 rounded-md"
+                      />
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button
+                      className="w-full h-12 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-lg shadow-emerald-200 transition-all"
+                      onClick={() => {
+                        onSave({ recurringAmount: localAmount, recurringCurrency: localCurrency });
+                        setOpenConfig(false);
+                      }}
+                    >
+                      <Save className="h-4 w-4 mr-2" />
+                      Guardar Pago
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+              <Checkbox
+                id="recurring-enabled"
+                checked={!!client.recurringPaymentEnabled}
+                onCheckedChange={(checked) => onSave({ recurringPaymentEnabled: !!checked })}
+                className="h-4 w-4 border-emerald-400 data-[state=checked]:bg-emerald-600"
+              />
+            </div>
+          </div>
+          {client.recurringPaymentEnabled ? (
+            <div className="flex items-center justify-between rounded-xl bg-white/50 px-3 py-2 border border-emerald-200/30 shadow-sm">
+              <div className="flex flex-col">
+                <div className="flex items-center gap-1">
+                  <CheckCircle2 className="h-2.5 w-2.5 text-emerald-600" />
+                  <span className="text-[10px] font-bold text-emerald-800 leading-none">Generación Activa</span>
                 </div>
-             )}
+                <span className="text-[9px] text-emerald-600/70 mt-1 font-medium">Auto-invoice día 1 cada mes</span>
+              </div>
+              <span className="text-sm font-black text-slate-900">
+                {formatCurrency(client.recurringAmount || 0, client.recurringCurrency)}
+              </span>
+            </div>
+          ) : (
+            <div className="p-2 rounded-xl bg-slate-100/50 border border-slate-200/50 text-center">
+              <p className="text-[10px] text-slate-400 italic">Facturación automática desactivada</p>
+            </div>
+          )}
         </div>
       </div>
     </section>
@@ -1120,48 +1116,71 @@ function EditableClientCard({
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-[1320px] max-h-[90vh] overflow-y-visible rounded-3xl p-6">
-            <DialogHeader className="pb-1">
-              <DialogTitle>Editar {title.toLowerCase()}</DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                {fields.map((field) => {
-                  const key = String(field.key);
-                  const value = formValues[key];
-                  const spanClasses =
-                    field.type === "checkbox" || field.type === "textarea"
-                      ? "md:col-span-2"
-                      : "";
+              <DialogHeader className="pb-1">
+                <DialogTitle>Editar {title.toLowerCase()}</DialogTitle>
+              </DialogHeader>
+              <form onSubmit={handleSubmit} className="space-y-6">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  {fields.map((field) => {
+                    const key = String(field.key);
+                    const value = formValues[key];
+                    const spanClasses =
+                      field.type === "checkbox" || field.type === "textarea"
+                        ? "md:col-span-2"
+                        : "";
 
-                  if (field.type === "checkbox") {
-                    return (
-                      <div
-                        key={key}
-                        className={cn(
-                          spanClasses,
-                          "flex items-center gap-3 rounded-2xl border border-slate-200 bg-white/70 px-4 py-3 text-sm text-slate-700 shadow-sm transition hover:border-slate-300"
-                        )}
-                      >
-                        <Checkbox
-                          id={key}
-                          checked={!!value}
-                          onCheckedChange={(checked) => handleChange(key, !!checked)}
-                          className="border-slate-300"
-                        />
-                        <Label
-                          htmlFor={key}
-                          className="text-sm font-semibold leading-none cursor-pointer flex items-center gap-2"
-                        >
-                          {field.icon && (
-                            <field.icon className="h-3.5 w-3.5 text-slate-500" />
+                    if (field.type === "checkbox") {
+                      return (
+                        <div
+                          key={key}
+                          className={cn(
+                            spanClasses,
+                            "flex items-center gap-3 rounded-2xl border border-slate-200 bg-white/70 px-4 py-3 text-sm text-slate-700 shadow-sm transition hover:border-slate-300"
                           )}
-                          {field.label}
-                        </Label>
-                      </div>
-                    );
-                  }
+                        >
+                          <Checkbox
+                            id={key}
+                            checked={!!value}
+                            onCheckedChange={(checked) => handleChange(key, !!checked)}
+                            className="border-slate-300"
+                          />
+                          <Label
+                            htmlFor={key}
+                            className="text-sm font-semibold leading-none cursor-pointer flex items-center gap-2"
+                          >
+                            {field.icon && (
+                              <field.icon className="h-3.5 w-3.5 text-slate-500" />
+                            )}
+                            {field.label}
+                          </Label>
+                        </div>
+                      );
+                    }
 
-                  if (field.type === "textarea") {
+                    if (field.type === "textarea") {
+                      return (
+                        <div
+                          key={key}
+                          className={cn(spanClasses, "space-y-2")}
+                        >
+                          <Label className="text-xs font-bold text-slate-400 flex items-center gap-2 uppercase tracking-wider">
+                            {field.icon && (
+                              <field.icon className="h-3.5 w-3.5" />
+                            )}
+                            {field.label}
+                          </Label>
+                          <Textarea
+                            value={value ?? ""}
+                            onChange={(event) =>
+                              handleChange(key, event.target.value)
+                            }
+                            placeholder={field.placeholder}
+                            className="min-h-[110px] rounded-2xl border border-slate-200 px-3 py-2 text-sm shadow-sm focus-visible:border-emerald-400 focus-visible:ring-2 focus-visible:ring-emerald-100 transition-all"
+                          />
+                        </div>
+                      );
+                    }
+
                     return (
                       <div
                         key={key}
@@ -1173,55 +1192,32 @@ function EditableClientCard({
                           )}
                           {field.label}
                         </Label>
-                        <Textarea
+                        <Input
+                          type={field.type ?? "text"}
                           value={value ?? ""}
                           onChange={(event) =>
                             handleChange(key, event.target.value)
                           }
                           placeholder={field.placeholder}
-                          className="min-h-[110px] rounded-2xl border border-slate-200 px-3 py-2 text-sm shadow-sm focus-visible:border-emerald-400 focus-visible:ring-2 focus-visible:ring-emerald-100 transition-all"
+                          className="h-11 rounded-2xl border border-slate-200 px-3 text-sm shadow-sm focus-visible:border-emerald-400 focus-visible:ring-2 focus-visible:ring-emerald-100 transition-all"
                         />
                       </div>
                     );
-                  }
-
-                  return (
-                    <div
-                      key={key}
-                      className={cn(spanClasses, "space-y-2")}
-                    >
-                      <Label className="text-xs font-bold text-slate-400 flex items-center gap-2 uppercase tracking-wider">
-                        {field.icon && (
-                          <field.icon className="h-3.5 w-3.5" />
-                        )}
-                        {field.label}
-                      </Label>
-                      <Input
-                        type={field.type ?? "text"}
-                        value={value ?? ""}
-                        onChange={(event) =>
-                          handleChange(key, event.target.value)
-                        }
-                        placeholder={field.placeholder}
-                        className="h-11 rounded-2xl border border-slate-200 px-3 text-sm shadow-sm focus-visible:border-emerald-400 focus-visible:ring-2 focus-visible:ring-emerald-100 transition-all"
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-              <DialogFooter className="mt-2 border-t pt-4">
-                <Button type="submit" disabled={isSaving} className="h-11 rounded-2xl px-8 bg-emerald-600 hover:bg-emerald-700">
-                  {isSaving ? "Guardando..." : "Guardar cambios"}
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
+                  })}
+                </div>
+                <DialogFooter className="mt-2 border-t pt-4">
+                  <Button type="submit" disabled={isSaving} className="h-11 rounded-2xl px-8 bg-emerald-600 hover:bg-emerald-700">
+                    {isSaving ? "Guardando..." : "Guardar cambios"}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
           </Dialog>
         </div>
         <div className="space-y-2 text-sm flex-1">
           {fields.map((field) => {
             const rawValue = client[field.key];
-            
+
             if (field.type === "checkbox") {
               return (
                 <div key={String(field.key)} className="flex items-center justify-between text-xs py-1 border-b border-slate-50 last:border-0">

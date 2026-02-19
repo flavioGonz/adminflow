@@ -39,17 +39,26 @@ import {
   Settings,
   Ticket,
   Users,
+  History,
 } from "lucide-react";
 import { HealthIndicator } from "@/components/health-check";
 
-const SidebarContext = createContext<{ collapsed: boolean; toggle: () => void }>({
+const SidebarContext = createContext<{
+  collapsed: boolean;
+  toggle: () => void;
+  mobileOpen: boolean;
+  setMobileOpen: (open: boolean) => void;
+}>({
   collapsed: false,
-  toggle: () => {},
+  toggle: () => { },
+  mobileOpen: false,
+  setMobileOpen: () => { },
 });
 
 export function SidebarProvider({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   // Load collapsed state from localStorage on mount
   useEffect(() => {
@@ -73,8 +82,10 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
     () => ({
       collapsed,
       toggle: handleToggle,
+      mobileOpen,
+      setMobileOpen,
     }),
-    [collapsed]
+    [collapsed, mobileOpen]
   );
 
   // Prevent hydration mismatch
@@ -109,6 +120,7 @@ const navItems: NavItem[] = [
   { name: "Calendario", href: "/calendar", icon: CalendarCheck },
   { name: "Mapa", href: "/map", icon: Map },
   { name: "System", href: "/system", icon: Settings },
+  { name: "Changelog", href: "/changelog", icon: History },
 ];
 
 const bottomActions: NavItem[] = [
@@ -240,8 +252,10 @@ export function SidebarContent() {
         const res = await fetch("/api/mongo-servers/status");
         if (!res.ok) return;
         const data = await res.json();
-        const list = Array.isArray(data) ? data : [];
-        const primary = list.find((s: any) => s.isPrimary);
+        // Handle both {status: [...]} wrapper and direct array
+        const list = Array.isArray(data) ? data : (Array.isArray(data?.status) ? data.status : []);
+        // Check for role === "primary" OR isPrimary === true
+        const primary = list.find((s: any) => s.role === "primary" || s.isPrimary);
         if (!canceled) {
           setPrimaryDbName(primary?.database || primary?.name || null);
         }
@@ -260,14 +274,12 @@ export function SidebarContent() {
     signOut({ callbackUrl: "/login" });
   };
 
-  const openTickets = (session?.user as any)?.assignedTickets ?? 0;
   const isMapRoute = pathname?.startsWith("/map");
 
   return (
     <aside
-      className={`flex h-full flex-col ${collapsed ? "w-20" : "w-56"} ${
-        isMapRoute ? "border-none bg-transparent" : "border-r border-slate-200 bg-white"
-      }`}
+      className={`flex h-full flex-col ${collapsed ? "w-20" : "w-56"} ${isMapRoute ? "border-none bg-transparent" : "border-r border-slate-200 bg-white"
+        }`}
     >
       <div className="flex items-center justify-between px-4 py-3">
         {!collapsed && (
@@ -288,65 +300,7 @@ export function SidebarContent() {
         </div>
         {/* Ayuda y soporte: se muestra solo en el submenú del icono de ayuda */}
       </div>
-      <div className="px-4 pb-3">
-        {!collapsed && (
-          <div className="mb-3 rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white to-slate-100 p-3 shadow-sm">
-            <div className="flex items-start gap-3">
-              <div className="flex-1">
-                <p className="text-[9px] uppercase tracking-[0.4em] text-slate-400">{userRole}</p>
-                <p className="text-base font-semibold text-slate-900 leading-tight">{userName}</p>
-                <p className="text-xs font-medium text-slate-500">{userEmail}</p>
-                <div className="mt-2 flex items-center gap-2 text-[11px] font-semibold text-slate-600">
-                  <span className="h-2 w-2 rounded-full bg-emerald-400" />
-                  {openTickets} tickets abiertos
-                </div>
-              </div>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 text-slate-600 hover:bg-slate-200 mt-1 ml-auto mr-6"
-                  >
-                    <LifeBuoy className="h-4 w-4" />
-                    <span className="sr-only">Ayuda</span>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" side="right" sideOffset={8} className="w-56">
-                  <DropdownMenuLabel className="text-xs uppercase text-slate-500">
-                    Ayuda y soporte
-                  </DropdownMenuLabel>
-                  <DropdownMenuItem asChild className="cursor-pointer">
-                    <Link href="/support/documentacion" className="flex items-center gap-2">
-                      <BookOpen className="h-4 w-4" />
-                      Documentacion
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild className="cursor-pointer">
-                    <Link href="/support/centro" className="flex items-center gap-2">
-                      <MessageCircleQuestion className="h-4 w-4" />
-                      Centro de ayuda
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild className="cursor-pointer">
-                    <Link href="mailto:info@infratec.com.uy" className="flex items-center gap-2">
-                      <Send className="h-4 w-4" />
-                      Enviar feedback
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem asChild className="cursor-pointer">
-                    <Link href="/support/estado" className="flex items-center gap-2">
-                      <LifeBuoy className="h-4 w-4" />
-                      Estado del sistema
-                    </Link>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          </div>
-        )}
-      </div>
+
       {!isMapRoute && <div className="border-t border-slate-200" />}
       <div className="px-1 py-4">
         <div className="flex items-center justify-center">
@@ -403,22 +357,22 @@ export function SidebarContent() {
                   <AvatarFallback>{avatarInitials}</AvatarFallback>
                 )}
               </Avatar>
-                  {bottomActions.map((item) => (
-                    <Tooltip key={item.href}>
-                      <TooltipTrigger asChild>
-                        <Link
-                          href={item.href}
-                          className="rounded-full bg-transparent p-1 text-slate-500 hover:text-slate-900"
-                        >
-                          <item.icon className="h-4 w-4" aria-hidden />
-                          <span className="sr-only">{item.name}</span>
-                        </Link>
-                      </TooltipTrigger>
-                      <TooltipContent side="top" align="center">
-                        Base primaria: {primaryDbName || "No definida"}
-                      </TooltipContent>
-                    </Tooltip>
-                  ))}
+              {bottomActions.map((item) => (
+                <Tooltip key={item.href}>
+                  <TooltipTrigger asChild>
+                    <Link
+                      href={item.href}
+                      className="rounded-full bg-transparent p-1 text-slate-500 hover:text-slate-900"
+                    >
+                      <item.icon className="h-4 w-4" aria-hidden />
+                      <span className="sr-only">{item.name}</span>
+                    </Link>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" align="center">
+                    Base primaria: {primaryDbName || "No definida"}
+                  </TooltipContent>
+                </Tooltip>
+              ))}
               <Link href="/notifications" className="text-slate-500 hover:text-slate-900">
                 <Bell className="h-4 w-4" />
               </Link>

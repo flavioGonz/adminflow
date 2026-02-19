@@ -17,8 +17,27 @@ const resolveBrowserApiBase = () => {
 };
 
 const explicitApiUrl = process.env.NEXT_PUBLIC_API_URL;
-export const API_BASE_URL =
-    explicitApiUrl?.replace(/\/api\/?$/, "") ||
-    (typeof window !== "undefined" ? resolveBrowserApiBase() : "http://localhost:5000");
 
-export const API_URL = explicitApiUrl || `${API_BASE_URL}/api`;
+const getApiBaseUrl = () => {
+    // 1. If we are in the browser and running on HTTPS, we MUST use HTTPS
+    if (typeof window !== "undefined" && window.location.protocol === "https:") {
+        // If the explicit URL is HTTP, ignore it and use the browser origin to avoid Mixed Content
+        if (explicitApiUrl && explicitApiUrl.startsWith("http:")) {
+            return resolveBrowserApiBase();
+        }
+    }
+
+    // 2. Otherwise respect the explicit env var if set
+    if (explicitApiUrl) {
+        return explicitApiUrl.replace(/\/api\/?$/, "");
+    }
+
+    // 3. Fallback to resolution logic
+    return typeof window !== "undefined" ? resolveBrowserApiBase() : "http://localhost:5000";
+};
+
+export const API_BASE_URL = getApiBaseUrl();
+
+export const API_URL = explicitApiUrl && !explicitApiUrl.startsWith("http:")
+    ? explicitApiUrl // Use explicit provided it's not the insecure one we just rejected (unless we are not on https)
+    : `${API_BASE_URL}/api`;

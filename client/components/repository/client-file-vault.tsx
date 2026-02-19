@@ -29,6 +29,7 @@ import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { FilterToolbar, ToolbarButton } from "@/components/ui/filter-toolbar";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -294,7 +295,7 @@ export default function ClientFileVault({ clients, isLoadingClients, initialClie
     };
 
     const handleDelete = async (item: FileItem) => {
-        if (!item.clientId) return; 
+        if (!item.clientId) return;
         if (!confirm(`¿Estás seguro de eliminar "${item.value}"?`)) return;
         try {
             const res = await fetch(`${API_URL}/files/${item.clientId}/delete`, {
@@ -464,27 +465,61 @@ export default function ClientFileVault({ clients, isLoadingClients, initialClie
                 )}
             </div>
 
-            <div className="p-3 flex items-center justify-between gap-4">
-                <div className="flex items-center gap-1">
-                    {currentClientId && (
-                        <ToggleGroup type="single" value={typeFilter} onValueChange={(v) => v && setTypeFilter(v as FileTypeFilter)} className="bg-slate-100 p-1 rounded-xl">
-                            <ToggleGroupItem value="all" className="text-[10px] h-7 px-3 rounded-lg font-bold data-[state=on]:bg-white data-[state=on]:text-indigo-600 shadow-none border-none">Todo</ToggleGroupItem>
-                            <ToggleGroupItem value="folder" className="text-[10px] h-7 px-3 rounded-lg font-bold data-[state=on]:bg-white data-[state=on]:text-indigo-600 shadow-none border-none">Carpetas</ToggleGroupItem>
-                            <ToggleGroupItem value="image" className="text-[10px] h-7 px-3 rounded-lg font-bold data-[state=on]:bg-white data-[state=on]:text-indigo-600 shadow-none border-none">Img</ToggleGroupItem>
-                            <ToggleGroupItem value="document" className="text-[10px] h-7 px-3 rounded-lg font-bold data-[state=on]:bg-white data-[state=on]:text-indigo-600 shadow-none border-none">Docs</ToggleGroupItem>
-                        </ToggleGroup>
-                    )}
-                </div>
-                <div className="relative flex-1 max-w-xs">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                    <Input
-                        placeholder="Filtrar por nombre..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="pl-9 h-9 bg-slate-50 border-slate-100 rounded-xl text-xs font-medium"
+            <FilterToolbar
+                searchTerm={searchQuery}
+                onSearchChange={setSearchQuery}
+                searchPlaceholder="Filtrar por nombre..."
+                className="px-4 mt-2"
+            >
+                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1 md:pb-0">
+                    <ToolbarButton
+                        icon={Folder}
+                        label="Todo"
+                        isActive={typeFilter === "all"}
+                        onClick={() => setTypeFilter("all")}
+                    />
+                    <ToolbarButton
+                        icon={Folder}
+                        label="Carpetas"
+                        isActive={typeFilter === "folder"}
+                        onClick={() => setTypeFilter("folder")}
+                    />
+                    <ToolbarButton
+                        icon={ImageIcon}
+                        label="Imágenes"
+                        isActive={typeFilter === "image"}
+                        onClick={() => setTypeFilter("image")}
+                        variant="info"
+                    />
+                    <ToolbarButton
+                        icon={FileText}
+                        label="Docs"
+                        isActive={typeFilter === "document"}
+                        onClick={() => setTypeFilter("document")}
+                        variant="success"
+                    />
+                    <ToolbarButton
+                        icon={Video}
+                        label="Media"
+                        isActive={typeFilter === "media"}
+                        onClick={() => setTypeFilter("media")}
+                        variant="warning"
+                    />
+                    <ToolbarButton
+                        icon={Archive}
+                        label="Zips"
+                        isActive={typeFilter === "archive"}
+                        onClick={() => setTypeFilter("archive")}
+                        variant="error"
                     />
                 </div>
-            </div>
+
+                <div className="w-px h-6 bg-slate-200/60 mx-1 hidden md:block" />
+
+                <div className="text-[10px] font-black uppercase text-slate-400 tracking-widest bg-slate-50 px-3 py-1.5 rounded-full border border-slate-100 ml-auto">
+                    {stats.count} elementos • {formatBytes(stats.size)}
+                </div>
+            </FilterToolbar>
 
             <div className="flex-1 overflow-auto px-4">
                 <Table>

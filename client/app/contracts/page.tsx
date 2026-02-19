@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import DashboardLayout from "@/components/layout/dashboard-layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { FilterToolbar } from "@/components/ui/filter-toolbar";
 import { ContractTable } from "@/components/contracts/contract-table";
 import { ImportContractsDialog } from "@/components/contracts/import-contracts-dialog";
 import { CreateContractDialog } from "@/components/contracts/create-contract-dialog";
@@ -98,51 +99,63 @@ export default function ContractsPage() {
     <DashboardLayout>
       <PageTransition>
         <div className="space-y-6">
-          <div className="flex flex-col gap-4 p-0">
-            <div className="flex flex-wrap items-center gap-3 justify-between p-5 bg-white rounded-2xl shadow-sm border-none">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600">
-                  <FileSignature className="h-6 w-6 text-white" />
-                </div>
-                <div className="space-y-1">
-                  <h1 className="text-3xl font-bold">
-                    <ShinyText size="3xl" weight="bold">Contratos</ShinyText>
-                  </h1>
-                  <p className="text-sm text-slate-600">
-                    Administra acuerdos activos, vencidos y en revisión con métricas y exportaciones rápidas.
-                  </p>
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Input
-                  value={searchTerm}
-                  onChange={(event) => setSearchTerm(event.target.value)}
-                  placeholder="Buscar por cliente, estado o SLA..."
-                  className="w-64"
-                />
-                <ImportContractsDialog onImportComplete={loadContracts}>
-                  <Button variant="outline" className="border-slate-300 text-slate-800 hover:bg-slate-100">
-                    <PlusCircle className="mr-2 h-4 w-4" />
-                    Importar
-                  </Button>
-                </ImportContractsDialog>
-                <Button variant="outline" onClick={handleExportExcel} className="border-slate-300 text-slate-800 hover:bg-slate-100">
-                  <FileSpreadsheet className="mr-2 h-4 w-4 text-emerald-600" />
-                  Excel
-                </Button>
-                <Button variant="outline" onClick={handleExportPdf} className="border-slate-300 text-slate-800 hover:bg-slate-100">
-                  <FileDown className="mr-2 h-4 w-4 text-red-600" />
-                  PDF
-                </Button>
-                <CreateContractDialog onContractCreated={handleContractCreated}>
-                  <Button className="bg-slate-900 text-white hover:bg-slate-800">
-                    <PlusCircle className="mr-2 h-4 w-4" />
-                    Nuevo contrato
-                  </Button>
-                </CreateContractDialog>
-              </div>
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-2 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600">
+              <FileSignature className="h-6 w-6 text-white" />
+            </div>
+            <div className="space-y-1">
+              <h1 className="text-3xl font-bold">
+                <ShinyText size="3xl" weight="bold">Contratos</ShinyText>
+              </h1>
+              <p className="text-sm text-slate-600">
+                Administra acuerdos activos, vencidos y en revisión con métricas y exportaciones rápidas.
+              </p>
             </div>
           </div>
+
+          <FilterToolbar
+            searchTerm={searchTerm}
+            onSearchChange={setSearchTerm}
+            searchPlaceholder="Buscar por cliente, estado o SLA..."
+            className="px-2"
+          >
+            <div className="flex items-center gap-2">
+              <ImportContractsDialog onImportComplete={loadContracts}>
+                <Button variant="outline" className="h-10 rounded-xl border-slate-200 bg-white/50 backdrop-blur-sm hover:bg-slate-100 transition-all font-medium">
+                  <PlusCircle className="mr-2 h-4 w-4" />
+                  Importar
+                </Button>
+              </ImportContractsDialog>
+              <Button
+                variant="outline"
+                onClick={handleExportExcel}
+                className="h-10 rounded-xl border-slate-200 bg-white/50 backdrop-blur-sm hover:bg-emerald-50 hover:border-emerald-200 transition-all group"
+                title="Exportar Excel"
+              >
+                <FileSpreadsheet className="h-4 w-4 text-emerald-600 transition-transform group-hover:scale-110" />
+                <span className="hidden sm:inline ml-2">Excel</span>
+              </Button>
+              <Button
+                variant="outline"
+                onClick={handleExportPdf}
+                className="h-10 rounded-xl border-slate-200 bg-white/50 backdrop-blur-sm hover:bg-rose-50 hover:border-rose-200 transition-all group"
+                title="Exportar PDF"
+              >
+                <FileDown className="h-4 w-4 text-rose-600 transition-transform group-hover:scale-110" />
+                <span className="hidden sm:inline ml-2">PDF</span>
+              </Button>
+            </div>
+
+            <div className="w-px h-6 bg-slate-200/60 mx-1" />
+
+            <CreateContractDialog onContractCreated={handleContractCreated}>
+              <Button className="h-10 rounded-xl bg-slate-900 border-none text-white hover:bg-slate-800 shadow-lg shadow-slate-200 transition-all hover:-translate-y-0.5">
+                <PlusCircle className="mr-2 h-4 w-4" />
+                <span className="hidden sm:inline">Nuevo contrato</span>
+                <span className="sm:hidden">Nuevo</span>
+              </Button>
+            </CreateContractDialog>
+          </FilterToolbar>
 
           {error && (
             <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">

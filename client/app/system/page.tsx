@@ -58,6 +58,7 @@ import { Group } from "@/types/group";
 import { ShinyText } from "@/components/ui/shiny-text";
 import { API_URL } from "@/lib/http";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { FilterToolbar } from "@/components/ui/filter-toolbar";
 import { Upload } from "lucide-react";
 import { BackupManager } from "@/components/system/backup-manager";
 import { DatabaseManager } from "@/components/system/database-manager";
@@ -1916,55 +1917,38 @@ _Enviado automáticamente por AdminFlow_`,
             </div>
 
             {/* Filters */}
-            <Card className="bg-white shadow-sm">
-              <CardContent className="pt-6">
-                <div className="grid gap-4 md:grid-cols-3">
-                  <div className="space-y-2">
-                    <Label className="text-sm">Buscar</Label>
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        value={auditSearchTerm}
-                        onChange={(e) => setAuditSearchTerm(e.target.value)}
-                        placeholder="Buscar eventos..."
-                        className="pl-10"
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-sm">Tipo de Recurso</Label>
-                    <Select value={auditFilterType} onValueChange={setAuditFilterType}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">Todos</SelectItem>
-                        <SelectItem value="user">Usuarios</SelectItem>
-                        <SelectItem value="system">Sistema</SelectItem>
-                        <SelectItem value="database">Base de Datos</SelectItem>
-                        <SelectItem value="notification">Notificaciones</SelectItem>
-                        <SelectItem value="file">Archivos</SelectItem>
-                        <SelectItem value="security">Seguridad</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-sm">Estado</Label>
-                    <Select value={auditFilterStatus} onValueChange={setAuditFilterStatus}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">Todos</SelectItem>
-                        <SelectItem value="success">Éxito</SelectItem>
-                        <SelectItem value="error">Error</SelectItem>
-                        <SelectItem value="warning">Advertencia</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            <FilterToolbar
+              searchTerm={auditSearchTerm}
+              onSearchChange={setAuditSearchTerm}
+              searchPlaceholder="Buscar eventos..."
+            >
+              <Select value={auditFilterType} onValueChange={setAuditFilterType}>
+                <SelectTrigger className="w-full md:w-44 bg-white">
+                  <SelectValue placeholder="Recurso" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos los recursos</SelectItem>
+                  <SelectItem value="user">Usuarios</SelectItem>
+                  <SelectItem value="system">Sistema</SelectItem>
+                  <SelectItem value="database">Base de Datos</SelectItem>
+                  <SelectItem value="notification">Notificaciones</SelectItem>
+                  <SelectItem value="file">Archivos</SelectItem>
+                  <SelectItem value="security">Seguridad</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select value={auditFilterStatus} onValueChange={setAuditFilterStatus}>
+                <SelectTrigger className="w-full md:w-40 bg-white">
+                  <SelectValue placeholder="Estado" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos los estados</SelectItem>
+                  <SelectItem value="success">Éxito</SelectItem>
+                  <SelectItem value="error">Error</SelectItem>
+                  <SelectItem value="warning">Advertencia</SelectItem>
+                </SelectContent>
+              </Select>
+            </FilterToolbar>
 
             {/* Events Table */}
             <Card>

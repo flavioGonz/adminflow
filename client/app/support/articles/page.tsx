@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Plus, Edit2, Trash2, Search, Eye, Calendar } from 'lucide-react';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/http';
+import { FilterToolbar } from '@/components/ui/filter-toolbar';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -119,20 +120,19 @@ export default function ArticlesPage() {
         </Link>
       </div>
 
-      {/* Search */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="relative">
-            <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
-            <Input
-              placeholder="Buscar artículos..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
-            />
-          </div>
-        </CardContent>
-      </Card>
+      {/* Search & Filters */}
+      <FilterToolbar
+        searchTerm={searchTerm}
+        onSearchChange={setSearchTerm}
+        searchPlaceholder="Buscar artículos..."
+      >
+        <Link href="/support/articles/new">
+          <Button className="bg-slate-900 text-white hover:bg-slate-800">
+            <Plus className="mr-2 h-4 w-4" />
+            Nuevo Artículo
+          </Button>
+        </Link>
+      </FilterToolbar>
 
       {/* Articles Grid */}
       {loading ? (

@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const session = require('express-session');
@@ -301,7 +302,7 @@ const buildClientMap = async (mongoDb, clientIds = []) => {
     if (objectIds.length) orClauses.push({ _id: { $in: objectIds } });
     if (numericIds.length) orClauses.push({ id: { $in: numericIds } });
     if (stringIds.length) orClauses.push({ id: { $in: stringIds } });
-    
+
     if (!orClauses.length) return {};
     const clients = await mongoDb.collection('clients').find({ $or: orClauses }).toArray();
     const map = {};
@@ -334,7 +335,8 @@ const buildIdFilter = (entityId) => {
 };
 
 const mapContractRow = (row, clientMap = {}) => {
-    const clientIdValue = row.client_id ?? row.clientId;
+    // Prefer clientId over client_id (standardizing on camelCase for new fields)
+    const clientIdValue = row.clientId ?? row.client_id;
     const normalizedClientId = clientIdValue !== undefined && clientIdValue !== null ? String(clientIdValue) : undefined;
     const clientData = normalizedClientId ? clientMap[normalizedClientId] : null;
     return {
@@ -1430,7 +1432,7 @@ app.post('/api/tickets', async (req, res) => {
     try {
         const { getNextId } = require('./lib/mongoClient');
         const id = await getNextId('tickets');
-        
+
         // Fetch client name if clientId is present
         let clientName = req.body.clientName;
         if (!clientName && req.body.clientId) {
@@ -1462,7 +1464,7 @@ app.put('/api/tickets/:id', async (req, res) => {
     try {
         const { getMongoFilter } = require('./lib/clientFilters');
         const filter = getMongoFilter(req.params.id);
-        
+
         const updates = { ...req.body, updatedAt: new Date().toISOString() };
         delete updates._id;
         delete updates.id;
@@ -1541,14 +1543,18 @@ app.post('/api/contracts', async (req, res) => {
     try {
         const { getNextId } = require('./lib/mongoClient');
         const id = await getNextId('contracts');
+        const contractData = { ...req.body };
+        const clientId = contractData.clientId || contractData.client_id;
+        delete contractData.client_id;
+        contractData.clientId = clientId;
         const newContract = {
-            ...req.body,
+            ...contractData,
             id,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString()
         };
         await mongoDb.collection('contracts').insertOne(newContract);
-        const clientMap = await buildClientMap(mongoDb, [newContract.clientId ?? newContract.client_id]);
+        const clientMap = await buildClientMap(mongoDb, [clientId]);
         res.status(201).json(mapContractRow(newContract, clientMap));
     } catch (err) {
         res.status(500).json({ message: err.message });
@@ -1586,16 +1592,23 @@ app.put('/api/contracts/:id', async (req, res) => {
             ...req.body,
             updatedAt: new Date().toISOString(),
         };
+        const clientId = updates.clientId || updates.client_id;
+        delete updates.client_id;
+        updates.clientId = clientId;
         const result = await mongoDb.collection('contracts').findOneAndUpdate(
             filter,
-            { $set: updates },
+            {
+                $set: updates,
+                $unset: { client_id: "" }
+            },
             { returnDocument: 'after' }
         );
-        if (!result.value) {
+        const updatedDoc = result.value || result;
+        if (!updatedDoc) {
             return res.status(404).json({ message: 'Contrato no encontrado.' });
         }
-        const clientMap = await buildClientMap(mongoDb, extractClientIds([result.value]));
-        res.json(mapContractRow(result.value, clientMap));
+        const clientMap = await buildClientMap(mongoDb, [clientId]);
+        res.json(mapContractRow(updatedDoc, clientMap));
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
@@ -1619,6 +1632,104 @@ app.delete('/api/contracts/:id', async (req, res) => {
     }
 });
 
+
+
+// Push Notifications
+app.get('/api/push/key', (req, res) => {
+    const publicKey = process.env.VAPID_PUBLIC_KEY;
+    if (!publicKey) {
+        return res.status(500).json({ message: 'VAPID public key not configured' });
+    }
+    res.json({ publicKey });
+});
+
+app.post('/api/push/subscribe', async (req, res) => {
+    const mongoDb = ensureMongoDb(res);
+    if (!mongoDb) return;
+    try {
+        const subscription = req.body;
+        if (!subscription || !subscription.endpoint) {
+            return res.status(400).json({ message: 'Invalid subscription' });
+        }
+
+        // Upsert subscription
+        await mongoDb.collection('push_subscriptions').updateOne(
+            { endpoint: subscription.endpoint },
+            {
+                $set: {
+                    ...subscription,
+                    updatedAt: new Date().toISOString()
+                },
+                $setOnInsert: {
+                    createdAt: new Date().toISOString()
+                }
+            },
+            { upsert: true }
+        );
+
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Error saving push subscription:', err);
+        res.status(500).json({ message: err.message });
+    }
+});
+
+app.post('/api/push/unsubscribe', async (req, res) => {
+    const mongoDb = ensureMongoDb(res);
+    if (!mongoDb) return;
+    try {
+        const { endpoint } = req.body;
+        if (!endpoint) {
+            return res.status(400).json({ message: 'Endpoint required' });
+        }
+
+        await mongoDb.collection('push_subscriptions').deleteOne({ endpoint });
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Error removing push subscription:', err);
+        res.status(500).json({ message: err.message });
+    }
+});
+
+app.get('/api/push/subscriptions', async (req, res) => {
+    const mongoDb = ensureMongoDb(res);
+    if (!mongoDb) return;
+    try {
+        const subscriptions = await mongoDb.collection('push_subscriptions').find().toArray();
+        res.json(subscriptions);
+    } catch (err) {
+        console.error('Error fetching push subscriptions:', err);
+        res.status(500).json({ message: err.message });
+    }
+});
+
+app.post('/api/push/send', async (req, res) => {
+    const mongoDb = ensureMongoDb(res);
+    if (!mongoDb) return;
+    try {
+        const { title, body, url, tag } = req.body;
+        if (!title) {
+            return res.status(400).json({ message: 'Title required' });
+        }
+
+        // Usar notificationService para enviar
+        const results = await notify({
+            event: 'manual_push',
+            message: body || title,
+            channels: ['webpush'],
+            metadata: { title, url, tag }
+        });
+
+        res.json({
+            success: true,
+            message: 'Notification processed',
+            results
+        });
+    } catch (err) {
+        console.error('Error sending push notifications:', err);
+        res.status(500).json({ message: err.message });
+    }
+});
 
 // Payments
 app.get('/api/payments', async (req, res) => {
@@ -1645,6 +1756,44 @@ app.post('/api/payments', async (req, res) => {
         };
         await mongoDb.collection('payments').insertOne(newPayment);
         res.status(201).json(mapPaymentRow(newPayment));
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+app.put('/api/payments/:id', async (req, res) => {
+    const mongoDb = ensureMongoDb(res);
+    if (!mongoDb) return;
+    try {
+        const { getMongoFilter } = require('./lib/clientFilters');
+        const filter = getMongoFilter(req.params.id);
+
+        const updates = { ...req.body };
+        delete updates._id;
+        delete updates.id;
+
+        const result = await mongoDb.collection('payments').findOneAndUpdate(
+            filter,
+            { $set: updates },
+            { returnDocument: 'after' }
+        );
+        const updatedDoc = result.value || result;
+        if (!updatedDoc) return res.status(404).json({ message: 'Payment not found' });
+        res.json(mapPaymentRow(updatedDoc));
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+app.delete('/api/payments/:id', async (req, res) => {
+    const mongoDb = ensureMongoDb(res);
+    if (!mongoDb) return;
+    try {
+        const { getMongoFilter } = require('./lib/clientFilters');
+        const filter = getMongoFilter(req.params.id);
+        const result = await mongoDb.collection('payments').deleteOne(filter);
+        if (result.deletedCount === 0) return res.status(404).json({ message: 'Payment not found' });
+        res.json({ message: 'Payment deleted' });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }

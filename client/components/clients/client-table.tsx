@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect, useRef } from "react";
 import {
   Table,
   TableBody,
@@ -9,31 +9,38 @@ import {
 } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-
-
+import { FilterToolbar } from "@/components/ui/filter-toolbar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { AnimatedTableBody, AnimatedRow } from "@/hooks/use-table-animation";
 import {
+  ArrowUpDown,
+  Bell,
+  CreditCard,
   Edit,
+  FileDown,
+  FileSignature,
+  FileSpreadsheet,
+  FolderArchive,
+  Hash,
+  Loader2,
+  Lock,
+  Mail,
+  MapPin,
+  MessageCircle,
+  MoreVertical,
+  Network,
+  Phone,
+  Settings,
+  ShieldCheck,
   Trash2,
   User,
   Users,
-  Hash,
-  Mail,
-  Phone,
-  MapPin,
-  Settings,
-  ArrowUpDown,
-  FileSpreadsheet,
-  FileDown,
-  MessageCircle,
-  Bell,
-  ShieldCheck,
-  Network,
-  FolderArchive,
-  Lock,
-  Loader2,
-  FileSignature,
-  CreditCard
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -72,8 +79,6 @@ export function ClientTable({
     direction: "ascending" | "descending";
   } | null>(null);
 
-
-
   const handleExportExcel = () => {
     const worksheet = XLSX.utils.json_to_sheet(sortedClients);
     const workbook = XLSX.utils.book_new();
@@ -98,7 +103,8 @@ export function ClientTable({
     doc.save('clients.pdf');
   };
 
-  const [visibleCount, setVisibleCount] = useState(12);
+  const [visibleCount, setVisibleCount] = useState(50);
+  const observerTarget = useRef<HTMLDivElement>(null);
 
   const filteredClients = useMemo(() => {
     const lowercasedSearchTerm = searchTerm.toLowerCase();
@@ -119,45 +125,47 @@ export function ClientTable({
     });
   }, [clients, searchTerm]);
 
-  const sortedClients = sortConfig
-    ? (() => {
-      const { key, direction } = sortConfig;
-      return [...filteredClients].sort((a, b) => {
-        const aValue = a[key];
-        const bValue = b[key];
-        if (aValue === undefined && bValue === undefined) return 0;
-        if (aValue === undefined) return direction === "ascending" ? 1 : -1;
-        if (bValue === undefined) return direction === "ascending" ? -1 : 1;
-        if (aValue < bValue) {
-          return direction === "ascending" ? -1 : 1;
+  const sortedClients = useMemo(() => {
+    if (!sortConfig) return filteredClients;
+    const { key, direction } = sortConfig;
+    return [...filteredClients].sort((a, b) => {
+      const aValue = a[key as keyof typeof a];
+      const bValue = b[key as keyof typeof b];
+      if (aValue === undefined && bValue === undefined) return 0;
+      if (aValue === undefined) return direction === "ascending" ? 1 : -1;
+      if (bValue === undefined) return direction === "ascending" ? -1 : 1;
+      if (aValue < bValue) {
+        return direction === "ascending" ? -1 : 1;
+      }
+      if (aValue > bValue) {
+        return direction === "ascending" ? 1 : -1;
+      }
+      return 0;
+    });
+  }, [filteredClients, sortConfig]);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && visibleCount < sortedClients.length) {
+          setVisibleCount((prev) => prev + 50);
         }
-        if (aValue > bValue) {
-          return direction === "ascending" ? 1 : -1;
-        }
-        return 0;
-      });
-    })()
-    : filteredClients;
+      },
+      { threshold: 0.1, rootMargin: "200px" }
+    );
+
+    if (observerTarget.current) {
+      observer.observe(observerTarget.current);
+    }
+
+    return () => observer.disconnect();
+  }, [visibleCount, sortedClients.length]);
 
   const visibleClients = sortedClients.slice(0, visibleCount);
 
-  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
-    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
-    if (scrollHeight - scrollTop <= clientHeight + 100) {
-      if (visibleCount < sortedClients.length) {
-        setVisibleCount((prev) => prev + 12);
-      }
-    }
-  };
-
-
-
-
-
-
   const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(event.target.value);
-    setVisibleCount(12); // Reset count on search
+    setVisibleCount(50);
   };
 
   const requestSort = (key: SortKey) => {
@@ -172,76 +180,78 @@ export function ClientTable({
     setSortConfig({ key, direction });
   };
 
-
-
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-center px-4 md:px-0">
-        <Input
-          placeholder="Buscar clientes..."
-          value={searchTerm}
-          onChange={handleSearchChange}
-          className="max-w-sm h-11 rounded-2xl border-slate-200 shadow-sm"
-        />
-        <div className="flex gap-2">
+      <FilterToolbar
+        searchTerm={searchTerm}
+        onSearchChange={(value) => {
+          setSearchTerm(value);
+          setVisibleCount(50);
+        }}
+        searchPlaceholder="Buscar clientes..."
+        className="px-2"
+      >
+        <div className="flex items-center gap-2">
           <ImportClientsDialog onImportComplete={onImportComplete} />
-          <CreateClientDialog onClientCreated={onClientCreated} />
-          <Button variant="outline" size="icon" onClick={handleExportExcel} title="Exportar a Excel" className="rounded-xl h-11 w-11 hover:bg-green-50 transition-colors">
-            <FileSpreadsheet className="h-5 w-5 text-green-500" />
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={handleExportExcel}
+            title="Exportar a Excel"
+            className="rounded-xl h-10 w-10 border-slate-200 bg-white/50 backdrop-blur-sm hover:bg-emerald-50 hover:border-emerald-200 transition-all group"
+          >
+            <FileSpreadsheet className="h-4 w-4 text-emerald-600 transition-transform group-hover:scale-110" />
           </Button>
-          <Button variant="outline" size="icon" onClick={handleExportPdf} title="Exportar a PDF" className="rounded-xl h-11 w-11 hover:bg-red-50 transition-colors">
-            <FileDown className="h-5 w-5 text-red-500" />
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={handleExportPdf}
+            title="Exportar a PDF"
+            className="rounded-xl h-10 w-10 border-slate-200 bg-white/50 backdrop-blur-sm hover:bg-rose-50 hover:border-rose-200 transition-all group"
+          >
+            <FileDown className="h-4 w-4 text-rose-600 transition-transform group-hover:scale-110" />
           </Button>
         </div>
-      </div>
-      <div className="relative border-t border-slate-100 bg-transparent">
-        <div className="max-h-[75vh] overflow-y-auto" onScroll={handleScroll}>
+
+        <div className="w-px h-6 bg-slate-200/60 mx-1" />
+
+        <CreateClientDialog onClientCreated={onClientCreated} />
+      </FilterToolbar>
+
+      <div className="overflow-hidden">
+        <div className="overflow-x-auto">
           <Table>
-            <TableHeader className="bg-slate-50/50 sticky top-0 z-10 backdrop-blur-md">
-              <TableRow className="hover:bg-transparent border-b border-slate-100">
-                <TableHead className="w-[80px] py-4 pl-6">
-                  <div className="flex items-center gap-2 text-[10px] uppercase font-black text-slate-400 tracking-widest">
-                    <Hash className="h-3 w-3" />
+            <TableHeader className="bg-white/50 border-b border-slate-50">
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="w-[80px] py-4 pl-6 text-[10px] uppercase font-black text-slate-400 tracking-widest cursor-pointer" onClick={() => requestSort("numericId")}>
+                  <div className="flex items-center gap-1">
                     ID
+                    <ArrowUpDown className="h-3 w-3" />
                   </div>
                 </TableHead>
-                <TableHead onClick={() => requestSort("name")} className="cursor-pointer group">
-                  <div className="flex items-center gap-2 text-[10px] uppercase font-black text-slate-400 tracking-widest">
-                    <User className="h-3 w-3" />
+                <TableHead className="py-4 text-[10px] uppercase font-black text-slate-400 tracking-widest cursor-pointer" onClick={() => requestSort("name")}>
+                  <div className="flex items-center gap-1">
                     Nombre
-                    <ArrowUpDown className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <ArrowUpDown className="h-3 w-3" />
                   </div>
                 </TableHead>
-                <TableHead onClick={() => requestSort("alias")} className="cursor-pointer group">
-                  <div className="flex items-center gap-2 text-[10px] uppercase font-black text-slate-400 tracking-widest">
-                    <Users className="h-3 w-3" />
-                    Alias
-                    <ArrowUpDown className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-                  </div>
+                <TableHead className="py-4 text-[10px] uppercase font-black text-slate-400 tracking-widest">
+                  Alias / Servicios
                 </TableHead>
-                <TableHead>
-                  <div className="flex items-center gap-2 text-[10px] uppercase font-black text-slate-400 tracking-widest">
-                    <FileSignature className="h-3 w-3" />
-                    Contrato
-                  </div>
+                <TableHead className="py-4 text-[10px] uppercase font-black text-slate-400 tracking-widest">
+                  Contrato
                 </TableHead>
-                <TableHead>
-                  <div className="flex items-center gap-2 text-[10px] uppercase font-black text-slate-400 tracking-widest">
-                    <CreditCard className="h-3 w-3" />
-                    Recurrente
-                  </div>
+                <TableHead className="py-4 text-[10px] uppercase font-black text-slate-400 tracking-widest">
+                  Abono
                 </TableHead>
-                <TableHead className="hidden md:table-cell">
-                   <div className="flex items-center gap-2 text-[10px] uppercase font-black text-slate-400 tracking-widest">
+                <TableHead className="hidden md:table-cell py-4 text-[10px] uppercase font-black text-slate-400 tracking-widest">
+                  <div className="flex items-center gap-2">
                     <Mail className="h-3 w-3" />
                     Contacto
                   </div>
                 </TableHead>
-                <TableHead className="hidden lg:table-cell">
-                  <div className="flex items-center gap-2 text-[10px] uppercase font-black text-slate-400 tracking-widest">
-                    <MapPin className="h-3 w-3" />
-                    Ubicación
-                  </div>
+                <TableHead className="hidden lg:table-cell py-4 text-[10px] uppercase font-black text-slate-400 tracking-widest">
+                  Ubicación
                 </TableHead>
                 <TableHead className="text-right py-4 pr-6">
                   <div className="flex items-center gap-2 justify-end text-[10px] uppercase font-black text-slate-400 tracking-widest">
@@ -283,9 +293,9 @@ export function ClientTable({
                       </div>
                     </TableCell>
                     <TableCell className="py-4">
-                       <div className="flex flex-col gap-1.5">
-                          <span className="text-sm font-medium text-slate-600">{client.alias || "—"}</span>
-                          <div className="flex items-center gap-1.5">
+                      <div className="flex flex-col gap-1.5">
+                        <span className="text-sm font-medium text-slate-600">{client.alias || "—"}</span>
+                        <div className="flex items-center gap-1.5">
                           {client.hasAccess && (
                             <Lock className="h-3 w-3 text-blue-500" />
                           )}
@@ -296,89 +306,99 @@ export function ClientTable({
                             <FolderArchive className="h-3 w-3 text-slate-400" />
                           )}
                           {client.hasImplementation && (
-                             <img src="/assets/patchpanel/rj45.png" alt="Impl" className="h-3 w-3 grayscale opacity-50" />
+                            <img src="/assets/patchpanel/rj45.png" alt="Impl" className="h-3 w-3 grayscale opacity-50" />
                           )}
                         </div>
-                       </div>
+                      </div>
                     </TableCell>
                     <TableCell className="py-4">
-                         {client.contract ? (
-                             <Badge className="bg-emerald-50 text-emerald-700 border-emerald-100 hover:bg-emerald-50 text-[10px] font-bold">
-                                 {typeof client.contract === 'string' ? client.contract : 'SÍ'}
-                             </Badge>
-                         ) : (
-                             <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">N/A</span>
-                         )}
+                      {client.contract ? (
+                        <Badge className="bg-emerald-50 text-emerald-700 border-emerald-100 hover:bg-emerald-50 text-[10px] font-bold">
+                          {typeof client.contract === 'string' ? client.contract : 'SÍ'}
+                        </Badge>
+                      ) : (
+                        <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">N/A</span>
+                      )}
                     </TableCell>
                     <TableCell className="py-4">
-                        {client.recurringPaymentEnabled ? (
-                            <div className="flex flex-col">
-                                <span className="text-xs font-black text-slate-800">
-                                    {new Intl.NumberFormat("es-UY", {
-                                        style: "currency",
-                                        currency: client.recurringCurrency || "UYU",
-                                        maximumFractionDigits: 0,
-                                    }).format(client.recurringAmount || 0)}
-                                </span>
-                                <span className="text-[9px] font-bold text-emerald-600 uppercase">Activo</span>
-                            </div>
-                        ) : (
-                            <span className="text-[10px] text-slate-300">—</span>
-                        )}
+                      {client.recurringPaymentEnabled ? (
+                        <div className="flex flex-col">
+                          <span className="text-xs font-black text-slate-800">
+                            {new Intl.NumberFormat("es-UY", {
+                              style: "currency",
+                              currency: client.recurringCurrency || "UYU",
+                              maximumFractionDigits: 0,
+                            }).format(client.recurringAmount || 0)}
+                          </span>
+                          <span className="text-[9px] font-bold text-emerald-600 uppercase">Activo</span>
+                        </div>
+                      ) : (
+                        <span className="text-[10px] text-slate-300">—</span>
+                      )}
                     </TableCell>
                     <TableCell className="py-4 hidden md:table-cell">
                       <div className="flex flex-col gap-1">
                         <div className="flex items-center gap-1.5 text-xs text-blue-600 font-medium">
-                           <Mail className="h-3 w-3" />
-                           {client.email}
+                          <Mail className="h-3 w-3" />
+                          {client.email}
                         </div>
                         {client.phone && (
-                           <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-bold">
-                              <Phone className="h-2.5 w-2.5" />
-                              {client.phone}
-                           </div>
+                          <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-bold">
+                            <Phone className="h-2.5 w-2.5" />
+                            {client.phone}
+                          </div>
                         )}
                       </div>
                     </TableCell>
                     <TableCell className="py-4 hidden lg:table-cell max-w-[200px]">
-                       <div className="flex items-start gap-1.5">
-                          <MapPin className="h-3 w-3 text-slate-300 mt-0.5 shrink-0" />
-                          <span className="text-[11px] text-slate-500 leading-tight line-clamp-2">{client.address || "Sin dirección"}</span>
-                       </div>
+                      <div className="flex items-start gap-1.5">
+                        <MapPin className="h-3 w-3 text-slate-300 mt-0.5 shrink-0" />
+                        <span className="text-[11px] text-slate-500 leading-tight line-clamp-2">{client.address || "Sin dirección"}</span>
+                      </div>
                     </TableCell>
 
                     <TableCell className="text-right py-4 pr-6">
-                      <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-                        <EditClientDialog
-                          client={client}
-                          onClientUpdated={onClientUpdated}
-                        >
-                          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full hover:bg-white hover:shadow-sm">
-                            <Edit className="h-3.5 w-3.5 text-slate-400" />
-                          </Button>
-                        </EditClientDialog>
-                        <DeleteClientDialog
-                          client={client}
-                          onClientDeleted={onClientDeleted}
-                        >
-                          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full hover:bg-rose-50 hover:text-rose-600">
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        </DeleteClientDialog>
-                        {client.phone && (
-                            <Button 
-                                variant="ghost" 
-                                size="icon" 
-                                className="h-8 w-8 rounded-full hover:bg-emerald-50 hover:text-emerald-600"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    const cleanPhone = client.phone!.replace(/\D/g, "");
-                                    window.open(`https://wa.me/${cleanPhone}`, "_blank");
-                                }}
-                            >
-                                <MessageCircle className="h-3.5 w-3.5" />
+                      <div onClick={(e) => e.stopPropagation()}>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full hover:bg-slate-100">
+                              <MoreVertical className="h-4 w-4 text-slate-500" />
                             </Button>
-                        )}
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-48">
+                            <EditClientDialog
+                              client={client}
+                              onClientUpdated={onClientUpdated}
+                            >
+                              <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="cursor-pointer">
+                                <Edit className="mr-2 h-4 w-4 text-slate-500" />
+                                Editar cliente
+                              </DropdownMenuItem>
+                            </EditClientDialog>
+                            {client.phone && (
+                              <DropdownMenuItem
+                                className="cursor-pointer"
+                                onClick={() => {
+                                  const cleanPhone = client.phone!.replace(/\D/g, "");
+                                  window.open(`https://wa.me/${cleanPhone}`, "_blank");
+                                }}
+                              >
+                                <MessageCircle className="mr-2 h-4 w-4 text-emerald-500" />
+                                Enviar WhatsApp
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuSeparator />
+                            <DeleteClientDialog
+                              client={client}
+                              onClientDeleted={onClientDeleted}
+                            >
+                              <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="cursor-pointer text-rose-600 focus:text-rose-600 focus:bg-rose-50">
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Eliminar cliente
+                              </DropdownMenuItem>
+                            </DeleteClientDialog>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </TableCell>
                   </AnimatedRow>
@@ -387,26 +407,26 @@ export function ClientTable({
                 <TableRow>
                   <TableCell colSpan={8} className="h-32 text-center">
                     <div className="flex flex-col items-center gap-2 text-slate-400">
-                       <Users className="h-8 w-8 opacity-20" />
-                       <span className="text-sm font-medium">No se encontraron clientes</span>
+                      <Users className="h-8 w-8 opacity-20" />
+                      <span className="text-sm font-medium">No se encontraron clientes</span>
                     </div>
                   </TableCell>
                 </TableRow>
               )}
             </AnimatedTableBody>
           </Table>
-          
+
           {visibleCount < sortedClients.length && (
-             <div className="p-8 text-center border-t border-slate-50">
-                <Loader2 className="h-6 w-6 animate-spin mx-auto text-slate-200" />
-                <p className="text-[10px] uppercase font-black text-slate-300 tracking-[0.2em] mt-2">Cargando más clientes</p>
-             </div>
+            <div ref={observerTarget} className="p-8 text-center border-t border-slate-50">
+              <Loader2 className="h-6 w-6 animate-spin mx-auto text-slate-200" />
+              <p className="text-[10px] uppercase font-black text-slate-300 tracking-[0.2em] mt-2">Cargando más clientes</p>
+            </div>
           )}
         </div>
       </div>
       <div className="flex items-center justify-between px-2 text-[10px] font-black uppercase text-slate-400 tracking-widest pb-4 pr-6">
-         <p>Total: {filteredClients.length} clientes</p>
-         <p>Mostrando {visibleClients.length}</p>
+        <p>Total: {filteredClients.length} clientes</p>
+        <p>Mostrando {visibleClients.length}</p>
       </div>
     </div>
   );

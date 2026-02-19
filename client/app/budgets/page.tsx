@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { FilterToolbar } from "@/components/ui/filter-toolbar";
 import {
   FileDown,
   FileSpreadsheet,
@@ -68,26 +69,7 @@ export default function BudgetsPage() {
     }
   };
 
-  const metrics = useMemo(() => {
-    if (!budgets.length) {
-      return {
-        total: 0,
-        approved: 0,
-        pending: 0,
-      };
-    }
-    const approved = budgets.filter(
-      (budget) => budget.status?.toLowerCase() === "aprobado"
-    ).length;
-    const pending = budgets.filter(
-      (budget) => budget.status?.toLowerCase() === "nuevo" || budget.status?.toLowerCase() === "enviado"
-    ).length;
-    return {
-      total: budgets.length,
-      approved,
-      pending,
-    };
-  }, [budgets]);
+
 
   const handleExportExcel = () => {
     const worksheet = XLSX.utils.json_to_sheet(
@@ -128,70 +110,57 @@ export default function BudgetsPage() {
   return (
     <DashboardLayout>
       <div className="space-y-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-gradient-to-br from-cyan-500 to-blue-600">
-              <Calculator className="h-6 w-6 text-white" />
-            </div>
-            <div>
-              <h1 className="text-3xl font-bold">
-                <ShinyText size="3xl" weight="bold">Presupuestos</ShinyText>
-              </h1>
-              <p className="text-sm text-muted-foreground">
-                Administra tus presupuestos.
-              </p>
-            </div>
+        <div className="flex items-center gap-3 mb-4">
+          <div className="p-2 rounded-lg bg-gradient-to-br from-cyan-500 to-blue-600">
+            <Calculator className="h-6 w-6 text-white" />
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Input
-              value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
-              placeholder="Buscar por cliente, estado..."
-              className="w-64"
-            />
-            <Button variant="outline" onClick={handleExportExcel}>
-              <FileSpreadsheet className="mr-2 h-4 w-4 text-green-500" />
-              Excel
-            </Button>
-            <Button variant="outline" onClick={handleExportPdf}>
-              <FileDown className="mr-2 h-4 w-4 text-red-500" />
-              PDF
-            </Button>
-            <CreateBudgetDialog onBudgetCreated={handleBudgetCreated}>
-              <Button className="bg-blue-600 text-white hover:bg-blue-500">
-                <PlusCircle className="mr-2 h-4 w-4" />
-                Nuevo Presupuesto
-              </Button>
-            </CreateBudgetDialog>
+          <div>
+            <h1 className="text-3xl font-bold">
+              <ShinyText size="3xl" weight="bold">Presupuestos</ShinyText>
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              Administra tus presupuestos.
+            </p>
           </div>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-3">
-          <Card>
-            <CardHeader>
-              <CardTitle>Presupuestos Totales</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-3xl font-semibold">{metrics.total}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle>Aprobados</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-3xl font-semibold">{metrics.approved}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle>Pendientes</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-3xl font-semibold">{metrics.pending}</p>
-            </CardContent>
-          </Card>
-        </div>
+        <FilterToolbar
+          searchTerm={searchTerm}
+          onSearchChange={setSearchTerm}
+          searchPlaceholder="Buscar por cliente, estado..."
+          className="px-2"
+        >
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={handleExportExcel}
+              className="h-10 rounded-xl border-slate-200 bg-white/50 backdrop-blur-sm hover:bg-emerald-50 hover:border-emerald-200 transition-all group"
+            >
+              <FileSpreadsheet className="h-4 w-4 text-emerald-600 transition-transform group-hover:scale-110" />
+              <span className="hidden sm:inline ml-2 font-medium">Excel</span>
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleExportPdf}
+              className="h-10 rounded-xl border-slate-200 bg-white/50 backdrop-blur-sm hover:bg-rose-50 hover:border-rose-200 transition-all group"
+            >
+              <FileDown className="h-4 w-4 text-rose-600 transition-transform group-hover:scale-110" />
+              <span className="hidden sm:inline ml-2 font-medium">PDF</span>
+            </Button>
+          </div>
+
+          <div className="w-px h-6 bg-slate-200/60 mx-1" />
+
+          <CreateBudgetDialog onBudgetCreated={handleBudgetCreated}>
+            <Button className="h-10 rounded-xl bg-slate-900 border-none text-white hover:bg-slate-800 shadow-lg shadow-slate-200 transition-all hover:-translate-y-0.5">
+              <PlusCircle className="mr-2 h-4 w-4" />
+              <span className="hidden sm:inline">Nuevo Presupuesto</span>
+              <span className="sm:hidden">Nuevo</span>
+            </Button>
+          </CreateBudgetDialog>
+        </FilterToolbar>
+
+
 
         {error && (
           <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">

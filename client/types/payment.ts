@@ -23,4 +23,5 @@ export interface Payment {
   createdAt: string;
   currency: Currency;
   invoiceEnabled?: boolean;
+  isRecurring?: boolean;
 }
