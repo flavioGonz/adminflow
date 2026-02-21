@@ -1,3 +1,5 @@
+'use client';
+
 import React, { useMemo, useState, useEffect, useRef } from "react";
 import {
   Table,
@@ -7,7 +9,6 @@ import {
   TableHead,
   TableCell,
 } from "@/components/ui/table";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { FilterToolbar } from "@/components/ui/filter-toolbar";
 import {
@@ -20,14 +21,10 @@ import {
 import { AnimatedTableBody, AnimatedRow } from "@/hooks/use-table-animation";
 import {
   ArrowUpDown,
-  Bell,
-  CreditCard,
   Edit,
   FileDown,
-  FileSignature,
   FileSpreadsheet,
   FolderArchive,
-  Hash,
   Loader2,
   Lock,
   Mail,
@@ -54,6 +51,7 @@ import * as XLSX from 'xlsx';
 import { CreateClientDialog } from "./create-client-dialog";
 import { Client } from "@/types/client";
 import { API_URL } from "@/lib/http";
+import { MobileClientCard } from "./mobile-client-card";
 
 interface ClientTableProps {
   clients: Client[];
@@ -163,11 +161,6 @@ export function ClientTable({
 
   const visibleClients = sortedClients.slice(0, visibleCount);
 
-  const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchTerm(event.target.value);
-    setVisibleCount(50);
-  };
-
   const requestSort = (key: SortKey) => {
     let direction: "ascending" | "descending" = "ascending";
     if (
@@ -189,7 +182,7 @@ export function ClientTable({
           setVisibleCount(50);
         }}
         searchPlaceholder="Buscar clientes..."
-        className="px-2"
+        className="px-2 filter-bar-desktop"
       >
         <div className="flex items-center gap-2">
           <ImportClientsDialog onImportComplete={onImportComplete} />
@@ -212,51 +205,39 @@ export function ClientTable({
             <FileDown className="h-4 w-4 text-rose-600 transition-transform group-hover:scale-110" />
           </Button>
         </div>
-
         <div className="w-px h-6 bg-slate-200/60 mx-1" />
-
         <CreateClientDialog onClientCreated={onClientCreated} />
       </FilterToolbar>
 
-      <div className="overflow-hidden">
+      {/* 📱 Mobile Cards View */}
+      <div className="mobile-cards-view">
+        {visibleClients.map((client) => (
+          <MobileClientCard key={client.id} client={client} />
+        ))}
+      </div>
+
+      {/* 💻 Desktop Table View */}
+      <div className="desktop-table-view overflow-hidden">
         <div className="overflow-x-auto">
           <Table>
             <TableHeader className="bg-white/50 border-b border-slate-50">
               <TableRow className="hover:bg-transparent">
                 <TableHead className="w-[80px] py-4 pl-6 text-[10px] uppercase font-black text-slate-400 tracking-widest cursor-pointer" onClick={() => requestSort("numericId")}>
-                  <div className="flex items-center gap-1">
-                    ID
-                    <ArrowUpDown className="h-3 w-3" />
-                  </div>
+                  <div className="flex items-center gap-1">ID<ArrowUpDown className="h-3 w-3" /></div>
                 </TableHead>
                 <TableHead className="py-4 text-[10px] uppercase font-black text-slate-400 tracking-widest cursor-pointer" onClick={() => requestSort("name")}>
-                  <div className="flex items-center gap-1">
-                    Nombre
-                    <ArrowUpDown className="h-3 w-3" />
-                  </div>
+                  <div className="flex items-center gap-1">Nombre<ArrowUpDown className="h-3 w-3" /></div>
                 </TableHead>
-                <TableHead className="py-4 text-[10px] uppercase font-black text-slate-400 tracking-widest">
-                  Alias / Servicios
-                </TableHead>
-                <TableHead className="py-4 text-[10px] uppercase font-black text-slate-400 tracking-widest">
-                  Contrato
-                </TableHead>
-                <TableHead className="py-4 text-[10px] uppercase font-black text-slate-400 tracking-widest">
-                  Abono
-                </TableHead>
+                <TableHead className="py-4 text-[10px] uppercase font-black text-slate-400 tracking-widest">Alias / Servicios</TableHead>
+                <TableHead className="py-4 text-[10px] uppercase font-black text-slate-400 tracking-widest">Contrato</TableHead>
+                <TableHead className="py-4 text-[10px] uppercase font-black text-slate-400 tracking-widest">Abono</TableHead>
                 <TableHead className="hidden md:table-cell py-4 text-[10px] uppercase font-black text-slate-400 tracking-widest">
-                  <div className="flex items-center gap-2">
-                    <Mail className="h-3 w-3" />
-                    Contacto
-                  </div>
+                  <div className="flex items-center gap-2"><Mail className="h-3 w-3" />Contacto</div>
                 </TableHead>
-                <TableHead className="hidden lg:table-cell py-4 text-[10px] uppercase font-black text-slate-400 tracking-widest">
-                  Ubicación
-                </TableHead>
+                <TableHead className="hidden lg:table-cell py-4 text-[10px] uppercase font-black text-slate-400 tracking-widest">Ubicación</TableHead>
                 <TableHead className="text-right py-4 pr-6">
                   <div className="flex items-center gap-2 justify-end text-[10px] uppercase font-black text-slate-400 tracking-widest">
-                    <Settings className="h-3 w-3" />
-                    Acciones
+                    <Settings className="h-3 w-3" />Acciones
                   </div>
                 </TableHead>
               </TableRow>
@@ -277,16 +258,13 @@ export function ClientTable({
                       <div className="flex items-center gap-3">
                         <Avatar className="h-10 w-10 border-2 border-white shadow-sm ring-1 ring-slate-100">
                           <AvatarImage src={client.avatarUrl ? (client.avatarUrl.startsWith('http') ? client.avatarUrl : `${API_URL.replace('/api', '')}${client.avatarUrl}`) : undefined} />
-                          <AvatarFallback className="bg-slate-50 text-slate-400">
-                            <User className="h-5 w-5" />
-                          </AvatarFallback>
+                          <AvatarFallback className="bg-slate-50 text-slate-400"><User className="h-5 w-5" /></AvatarFallback>
                         </Avatar>
                         <div className="flex flex-col">
                           <span className="font-bold text-slate-900 tracking-tight">{client.name}</span>
                           {client.contract && (
                             <div className="flex items-center gap-1 text-[9px] font-black text-emerald-600 uppercase tracking-tighter mt-0.5">
-                              <ShieldCheck className="h-2.5 w-2.5" />
-                              <span>Contrato Activo</span>
+                              <ShieldCheck className="h-2.5 w-2.5" /><span>Contrato Activo</span>
                             </div>
                           )}
                         </div>
@@ -296,18 +274,10 @@ export function ClientTable({
                       <div className="flex flex-col gap-1.5">
                         <span className="text-sm font-medium text-slate-600">{client.alias || "—"}</span>
                         <div className="flex items-center gap-1.5">
-                          {client.hasAccess && (
-                            <Lock className="h-3 w-3 text-blue-500" />
-                          )}
-                          {client.hasDiagram && (
-                            <Network className="h-3 w-3 text-emerald-500" />
-                          )}
-                          {client.hasFiles && (
-                            <FolderArchive className="h-3 w-3 text-slate-400" />
-                          )}
-                          {client.hasImplementation && (
-                            <img src="/assets/patchpanel/rj45.png" alt="Impl" className="h-3 w-3 grayscale opacity-50" />
-                          )}
+                          {client.hasAccess && <Lock className="h-3 w-3 text-blue-500" />}
+                          {client.hasDiagram && <Network className="h-3 w-3 text-emerald-500" />}
+                          {client.hasFiles && <FolderArchive className="h-3 w-3 text-slate-400" />}
+                          {client.hasImplementation && <img src="/assets/patchpanel/rj45.png" alt="Impl" className="h-3 w-3 grayscale opacity-50" />}
                         </div>
                       </div>
                     </TableCell>
@@ -338,15 +308,9 @@ export function ClientTable({
                     </TableCell>
                     <TableCell className="py-4 hidden md:table-cell">
                       <div className="flex flex-col gap-1">
-                        <div className="flex items-center gap-1.5 text-xs text-blue-600 font-medium">
-                          <Mail className="h-3 w-3" />
-                          {client.email}
-                        </div>
+                        <div className="flex items-center gap-1.5 text-xs text-blue-600 font-medium"><Mail className="h-3 w-3" />{client.email}</div>
                         {client.phone && (
-                          <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-bold">
-                            <Phone className="h-2.5 w-2.5" />
-                            {client.phone}
-                          </div>
+                          <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-bold"><Phone className="h-2.5 w-2.5" />{client.phone}</div>
                         )}
                       </div>
                     </TableCell>
@@ -356,7 +320,6 @@ export function ClientTable({
                         <span className="text-[11px] text-slate-500 leading-tight line-clamp-2">{client.address || "Sin dirección"}</span>
                       </div>
                     </TableCell>
-
                     <TableCell className="text-right py-4 pr-6">
                       <div onClick={(e) => e.stopPropagation()}>
                         <DropdownMenu>
@@ -366,36 +329,20 @@ export function ClientTable({
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="w-48">
-                            <EditClientDialog
-                              client={client}
-                              onClientUpdated={onClientUpdated}
-                            >
-                              <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="cursor-pointer">
-                                <Edit className="mr-2 h-4 w-4 text-slate-500" />
-                                Editar cliente
-                              </DropdownMenuItem>
+                            <EditClientDialog client={client} onClientUpdated={onClientUpdated}>
+                              <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="cursor-pointer"><Edit className="mr-2 h-4 w-4 text-slate-500" />Editar cliente</DropdownMenuItem>
                             </EditClientDialog>
                             {client.phone && (
-                              <DropdownMenuItem
-                                className="cursor-pointer"
-                                onClick={() => {
+                              <DropdownMenuItem className="cursor-pointer" onClick={() => {
                                   const cleanPhone = client.phone!.replace(/\D/g, "");
                                   window.open(`https://wa.me/${cleanPhone}`, "_blank");
-                                }}
-                              >
-                                <MessageCircle className="mr-2 h-4 w-4 text-emerald-500" />
-                                Enviar WhatsApp
+                                }}>
+                                <MessageCircle className="mr-2 h-4 w-4 text-emerald-500" />Enviar WhatsApp
                               </DropdownMenuItem>
                             )}
                             <DropdownMenuSeparator />
-                            <DeleteClientDialog
-                              client={client}
-                              onClientDeleted={onClientDeleted}
-                            >
-                              <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="cursor-pointer text-rose-600 focus:text-rose-600 focus:bg-rose-50">
-                                <Trash2 className="mr-2 h-4 w-4" />
-                                Eliminar cliente
-                              </DropdownMenuItem>
+                            <DeleteClientDialog client={client} onClientDeleted={onClientDeleted}>
+                              <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="cursor-pointer text-rose-600 focus:text-rose-600 focus:bg-rose-50"><Trash2 className="mr-2 h-4 w-4" />Eliminar cliente</DropdownMenuItem>
                             </DeleteClientDialog>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -404,30 +351,18 @@ export function ClientTable({
                   </AnimatedRow>
                 ))
               ) : (
-                <TableRow>
-                  <TableCell colSpan={8} className="h-32 text-center">
-                    <div className="flex flex-col items-center gap-2 text-slate-400">
-                      <Users className="h-8 w-8 opacity-20" />
-                      <span className="text-sm font-medium">No se encontraron clientes</span>
-                    </div>
-                  </TableCell>
-                </TableRow>
+                <TableRow><TableCell colSpan={8} className="h-32 text-center">No se encontraron clientes</TableCell></TableRow>
               )}
             </AnimatedTableBody>
           </Table>
-
-          {visibleCount < sortedClients.length && (
-            <div ref={observerTarget} className="p-8 text-center border-t border-slate-50">
-              <Loader2 className="h-6 w-6 animate-spin mx-auto text-slate-200" />
-              <p className="text-[10px] uppercase font-black text-slate-300 tracking-[0.2em] mt-2">Cargando más clientes</p>
-            </div>
-          )}
         </div>
       </div>
-      <div className="flex items-center justify-between px-2 text-[10px] font-black uppercase text-slate-400 tracking-widest pb-4 pr-6">
-        <p>Total: {filteredClients.length} clientes</p>
-        <p>Mostrando {visibleClients.length}</p>
-      </div>
+
+      {visibleCount < sortedClients.length && (
+        <div ref={observerTarget} className="p-8 text-center border-t border-slate-50">
+          <Loader2 className="h-6 w-6 animate-spin mx-auto text-slate-200" />
+        </div>
+      )}
     </div>
   );
 }

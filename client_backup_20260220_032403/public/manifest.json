@@ -1,0 +1,17 @@
+{
+  "name": "AdminFlow",
+  "short_name": "AdminFlow",
+  "description": "Panel integral para administrar clientes, tickets, contratos y finanzas",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#10b981",
+  "icons": [
+    {
+      "src": "/assets/patchpanel/rj45.png",
+      "sizes": "200x200",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

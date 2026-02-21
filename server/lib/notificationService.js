@@ -237,8 +237,8 @@ const sendWebPush = async ({ message, title = 'AdminFlow' }) => {
     const payload = JSON.stringify({
       title,
       body: message,
-      icon: '/icons/icon-192x192.png',
-      badge: '/icons/badge-72x72.png',
+      icon: '/assets/patchpanel/rj45.png',
+      badge: '/assets/patchpanel/rj45.png',
       data: {
         url: '/'
       }

@@ -33,7 +33,7 @@ export function FilterToolbar({
     return (
         <div
             className={cn(
-                "flex flex-col gap-4 mb-6",
+                "hidden lg:flex flex-col gap-4 mb-6",
                 className
             )}
             {...props}

@@ -1,50 +1,26 @@
-"use client";
+'use client';
 
-import { motion, AnimatePresence } from "framer-motion";
-import { ReactNode } from "react";
+import { motion, AnimatePresence } from 'framer-motion';
+import { usePathname } from 'next/navigation';
 
-interface PageTransitionProps {
-  children: ReactNode;
-}
+export function PageTransition({ children, pageKey }: { children: React.ReactNode, pageKey?: any }) {
+  const pathname = usePathname();
+  const activeKey = pageKey || pathname;
 
-export function PageTransition({ children }: PageTransitionProps) {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      transition={{
-        duration: 0.3,
-        ease: "easeInOut",
-      }}
-    >
-      {children}
-    </motion.div>
-  );
-}
-
-interface TablePageTransitionProps {
-  children: ReactNode;
-  pageKey: number | string;
-}
-
-export function TablePageTransition({ children, pageKey }: TablePageTransitionProps) {
-  return (
-    <AnimatePresence initial={false}>
-      <motion.tbody
-        key={pageKey}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        transition={{
-          duration: 0.15,
-          ease: "easeInOut",
-        }}
-        data-slot="table-body"
-        className="[&_tr:last-child]:border-0"
+    <AnimatePresence mode='wait'>
+      <motion.div
+        key={activeKey}
+        initial={{ opacity: 0, x: 20 }}
+        animate={{ opacity: 1, x: 0 }}
+        exit={{ opacity: 0, x: -20 }}
+        transition={{ duration: 0.3, ease: [0.32, 0.72, 0, 1] }}
+        className='w-full h-full min-h-screen'
       >
         {children}
-      </motion.tbody>
+      </motion.div>
     </AnimatePresence>
   );
 }
+
+export const TablePageTransition = PageTransition;

@@ -34,7 +34,7 @@ async function startServer(app, PORT) {
     console.log('🗄️  Motor de BD activo: ' + engine);
 
     // Activar sistema de pagos recurrentes
-    recurringPaymentService.start();
+    // recurringPaymentService.start();
 
     app.listen(PORT, '0.0.0.0', () => {
         console.log('🌐 Servidor corriendo en: http://0.0.0.0:' + PORT);

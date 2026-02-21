@@ -1,8 +1,6 @@
-// components/tickets/ticket-table.tsx
-"use client";
+'use client';
 
 import React, { useState } from "react";
-import Link from "next/link";
 import {
   Table,
   TableBody,
@@ -28,6 +26,7 @@ import { Ticket } from "@/types/ticket";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { API_URL } from "@/lib/http";
 import { toast } from "sonner";
+import { MobileTicketCard } from "@/components/tickets/mobile-ticket-card";
 
 interface TicketTableProps {
   tickets: Ticket[];
@@ -45,79 +44,27 @@ export function TicketTable({ tickets, onTicketUpdated, onTicketDeleted }: Ticke
     (ticket) =>
       ticket.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       ticket.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      ticket.id.toLowerCase().includes(searchTerm.toLowerCase())
+      String(ticket.id).toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const indexOfLastTicket = currentPage * ticketsPerPage;
   const indexOfFirstTicket = indexOfLastTicket - ticketsPerPage;
   const currentTickets = filteredTickets.slice(indexOfFirstTicket, indexOfLastTicket);
-
   const totalPages = Math.ceil(filteredTickets.length / ticketsPerPage);
 
-  const handleNextPage = () => {
-    if (currentPage < totalPages) {
-      setCurrentPage(currentPage + 1);
-    }
-  };
-
-  const handlePreviousPage = () => {
-    if (currentPage > 1) {
-      setCurrentPage(currentPage - 1);
-    }
-  };
-
-  const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchTerm(event.target.value);
-    setCurrentPage(1);
-  };
-
-  const getStatusVariant = (status: Ticket["status"]) => {
-    switch (status) {
-      case "Abierto":
-        return "default";
-      case "Visita":
-      case "Visita - Coordinar":
-      case "Visita Programada":
-      case "Visita Realizada":
-      case "Revision Cerrar Visita":
-        return "secondary";
-      case "Resuelto":
-        return "outline";
-      case "Facturar":
-        return "destructive";
-      case "Pagado":
-        return "outline";
-      default:
-        return "default";
-    }
-  };
+  const handleNextPage = () => { if (currentPage < totalPages) setCurrentPage(currentPage + 1); };
+  const handlePreviousPage = () => { if (currentPage > 1) setCurrentPage(currentPage - 1); };
 
   const getPriorityVariant = (priority: Ticket["priority"]) => {
     switch (priority) {
-      case "Alta":
-        return "destructive";
-      case "Media":
-        return "default";
-      case "Baja":
-        return "secondary";
-      default:
-        return "default";
+      case "Alta": return "destructive";
+      case "Media": return "default";
+      case "Baja": return "secondary";
+      default: return "default";
     }
   };
 
-  const statusOptions: Ticket["status"][] = [
-    "Nuevo",
-    "Abierto",
-    "En proceso",
-    "Visita",
-    "Visita - Coordinar",
-    "Visita Programada",
-    "Visita Realizada",
-    "Revision Cerrar Visita",
-    "Resuelto",
-    "Facturar",
-    "Pagado",
-  ];
+  const statusOptions: Ticket["status"][] = ["Nuevo","Abierto","En proceso","Visita","Visita - Coordinar","Visita Programada","Visita Realizada","Revision Cerrar Visita","Resuelto","Facturar","Pagado"];
 
   const handleStatusChange = async (ticket: Ticket, value: Ticket["status"]) => {
     setUpdatingId(ticket.id);
@@ -127,15 +74,12 @@ export function TicketTable({ tickets, onTicketUpdated, onTicketDeleted }: Ticke
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...ticket, status: value }),
       });
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(errorText || `Error al actualizar estado (${response.status})`);
-      }
+      if (!response.ok) throw new Error("Error al actualizar");
       const updated = await response.json();
       onTicketUpdated(updated);
       toast.success(`Estado actualizado a ${value}`);
     } catch (err: any) {
-      toast.error(err?.message || "No se pudo actualizar el estado");
+      toast.error("No se pudo actualizar el estado");
     } finally {
       setUpdatingId(null);
     }
@@ -146,10 +90,19 @@ export function TicketTable({ tickets, onTicketUpdated, onTicketDeleted }: Ticke
       <Input
         placeholder="Buscar tickets..."
         value={searchTerm}
-        onChange={handleSearchChange}
-        className="max-w-sm"
+        onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
+        className="max-w-sm filter-bar-desktop"
       />
-      <div className="rounded-md border">
+
+      {/* 📱 Mobile Cards View */}
+      <div className="mobile-cards-view">
+        {currentTickets.map((ticket) => (
+          <MobileTicketCard key={ticket.id} ticket={ticket} />
+        ))}
+      </div>
+
+      {/* 💻 Desktop Table View */}
+      <div className="desktop-table-view rounded-md border">
         <Table>
           <TableHeader>
             <TableRow>
@@ -170,71 +123,32 @@ export function TicketTable({ tickets, onTicketUpdated, onTicketDeleted }: Ticke
                   <TableCell>{ticket.title}</TableCell>
                   <TableCell>{ticket.clientName}</TableCell>
                   <TableCell>
-                    <Select
-                      value={ticket.status}
-                      onValueChange={(value) => handleStatusChange(ticket, value as Ticket["status"])}
-                      disabled={updatingId === ticket.id}
-                    >
-                      <SelectTrigger className="w-36">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {statusOptions.map((option) => (
-                          <SelectItem key={option} value={option}>
-                            {option}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
+                    <Select value={ticket.status} onValueChange={(v) => handleStatusChange(ticket, v as any)} disabled={updatingId === ticket.id}>
+                      <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
+                      <SelectContent>{statusOptions.map((opt) => (<SelectItem key={opt} value={opt}>{opt}</SelectItem>))}</SelectContent>
                     </Select>
                   </TableCell>
-                  <TableCell>
-                    <Badge variant={getPriorityVariant(ticket.priority)}>{ticket.priority}</Badge>
-                  </TableCell>
+                  <TableCell><Badge variant={getPriorityVariant(ticket.priority)}>{ticket.priority}</Badge></TableCell>
                   <TableCell>{new Date(ticket.createdAt).toLocaleDateString()}</TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end space-x-2">
-                      <EditTicketDialog ticket={ticket} onTicketUpdated={onTicketUpdated}>
-                        <Button variant="ghost" size="icon">
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                      </EditTicketDialog>
-                      <DeleteTicketDialog ticket={ticket} onTicketDeleted={onTicketDeleted}>
-                        <Button variant="ghost" size="icon">
-                          <Trash2 className="h-4 w-4 text-red-500" />
-                        </Button>
-                      </DeleteTicketDialog>
+                      <EditTicketDialog ticket={ticket} onTicketUpdated={onTicketUpdated}><Button variant="ghost" size="icon"><Edit className="h-4 w-4" /></Button></EditTicketDialog>
+                      <DeleteTicketDialog ticket={ticket} onTicketDeleted={onTicketDeleted}><Button variant="ghost" size="icon"><Trash2 className="h-4 w-4 text-red-500" /></Button></DeleteTicketDialog>
                     </div>
                   </TableCell>
                 </TableRow>
               ))
             ) : (
-              <TableRow>
-                <TableCell colSpan={7} className="h-24 text-center">
-                  No se encontraron tickets.
-                </TableCell>
-              </TableRow>
+              <TableRow><TableCell colSpan={7} className="h-24 text-center">No se encontraron tickets.</TableCell></TableRow>
             )}
           </TableBody>
         </Table>
       </div>
-      <Pagination>
+
+      <Pagination className={totalPages <= 1 ? 'hidden' : ''}>
         <PaginationContent>
-          <PaginationItem>
-            <PaginationPrevious
-              onClick={currentPage === 1 ? undefined : handlePreviousPage}
-              aria-disabled={currentPage === 1}
-              className={currentPage === 1 ? "opacity-40 pointer-events-none" : undefined}
-            />
-          </PaginationItem>
-          <PaginationItem>
-            <PaginationNext
-              onClick={currentPage === totalPages ? undefined : handleNextPage}
-              aria-disabled={currentPage === totalPages}
-              className={
-                currentPage === totalPages ? "opacity-40 pointer-events-none" : undefined
-              }
-            />
-          </PaginationItem>
+          <PaginationItem><PaginationPrevious onClick={currentPage === 1 ? undefined : handlePreviousPage} className={currentPage === 1 ? "opacity-40 pointer-events-none" : "cursor-pointer"} /></PaginationItem>
+          <PaginationItem><PaginationNext onClick={currentPage === totalPages ? undefined : handleNextPage} className={currentPage === totalPages ? "opacity-40 pointer-events-none" : "cursor-pointer"} /></PaginationItem>
         </PaginationContent>
       </Pagination>
     </div>

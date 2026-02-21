@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 
 // Generate VAPID keys: npx web-push generate-vapid-keys
 // For now, you need to set these in environment variables
-const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || '';
+const VAPID_PUBLIC_KEY = "BBHoGtGshGdzMC8giDITv_xrQ_veoQ-Ih9L0BjC7vcqbNJzW4EG7Z51JfaA6qTSp2-UbA5IqT5UEwtUBoxmxjnU";
 
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);

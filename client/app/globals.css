@@ -270,3 +270,189 @@
     padding-top: max(1rem, env(safe-area-inset-top));
   }
 }
+
+/* 📱 Mobile Optimized Patches - iPhone High Fidelity */
+.pb-safe {
+  padding-bottom: calc(1rem + env(safe-area-inset-bottom)) !important;
+}
+
+@media (max-width: 1023px) {
+  .filter-bar-desktop {
+    display: none !important;
+  }
+  
+  /* Evitar zoom en inputs de iPhone */
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+
+  /* Ajuste de contenedores para pantallas pequeñas */
+  main {
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+  }
+}
+
+/* Ocultar Barras de Filtros específicas en iPhone */
+@media (max-width: 1023px) {
+  /* Intentar ocultar por ID o clases de componentes comunes */
+  [class*="FilterToolbar"], [class*="filter-toolbar"], .filter-toolbar, .FilterToolbar {
+    display: none !important;
+  }
+}
+
+/* 🍏 iOS Premium GUIX */
+.ios-card {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.07);
+}
+
+.ios-input {
+  height: 52px;
+  border-radius: 14px !important;
+  background: #f1f5f9 !important;
+  border: none !important;
+  padding: 0 16px !important;
+  font-size: 16px !important;
+  transition: all 0.2s ease;
+}
+
+.ios-input:focus {
+  background: #fff !important;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1) !important;
+}
+
+.ios-button-primary {
+  height: 52px;
+  border-radius: 16px !important;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.01em;
+  box-shadow: 0 10px 20px -5px rgba(16, 185, 129, 0.3) !important;
+  transition: all 0.3s ease;
+}
+
+.ios-button-primary:active {
+  transform: scale(0.96);
+  opacity: 0.9;
+}
+
+/* 📱 Ajustes de Calce Perfecto para iPhone */
+@media (max-width: 1023px) {
+  /* Eliminar espacios laterales excesivos en el contenedor principal */
+  main {
+    padding: 1rem !important;
+  }
+
+  /* Hacer que las tablas ocupen todo el ancho y se vean como listas */
+  .rounded-xl.border.bg-card {
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  /* Forzar que el buscador y filtros del componente desaparezcan */
+  [class*='FilterToolbar'], .filter-toolbar {
+    display: none !important;
+  }
+}
+
+/* 🗂️ Mobile Cards Logic */
+.mobile-cards-view {
+  display: none;
+}
+
+@media (max-width: 1023px) {
+  .desktop-table-view {
+    display: none !important;
+  }
+  .mobile-cards-view {
+    display: block !important;
+  }
+}
+
+/* Dashboard iPhone Alignment Fix */
+@media (max-width: 1023px) {
+  /* Arreglar espaciado de cabecera de página */
+  .p-4.md\:p-8 > .flex.items-center.justify-between {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+
+  /* Ajustar cuadrícula de widgets para que no se vea desfasada */
+  .grid-cols-1.md\:grid-cols-4 {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    gap: 1rem;
+  }
+
+  .grid-cols-1.md\:grid-cols-4 > div {
+    width: 100% !important;
+    grid-column: span 1 / span 1 !important;
+  }
+}
+
+/* Botón flotante corregido */
+.h-13 { height: 3.25rem; }
+.w-13 { width: 3.25rem; }
+
+@media (max-width: 1023px) {
+  .fixed.bottom-24.right-6 {
+    right: 1.5rem !important;
+    left: auto !important; /* Asegurar que no se centre */
+  }
+}
+
+/* 📱 Mobile Optimized Views */
+@media (max-width: 1023px) {
+  .desktop-table-view {
+    display: none !important;
+  }
+  .mobile-cards-view {
+    display: grid !important;
+    gap: 1rem;
+    padding-bottom: 5rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .mobile-cards-view {
+    display: none !important;
+  }
+  .desktop-table-view {
+    display: block !important;
+  }
+}
+
+/* 📱 Mobile Optimized Views (Override) */
+@media (max-width: 1023px) {
+  .desktop-table-view {
+    display: none !important;
+  }
+  .mobile-cards-view {
+    display: grid !important;
+    gap: 1rem;
+    padding-bottom: 5rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .mobile-cards-view {
+    display: none !important;
+  }
+  .desktop-table-view {
+    display: block !important;
+  }
+}
+.ios-card {
+  background: white;
+  border-radius: 24px;
+  border: 1px solid rgba(226, 232, 240, 0.6);
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
+}

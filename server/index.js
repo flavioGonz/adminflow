@@ -1451,6 +1451,9 @@ app.post('/api/tickets', async (req, res) => {
             updatedAt: new Date().toISOString()
         };
         await mongoDb.collection('tickets').insertOne(newTicket);
+        // 🔔 Notificación Push
+        const { notify } = require("./lib/notificationService");
+        notify({ event: "ticket_created", message: "🎫 Nuevo Ticket: " + newTicket.title + " para " + newTicket.clientName, channels: ["webpush"] }).catch(e => console.error("Push error", e));
         const clientMap = await buildClientMap(mongoDb, [newTicket.clientId]);
         res.status(201).json(mapTicketRow(newTicket, clientMap));
     } catch (err) {
@@ -1755,7 +1758,10 @@ app.post('/api/payments', async (req, res) => {
             createdAt: new Date().toISOString()
         };
         await mongoDb.collection('payments').insertOne(newPayment);
-        res.status(201).json(mapPaymentRow(newPayment));
+        // 🔔 Notificación Push
+        const { notify } = require("./lib/notificationService");
+        notify({ event: "payment_created", message: "💰 Nuevo Pago: " + newPayment.currency + " " + newPayment.amount + " de " + newPayment.client, channels: ["webpush"] }).catch(e => console.error("Push error", e));
+        try { res.status(201).json(mapPaymentRow(newPayment)); } catch(e) { res.status(201).json(newPayment); }
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
@@ -2013,6 +2019,9 @@ app.post('/api/clients', async (req, res) => {
         };
 
         await mongoDb.collection('clients').insertOne(newClient);
+        // 🔔 Notificación Push
+        const { notify } = require("./lib/notificationService");
+        notify({ event: "client_created", message: "👤 Nuevo Cliente: " + newClient.name, channels: ["webpush"] }).catch(e => console.error("Push error", e));
 
         await logEvent({
             user: req.user ? req.user.email : 'system',

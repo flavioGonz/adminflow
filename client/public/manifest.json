@@ -1,17 +1,33 @@
 {
   "name": "AdminFlow",
   "short_name": "AdminFlow",
-  "description": "Panel integral para administrar clientes, tickets, contratos y finanzas",
-  "start_url": "/",
+  "description": "Gestión Pro de Clientes y Equipos",
+  "start_url": "/dashboard",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
+  "orientation": "portrait",
+  "background_color": "#f8fafc",
   "theme_color": "#10b981",
   "icons": [
     {
       "src": "/assets/patchpanel/rj45.png",
-      "sizes": "200x200",
+      "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
+    },
+    {
+      "src": "/assets/patchpanel/rj45.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/patchpanel/rj45.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
     }
-  ]
+  ],
+  "id": "/",
+  "categories": ["business", "productivity"]
 }

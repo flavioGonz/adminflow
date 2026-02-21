@@ -1,0 +1,20 @@
+export interface Contract {
+  id: string;
+  clientId: string;
+  clientName: string;
+  clientAvatarUrl?: string | null;
+  title: string;
+  description?: string;
+  startDate?: string;
+  endDate?: string;
+  status?: string;
+  sla?: string;
+  contractType?: string;
+  amount?: number;
+  currency?: string;
+  filePath?: string;
+  responsibilities?: string;
+  recurrence?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
