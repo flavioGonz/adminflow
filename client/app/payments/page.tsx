@@ -8,6 +8,7 @@ import { PageTransition } from "@/components/ui/page-transition";
 import { Loader2, Search, Plus, Filter, CheckCircle } from "lucide-react";
 import { deletePayment, fetchAllPayments } from "@/lib/api-payments";
 import { useRouter } from "next/navigation";
+import { IPhoneHeader } from "@/components/layout/iphone-header";
 
 export default function PaymentsPage() {
   const router = useRouter();
@@ -25,6 +26,8 @@ export default function PaymentsPage() {
   const filtered = payments.filter((p: any) => (p.client || '').toLowerCase().includes(search.toLowerCase()) || (p.invoice || '').toLowerCase().includes(search.toLowerCase()));
 
   return (
+    <>
+      <IPhoneHeader title="Pagos" />
     <DashboardLayout>
       <div className="flex flex-col bg-slate-50 min-h-full px-4 pt-4 pb-40">
           <div className="flex items-center gap-2 mb-6">
@@ -51,5 +54,6 @@ export default function PaymentsPage() {
           }
       </div>
     </DashboardLayout>
+    </>
   );
 }

@@ -7,6 +7,7 @@ import { API_URL } from "@/lib/http";
 import { PageTransition } from "@/components/ui/page-transition";
 import { Loader2, Search, Plus, Filter } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { IPhoneHeader } from "@/components/layout/iphone-header";
 
 export default function ContractsPage() {
   const router = useRouter();
@@ -24,6 +25,8 @@ export default function ContractsPage() {
   const filtered = contracts.filter((c: any) => (c.title || '').toLowerCase().includes(search.toLowerCase()) || (c.clientName || '').toLowerCase().includes(search.toLowerCase()));
 
   return (
+    <>
+      <IPhoneHeader title="Contratos" />
     <DashboardLayout>
       <div className="flex flex-col bg-slate-50 min-h-full px-4 pt-4 pb-40">
           <div className="flex items-center gap-2 mb-6">
@@ -50,5 +53,6 @@ export default function ContractsPage() {
           }
       </div>
     </DashboardLayout>
+    </>
   );
 }

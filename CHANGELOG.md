@@ -1,19 +1,19 @@
 # Changelog - AdminFlow
 
-## [2.1.5] - 2026-02-22
-### 🍏 iPhone PWA & Native Overhaul (Final Release)
-- **Header Único iOS:** Eliminación de duplicidad de cabeceras. Ahora existe un solo header estilizado con efecto vidrio y avatar integrado arriba a la derecha.
-- **Tarjetas de Tickets Pro:** 
-  - Integración de **doble avatar apilado** (Cliente + Técnico asignado).
-  - Contador de **tiempo transcurrido** desde la apertura en tiempo real.
-  - Badges de prioridad con diseño premium.
-- **Gestos Táctiles (Swipe):** Implementación de gestos de deslizamiento a la izquierda en todas las secciones principales para acciones rápidas (Eliminar/Pagar).
-- **Control Unificado:** Fusión de Buscador, Filtro y Botón Nuevo (+) en una sola línea superior, eliminando los botones flotantes.
-- **Notificaciones v25:** Motor optimizado para iPhone con indicadores visuales y soporte para alertas del sistema.
-- **Ficha de Cliente:** Rediseño del historial de tickets en formato de tarjetas nativas de iPhone.
-- **Contratos:** Inclusión del monto y moneda directamente en la vista de lista.
+## [2.2.0] - 2026-02-22
+### 🍏 iPhone PWA & Native Experience (Standalone Architecture)
+- **Header Único Standalone:** Migración de toda la App a una arquitectura de cabecera independiente por página, eliminando de raíz cualquier duplicidad visual.
+- **IPhoneHeader Pro:** Implementación de un componente de cabecera premium con título dinámico, campana de notificaciones con badges en vivo y avatar del usuario a la derecha.
+- **Nuevas Pantallas Nativas:** 
+  - **Nuevo Pago:** Página dedicada  con selectores optimizados y soporte de moneda (UYU/USD) con banderas.
+  - **Nuevo Contrato:** Página dedicada  para gestión ágil desde el móvil.
+- **Navegación Táctica:** Consolidación de la barra de navegación inferior (Tab Bar) en todas las rutas principales.
+- **Buscador & Filtros:** Integración de herramientas de filtrado y búsqueda directamente bajo el header en Tickets, Clientes, Pagos y Contratos.
+- **Estabilidad de Build:** Corrección de errores críticos de tipado y limpieza de cachés para asegurar un despliegue v60 impecable.
 
-### 🛠️ Estabilidad & Proxmox
-- **Fix de Pagos:** Parche de seguridad en la API para evitar bloqueos en la creación de nuevos pagos.
-- **Service Worker v20:** Forzado de actualización de caché para asegurar que todos los dispositivos carguen la última interfaz.
-- **LXC Kiosko:** Despliegue independiente del proyecto BioCloud Kiosk en contenedor Debian 12 dedicado.
+### 💰 Gestión Financiera Móvil
+- **Edición de Pagos:** Panel táctil para modificar montos, monedas y estados de pagos pendientes directamente desde la lista.
+- **Contratos:** Visualización mejorada con montos y estados de vigencia destacados.
+
+### 🛠️ Backend
+- **Safe API:** Blindaje del endpoint de pagos para garantizar estabilidad ante errores de mapeo.
