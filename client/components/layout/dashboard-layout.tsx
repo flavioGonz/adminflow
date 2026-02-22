@@ -42,7 +42,7 @@ function DashboardLayoutShell({
 
   return (
     <div className={cn('h-screen w-full flex flex-col lg:grid bg-slate-50/50', gridColsClass)}>
-      {/* ⚠️ HE RETIRADO EL MOBILEHEADER DE AQUÍ PARA EVITAR DUPLICADOS ⚠️ */}
+      {/* 🏔️ Header retirado del layout global para evitar duplicados en PWA */}
       
       <div className="hidden lg:block h-full"><SidebarContent /></div>
       
